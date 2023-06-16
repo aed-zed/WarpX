@@ -373,6 +373,7 @@ WarpX::Evolve (int numsteps)
                 // are updated according to the hybrid-PIC scheme (Ohm's law
                 // and Ampere's law).
                 HybridPICEvolveFields();
+                AddExternalFields();
             }
             ExecutePythonCallback("afterEsolve");
         }
