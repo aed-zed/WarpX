@@ -87,10 +87,7 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
             }
         }
 
-        // Add the field due to the boundary potentials
-        if (electrostatic_solver_id == ElectrostaticSolverAlgo::Relativistic){
-            AddBoundaryField();
-        }
+        AddBoundaryField();
     }
 }
 
