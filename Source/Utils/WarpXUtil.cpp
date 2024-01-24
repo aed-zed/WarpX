@@ -146,7 +146,7 @@ void ConvertLabParamsToBoost()
 
     ReadBoostedFrameParameters(gamma_boost, beta_boost, boost_direction);
 
-    if (gamma_boost <= 1.) return;
+    if (gamma_boost <= 1.) { return; }
 
     Vector<Real> prob_lo(AMREX_SPACEDIM);
     Vector<Real> prob_hi(AMREX_SPACEDIM);
@@ -289,11 +289,17 @@ void CheckDims ()
 #endif
     const ParmParse pp_geometry("geometry");
     std::string dims;
-    pp_geometry.get("dims", dims);
     std::string dims_error = "The selected WarpX executable was built as '";
     dims_error.append(dims_compiled).append("'-dimensional, but the ");
-    dims_error.append("inputs file declares 'geometry.dims = ").append(dims).append("'.\n");
-    dims_error.append("Please re-compile with a different WarpX_DIMS option or select the right executable name.");
+    if (pp_geometry.contains("dims")) {
+        pp_geometry.get("dims", dims);
+        dims_error.append("inputs file declares 'geometry.dims = ").append(dims).append("'.\n");
+        dims_error.append("Please re-compile with a different WarpX_DIMS option or select the right executable name.");
+    } else {
+        dims = "Not specified";
+        dims_error.append("inputs file does not declare 'geometry.dims'. Please add 'geometry.dims = ");
+        dims_error.append(dims_compiled).append("' to inputs file.");
+    }
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(dims == dims_compiled, dims_error);
 }
 
@@ -307,8 +313,9 @@ void CheckGriddingForRZSpectral ()
     const int electromagnetic_solver_id = GetAlgorithmInteger(pp_algo, "maxwell_solver");
 
     // only check for PSATD in RZ
-    if (electromagnetic_solver_id != ElectromagneticSolverAlgo::PSATD)
+    if (electromagnetic_solver_id != ElectromagneticSolverAlgo::PSATD) {
         return;
+    }
 
     int max_level;
     Vector<int> n_cell(AMREX_SPACEDIM, -1);
@@ -322,14 +329,15 @@ void CheckGriddingForRZSpectral ()
     Vector<int> max_grid_size_x(max_level+1);
 
     // Set the radial block size to be the power of 2 greater than or equal to
-    // the number of grid cells. The blocking_factor must be a power of 2
-    // and the max_grid_size should be a multiple of the blocking_factor.
+    // the number of grid cells. The blocking factor must be a power of 2
+    // and the max_grid_size must be a multiple of the blocking_factor unless
+    // it is less than the blocking factor.
     int k = 1;
     while (k < n_cell[0]) {
         k *= 2;
     }
     blocking_factor_x[0] = k;
-    max_grid_size_x[0] = k;
+    max_grid_size_x[0] = n_cell[0];
 
     for (int lev=1 ; lev <= max_level ; lev++) {
         // For this to be correct, this needs to read in any user specified refinement ratios.
@@ -412,10 +420,12 @@ void ReadBCParams ()
     const ParmParse pp_boundary("boundary");
     pp_boundary.queryarr("field_lo", field_BC_lo, 0, AMREX_SPACEDIM);
     pp_boundary.queryarr("field_hi", field_BC_hi, 0, AMREX_SPACEDIM);
-    if (pp_boundary.queryarr("particle_lo", particle_BC_lo, 0, AMREX_SPACEDIM))
+    if (pp_boundary.queryarr("particle_lo", particle_BC_lo, 0, AMREX_SPACEDIM)) {
         particle_boundary_specified = true;
-    if (pp_boundary.queryarr("particle_hi", particle_BC_hi, 0, AMREX_SPACEDIM))
+    }
+    if (pp_boundary.queryarr("particle_hi", particle_BC_hi, 0, AMREX_SPACEDIM)) {
         particle_boundary_specified = true;
+    }
     AMREX_ALWAYS_ASSERT(field_BC_lo.size() == AMREX_SPACEDIM);
     AMREX_ALWAYS_ASSERT(field_BC_hi.size() == AMREX_SPACEDIM);
     AMREX_ALWAYS_ASSERT(particle_BC_lo.size() == AMREX_SPACEDIM);
