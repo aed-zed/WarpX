@@ -6,8 +6,10 @@
 # License: BSD-3-Clause-LBNL
 
 import re
+import sys
 
 from . import Particles
+from ._libwarpx import libwarpx
 from .Algo import algo
 from .Amr import amr
 from .Amrex import amrex
@@ -21,9 +23,8 @@ from .Geometry import geometry
 from .HybridPICModel import hybridpicmodel
 from .Interpolation import interpolation
 from .Lasers import lasers, lasers_list
-from .PSATD import psatd
 from .Particles import particles, particles_list
-from ._libwarpx import libwarpx
+from .PSATD import psatd
 
 
 class WarpX(Bucket):
@@ -91,11 +92,13 @@ class WarpX(Bucket):
         return argv
 
     def init(self, mpi_comm=None, **kw):
-        argv = ['warpx'] + self.create_argv_list(**kw)
+        # note: argv[0] needs to be an absolute path so it works with AMReX backtraces
+        # https://github.com/AMReX-Codes/amrex/issues/3435
+        argv = [sys.executable] + self.create_argv_list(**kw)
         libwarpx.initialize(argv, mpi_comm=mpi_comm)
 
     def evolve(self, nsteps=-1):
-        libwarpx.evolve(nsteps)
+        libwarpx.warpx.evolve(nsteps)
 
     def finalize(self, finalize_mpi=1):
         libwarpx.finalize(finalize_mpi)

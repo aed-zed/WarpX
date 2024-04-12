@@ -8,9 +8,8 @@
 #include "Initialization/WarpXAMReXInit.H"
 
 #include <AMReX.H>
+#include <AMReX_ccse-mpi.H>
 #include <AMReX_ParmParse.H>
-
-#include <memory>
 
 namespace {
     /** Overwrite defaults in AMReX Inputs
@@ -28,6 +27,10 @@ namespace {
 
         bool the_arena_is_managed = false; // AMReX' default: true
         pp_amrex.queryAdd("the_arena_is_managed", the_arena_is_managed);
+
+        // https://amrex-codes.github.io/amrex/docs_html/InputsComputeBackends.html
+        std::string omp_threads = "nosmt"; // AMReX' default: system
+        pp_amrex.queryAdd("omp_threads", omp_threads);
 
         // Work-around:
         // If warpx.numprocs is used for the domain decomposition, we will not use blocking factor
@@ -56,14 +59,19 @@ namespace {
     }
 }
 
-amrex::AMReX*
-warpx_amrex_init (int& argc, char**& argv, bool const build_parm_parse, MPI_Comm const mpi_comm)
+namespace warpx::initialization
 {
-    return amrex::Initialize(
-        argc,
-        argv,
-        build_parm_parse,
-        mpi_comm,
-        overwrite_amrex_parser_defaults
-    );
+
+    amrex::AMReX*
+    amrex_init (int& argc, char**& argv, bool build_parm_parse)
+    {
+        return amrex::Initialize(
+            argc,
+            argv,
+            build_parm_parse,
+            MPI_COMM_WORLD,
+            ::overwrite_amrex_parser_defaults
+        );
+    }
+
 }

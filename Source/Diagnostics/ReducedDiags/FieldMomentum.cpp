@@ -38,7 +38,7 @@
 
 using namespace amrex;
 
-FieldMomentum::FieldMomentum (std::string rd_name)
+FieldMomentum::FieldMomentum (const std::string& rd_name)
     : ReducedDiags{rd_name}
 {
     // RZ coordinate is not working
@@ -94,10 +94,7 @@ FieldMomentum::FieldMomentum (std::string rd_name)
 void FieldMomentum::ComputeDiags (int step)
 {
     // Check if the diags should be done
-    if (m_intervals.contains(step+1) == false)
-    {
-        return;
-    }
+    if (!m_intervals.contains(step+1)) { return; }
 
     // Get a reference to WarpX instance
     auto & warpx = WarpX::GetInstance();
@@ -109,12 +106,12 @@ void FieldMomentum::ComputeDiags (int step)
     for (int lev = 0; lev < nLevel; ++lev)
     {
         // Get MultiFab data at given refinement level
-        const amrex::MultiFab & Ex = warpx.getEfield(lev, 0);
-        const amrex::MultiFab & Ey = warpx.getEfield(lev, 1);
-        const amrex::MultiFab & Ez = warpx.getEfield(lev, 2);
-        const amrex::MultiFab & Bx = warpx.getBfield(lev, 0);
-        const amrex::MultiFab & By = warpx.getBfield(lev, 1);
-        const amrex::MultiFab & Bz = warpx.getBfield(lev, 2);
+        const amrex::MultiFab & Ex = warpx.getField(FieldType::Efield_aux, lev, 0);
+        const amrex::MultiFab & Ey = warpx.getField(FieldType::Efield_aux, lev, 1);
+        const amrex::MultiFab & Ez = warpx.getField(FieldType::Efield_aux, lev, 2);
+        const amrex::MultiFab & Bx = warpx.getField(FieldType::Bfield_aux, lev, 0);
+        const amrex::MultiFab & By = warpx.getField(FieldType::Bfield_aux, lev, 1);
+        const amrex::MultiFab & Bz = warpx.getField(FieldType::Bfield_aux, lev, 2);
 
         // Cell-centered index type
         const amrex::GpuArray<int,3> cc{0,0,0};
@@ -182,9 +179,7 @@ void FieldMomentum::ComputeDiags (int step)
         amrex::Real ExB_x = amrex::get<0>(r);
         amrex::Real ExB_y = amrex::get<1>(r);
         amrex::Real ExB_z = amrex::get<2>(r);
-        amrex::ParallelDescriptor::ReduceRealSum(ExB_x);
-        amrex::ParallelDescriptor::ReduceRealSum(ExB_y);
-        amrex::ParallelDescriptor::ReduceRealSum(ExB_z);
+        amrex::ParallelDescriptor::ReduceRealSum({ExB_x,ExB_y,ExB_z});
 
         // Get cell size
         amrex::Geometry const & geom = warpx.Geom(lev);

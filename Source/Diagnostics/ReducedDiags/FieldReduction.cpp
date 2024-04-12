@@ -22,7 +22,7 @@
 #include <regex>
 
 // constructor
-FieldReduction::FieldReduction (std::string rd_name)
+FieldReduction::FieldReduction (const std::string& rd_name)
 : ReducedDiags{rd_name}
 {
     using namespace amrex::literals;
@@ -49,7 +49,7 @@ FieldReduction::FieldReduction (std::string rd_name)
     const amrex::ParmParse pp_rd_name(rd_name);
 
     // read reduced function with parser
-    std::string parser_string = "";
+    std::string parser_string;
     utils::parser::Store_parserString(pp_rd_name,"reduced_function(x,y,z,Ex,Ey,Ez,Bx,By,Bz,jx,jy,jz)",
                        parser_string);
     m_parser = std::make_unique<amrex::Parser>(
@@ -89,7 +89,7 @@ FieldReduction::FieldReduction (std::string rd_name)
 
 void FieldReduction::BackwardCompatibility ()
 {
-    amrex::ParmParse pp_rd_name(m_rd_name);
+    const amrex::ParmParse pp_rd_name(m_rd_name);
     std::vector<std::string> backward_strings;
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
         !pp_rd_name.queryarr("reduced_function(x,y,z,Ex,Ey,Ez,Bx,By,Bz)", backward_strings),

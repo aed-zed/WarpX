@@ -30,7 +30,7 @@
 using namespace amrex;
 
 // constructor
-FieldEnergy::FieldEnergy (std::string rd_name)
+FieldEnergy::FieldEnergy (const std::string& rd_name)
 : ReducedDiags{rd_name}
 {
 
@@ -89,12 +89,12 @@ void FieldEnergy::ComputeDiags (int step)
     for (int lev = 0; lev < nLevel; ++lev)
     {
         // get MultiFab data at lev
-        const MultiFab & Ex = warpx.getEfield(lev,0);
-        const MultiFab & Ey = warpx.getEfield(lev,1);
-        const MultiFab & Ez = warpx.getEfield(lev,2);
-        const MultiFab & Bx = warpx.getBfield(lev,0);
-        const MultiFab & By = warpx.getBfield(lev,1);
-        const MultiFab & Bz = warpx.getBfield(lev,2);
+        const MultiFab & Ex = warpx.getField(FieldType::Efield_aux, lev,0);
+        const MultiFab & Ey = warpx.getField(FieldType::Efield_aux, lev,1);
+        const MultiFab & Ez = warpx.getField(FieldType::Efield_aux, lev,2);
+        const MultiFab & Bx = warpx.getField(FieldType::Bfield_aux, lev,0);
+        const MultiFab & By = warpx.getField(FieldType::Bfield_aux, lev,1);
+        const MultiFab & Bz = warpx.getField(FieldType::Bfield_aux, lev,2);
 
         // get cell size
         Geometry const & geom = warpx.Geom(lev);
@@ -180,7 +180,7 @@ FieldEnergy::ComputeNorm2RZ(const amrex::MultiFab& field, const int lev)
         amrex::Box tb = convert(tilebox, field.ixType().toIntVect());
 
         // Lower corner of tile box physical domain
-        const std::array<amrex::Real, 3>& xyzmin = warpx.LowerCorner(tilebox, lev, 0._rt);
+        const std::array<amrex::Real, 3>& xyzmin = WarpX::LowerCorner(tilebox, lev, 0._rt);
         const Dim3 lo = lbound(tilebox);
         const Dim3 hi = ubound(tilebox);
         const Real rmin = xyzmin[0] + (tb.ixType().nodeCentered(0) ? 0._rt : 0.5_rt*dr);
@@ -190,7 +190,7 @@ FieldEnergy::ComputeNorm2RZ(const amrex::MultiFab& field, const int lev)
         int const ncomp = field.nComp();
 
         for (int idir=0 ; idir < AMREX_SPACEDIM ; idir++) {
-            if (warpx.field_boundary_hi[idir] == FieldBoundaryType::Periodic) {
+            if (WarpX::field_boundary_hi[idir] == FieldBoundaryType::Periodic) {
                 // For periodic boundaries, do not include the data in the nodes
                 // on the upper edge of the domain
                 tb.enclosedCells(idir);

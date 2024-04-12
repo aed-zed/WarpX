@@ -33,18 +33,20 @@ This section documents quick-start guides for a selection of supercomputers that
    :maxdepth: 1
 
    hpc/adastra
-   hpc/cori
    hpc/crusher
    hpc/frontier
    hpc/fugaku
    hpc/hpc3
    hpc/juwels
+   hpc/karolina
    hpc/lassen
    hpc/lawrencium
+   hpc/leonardo
    hpc/lumi
    hpc/lxplus
    hpc/ookami
    hpc/perlmutter
+   hpc/polaris
    hpc/quartz
    hpc/spock
    hpc/summit

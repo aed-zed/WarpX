@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 import numpy as np
-
+from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 from pywarpx import picmi
 
 # Number of time steps
@@ -62,6 +61,11 @@ solver = picmi.ElectromagneticSolver(grid=grid, cfl=0.95, method='PSATD',
 
 # Initialize diagnostics
 diag_field_list = ["E", "B"]
+particle_diag = picmi.ParticleDiagnostic(name = 'diag1',
+                                   period = 10,
+                                   write_dir = '.',
+                                   warpx_file_prefix = 'Python_wrappers_plt',
+                                   data_list = diag_field_list)
 field_diag = picmi.FieldDiagnostic(name = 'diag1',
                                    grid = grid,
                                    period = 10,
@@ -80,6 +84,7 @@ sim = picmi.Simulation(solver = solver,
                        warpx_use_filter = 1)
 
 # Add diagnostics to simulation
+sim.add_diagnostic(particle_diag)
 sim.add_diagnostic(field_diag)
 
 # Write input file to run with compiled version

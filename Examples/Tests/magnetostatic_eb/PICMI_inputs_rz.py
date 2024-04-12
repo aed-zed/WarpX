@@ -27,7 +27,6 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.constants as con
-
 from pywarpx import fields, picmi
 
 ##########################
@@ -110,6 +109,12 @@ beam_layout = picmi.GriddedLayout(n_macroparticle_per_cell=[2,2,2], grid=grid)
 # diagnostics
 ##########################
 
+particle_diag = picmi.ParticleDiagnostic(
+    name = 'diag1',
+    period = 1,
+    write_dir = '.',
+    warpx_file_prefix = 'Python_magnetostatic_eb_rz_plt'
+)
 field_diag = picmi.FieldDiagnostic(
     name = 'diag1',
     grid = grid,
@@ -137,6 +142,7 @@ sim = picmi.Simulation(
 
 sim.add_species(beam, layout=beam_layout, initialize_self_field=True)
 
+sim.add_diagnostic(particle_diag)
 sim.add_diagnostic(field_diag)
 
 ##########################
