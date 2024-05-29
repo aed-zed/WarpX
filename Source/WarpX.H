@@ -1277,7 +1277,7 @@ private:
      * Depending on the input skip_poisson_calc, the calculation of the poisson equation
      * will be skipped.
     */
-    int poisson_counter = 0;
+    int poisson_counter = 1;
     /**
      * \brief
      * This method creates a new instance of the WarpX class.
