@@ -195,7 +195,7 @@ Real WarpX::self_fields_required_precision = 1.e-11_rt;
 Real WarpX::self_fields_absolute_tolerance = 0.0_rt;
 int WarpX::self_fields_max_iters = 200;
 int WarpX::self_fields_verbosity = 2;
-int WarpX::self_fields_skip_iters = 0; 
+int WarpX::self_fields_skip_iters = 1; 
 
 bool WarpX::do_subcycling = false;
 bool WarpX::do_multi_J = false;
