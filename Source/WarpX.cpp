@@ -764,7 +764,7 @@ WarpX::ReadParameters ()
             utils::parser::queryWithParser(
                 pp_warpx, "self_fields_max_iters", self_fields_max_iters);
             pp_warpx.query("self_fields_verbosity", self_fields_verbosity);
-            pp_warpx.query("self_fields_skip_iters", self_fields_skip_iters)
+            pp_warpx.query("self_fields_skip_iters", self_fields_skip_iters);
         }
 
         poisson_solver_id = GetAlgorithmInteger(pp_warpx, "poisson_solver");
