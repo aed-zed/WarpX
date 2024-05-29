@@ -346,6 +346,7 @@ PhysicalParticleContainer::PhysicalParticleContainer (AmrCore* amr_core, int isp
     utils::parser::queryWithParser(
         pp_species_name, "self_fields_max_iters", self_fields_max_iters);
     pp_species_name.query("self_fields_verbosity", self_fields_verbosity);
+    pp_species_name.query("self_fields_skip_iters", self_fields_skip_iters);
 
     pp_species_name.query("do_field_ionization", do_field_ionization);
 

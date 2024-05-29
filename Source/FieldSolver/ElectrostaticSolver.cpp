@@ -71,6 +71,10 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
         }
     }
 
+    if (poisson_counter % self_fields_skip_iters != 0) {
+        return 
+    }
+
     if (electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrame ||
         electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrameElectroMagnetostatic) {
         AddSpaceChargeFieldLabFrame();

@@ -930,6 +930,7 @@ public:
     static amrex::Real self_fields_absolute_tolerance;
     static int self_fields_max_iters;
     static int self_fields_verbosity;
+    static int self_fields_skip_iters;
 
     static int do_moving_window; // boolean
     static int start_moving_window_step; // the first step to move window
@@ -1271,6 +1272,12 @@ private:
      */
     WarpX ();
 
+    /**
+     * Field to keep track how many times the poisson equation has been executed
+     * Depending on the input skip_poisson_calc, the calculation of the poisson equation
+     * will be skipped.
+    */
+    int poisson_counter = 0;
     /**
      * \brief
      * This method creates a new instance of the WarpX class.
