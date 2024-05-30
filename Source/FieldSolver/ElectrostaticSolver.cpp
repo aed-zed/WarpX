@@ -71,6 +71,7 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
         }
     }
 
+    poisson_counter += 1;
     if (poisson_counter % self_fields_skip_iters != 0) {
         return; 
     }
