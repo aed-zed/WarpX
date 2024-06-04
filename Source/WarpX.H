@@ -932,6 +932,13 @@ public:
     static int self_fields_verbosity;
     static int self_fields_skip_iters;
 
+    /**
+     * Field to keep track how many times the poisson equation has been executed
+     * Depending on the input skip_poisson_calc, the calculation of the poisson equation
+     * will be skipped.
+    */
+    int poisson_counter = 0;
+
     static int do_moving_window; // boolean
     static int start_moving_window_step; // the first step to move window
     static int end_moving_window_step; // the last step to move window
@@ -1272,12 +1279,6 @@ private:
      */
     WarpX ();
 
-    /**
-     * Field to keep track how many times the poisson equation has been executed
-     * Depending on the input skip_poisson_calc, the calculation of the poisson equation
-     * will be skipped.
-    */
-    int poisson_counter = 1;
     /**
      * \brief
      * This method creates a new instance of the WarpX class.
