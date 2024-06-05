@@ -1279,7 +1279,7 @@ private:
      * will be skipped.
     */
     int poisson_counter = 0;
-    int poisson_skips = 1; 
+    mutable int poisson_skips = 1; 
 
     /**
      * \brief

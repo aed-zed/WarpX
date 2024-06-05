@@ -94,7 +94,7 @@ template<
     typename T_PostPhiCalculationFunctor = std::nullopt_t,
     typename T_FArrayBoxFactory = void
 >
-Real computePhi (amrex::Vector<amrex::MultiFab*> const & rho,
+amrex::Real computePhi (amrex::Vector<amrex::MultiFab*> const & rho,
             amrex::Vector<amrex::MultiFab*> & phi,
             std::array<amrex::Real, 3> const beta,
             amrex::Real const relative_tolerance,
