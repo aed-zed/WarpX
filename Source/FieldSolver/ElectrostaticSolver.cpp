@@ -405,8 +405,8 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
         poisson_skips /= 2;
     }
     
-    std::cout << "poisson skips: " << poisson_skips << std::endl
-    std::cout << "residual val: " << composite_norm << std::endl
+    std::cout << "poisson skips: " << poisson_skips << std::endl;
+    std::cout << "residual val: " << composite_norm << std::endl;
 
 }
 
