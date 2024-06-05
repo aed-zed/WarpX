@@ -928,16 +928,10 @@ public:
     // Parameters for lab frame electrostatic
     static amrex::Real self_fields_required_precision;
     static amrex::Real self_fields_absolute_tolerance;
+    static amrex::Real self_fields_resid_val;
     static int self_fields_max_iters;
     static int self_fields_verbosity;
-    static int self_fields_skip_iters;
-
-    /**
-     * Field to keep track how many times the poisson equation has been executed
-     * Depending on the input skip_poisson_calc, the calculation of the poisson equation
-     * will be skipped.
-    */
-    int poisson_counter = 0;
+    static int self_fields_max_skips;
 
     static int do_moving_window; // boolean
     static int start_moving_window_step; // the first step to move window
@@ -1278,6 +1272,14 @@ private:
      * if an instance of the WarpX class does not currently exist.
      */
     WarpX ();
+
+    /**
+     * Field to keep track how many times the poisson equation has been executed
+     * Depending on the input skip_poisson_calc, the calculation of the poisson equation
+     * will be skipped.
+    */
+    int poisson_counter = 0;
+    int poisson_skips = 1; 
 
     /**
      * \brief

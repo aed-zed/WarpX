@@ -72,7 +72,7 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
     }
 
     poisson_counter += 1;
-    if (poisson_counter % self_fields_skip_iters != 0) {
+    if (poisson_counter != self_fields_max_skips && (poisson_counter % poisson_skips != 0)) {
         return; 
     }
 
@@ -377,7 +377,7 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
     bool const is_solver_multigrid =
         WarpX::poisson_solver_id != PoissonSolverAlgo::IntegratedGreenFunction;
 
-    ablastr::fields::computePhi(
+    Real composite_norm = ablastr::fields::computePhi(
         sorted_rho,
         sorted_phi,
         beta,
@@ -396,6 +396,10 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
         gett_new(0),
         eb_farray_box_factory
     );
+
+    if (composite_norm < self_fields_resid_val) {
+        poisson_skips *= 2;
+    }
 
 }
 

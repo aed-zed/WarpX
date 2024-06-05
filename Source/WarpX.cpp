@@ -195,7 +195,8 @@ Real WarpX::self_fields_required_precision = 1.e-11_rt;
 Real WarpX::self_fields_absolute_tolerance = 0.0_rt;
 int WarpX::self_fields_max_iters = 200;
 int WarpX::self_fields_verbosity = 2;
-int WarpX::self_fields_skip_iters = 1; 
+int WarpX::self_fields_max_skips = 100;
+Real WarpX::self_fields_resid_val = 0.0_rt;
 
 bool WarpX::do_subcycling = false;
 bool WarpX::do_multi_J = false;
@@ -763,9 +764,10 @@ WarpX::ReadParameters ()
                 pp_warpx, "self_fields_absolute_tolerance", self_fields_absolute_tolerance);
             utils::parser::queryWithParser(
                 pp_warpx, "self_fields_max_iters", self_fields_max_iters);
+            utils::parse::queryWithParser(
+                pp_warpx, "self_fields_resid_val", self_fields_resid_val);
             pp_warpx.query("self_fields_verbosity", self_fields_verbosity);
-            pp_warpx.query("self_fields_skip_iters", self_fields_skip_iters);
-            poisson_counter = self_fields_skip_iters - 1; 
+            pp_warpx.query("self_fields_max_skips", self_fields_max_skips);
         }
 
         poisson_solver_id = GetAlgorithmInteger(pp_warpx, "poisson_solver");
