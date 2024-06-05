@@ -397,9 +397,16 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
         eb_farray_box_factory
     );
 
+
     if (composite_norm < self_fields_resid_val) {
         poisson_skips *= 2;
     }
+    if (composite_norm > self_fields_resid_val && poisson_skips > 1) {
+        poisson_skips /= 2;
+    }
+    
+    std::cout << "poisson skips: " << poisson_skips << std::endl
+    std::cout << "residual val: " << composite_norm << std::endl
 
 }
 
