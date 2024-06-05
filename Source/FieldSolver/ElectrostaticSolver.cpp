@@ -73,9 +73,6 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
 
     poisson_counter += 1;
     if ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) {
-        std::cout << "poisson skips: " << poisson_skips << std::endl;
-        std::cout << "poisson counter: " << poisson_counter << std::endl;
-        std::cout << "max_skips: " << self_fields_max_skips << std::endl;
         return; 
     }
 

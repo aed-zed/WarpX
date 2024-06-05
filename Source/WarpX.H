@@ -1278,7 +1278,7 @@ private:
      * Depending on the input skip_poisson_calc, the calculation of the poisson equation
      * will be skipped.
     */
-    int poisson_counter = 0;
+    int poisson_counter = -1;
     mutable int poisson_skips = 1; 
 
     /**
