@@ -115,6 +115,8 @@ amrex::Real computePhi (amrex::Vector<amrex::MultiFab*> const & rho,
 {
     using namespace amrex::literals;
 
+    amrex::Real composite_norminf = 0.0_rt;
+
     ABLASTR_PROFILE("computePhi", false);
 
     if (!rel_ref_ratio.has_value()) {
@@ -254,7 +256,7 @@ amrex::Real computePhi (amrex::Vector<amrex::MultiFab*> const & rho,
         mlmg.setAlwaysUseBNorm(always_use_bnorm);
 
         // Solve Poisson equation at lev
-        amrex::Real composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
+        composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
 
         // needed for solving the levels by levels:
         // - coarser level is initial guess for finer level
