@@ -764,7 +764,7 @@ WarpX::ReadParameters ()
                 pp_warpx, "self_fields_absolute_tolerance", self_fields_absolute_tolerance);
             utils::parser::queryWithParser(
                 pp_warpx, "self_fields_max_iters", self_fields_max_iters);
-            utils::parse::queryWithParser(
+            utils::parser::queryWithParser(
                 pp_warpx, "self_fields_resid_val", self_fields_resid_val);
             pp_warpx.query("self_fields_verbosity", self_fields_verbosity);
             pp_warpx.query("self_fields_max_skips", self_fields_max_skips);
