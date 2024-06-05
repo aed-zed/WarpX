@@ -72,7 +72,7 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
     }
 
     poisson_counter += 1;
-    if (poisson_counter != self_fields_max_skips && (poisson_counter % poisson_skips != 0)) {
+    if ((poisson_counter % self_fields_max_skips != 0) || (poisson_counter % poisson_skips != 0)) {
         return; 
     }
 
@@ -404,10 +404,6 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
     if (composite_norm > self_fields_resid_val && poisson_skips > 1) {
         poisson_skips /= 2;
     }
-    
-    std::cout << "poisson skips: " << poisson_skips << std::endl;
-    std::cout << "residual val: " << composite_norm << std::endl;
-
 }
 
 
