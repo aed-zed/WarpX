@@ -41,7 +41,7 @@ ResidValue::ResidValue (const std::string& rd_name)
             ofs << "[" << c++ << "]step()";
             ofs << m_sep;
             ofs << "[" << c++ << "]time(s)";
-            ofs << m_sep; 
+            ofs << m_sep;
             ofs << "[" << c++ << "]residual";
             ofs << std::endl;
             // close file
@@ -60,9 +60,9 @@ void ResidValue::ComputeDiags (int /*step*/)
     auto & warpx = WarpX::GetInstance();
 
     // do the diag anytime the poisson equation is calculated
-    if (warpx.isPoissonEquationSkipped()) { 
+    if (warpx.isPoissonEquationSkipped()) {
         skipWrite = true;
-        return; 
+        return;
     }
 
     skipWrite = false;
@@ -71,10 +71,10 @@ void ResidValue::ComputeDiags (int /*step*/)
     // end loop over species
 }
 
-void ResidValue::WriteToFile (int step) const 
+void ResidValue::WriteToFile (int step) const
 {
     if (skipWrite) {
-        return; 
+        return;
     }
     ReducedDiags::WriteToFile(step);
 }
