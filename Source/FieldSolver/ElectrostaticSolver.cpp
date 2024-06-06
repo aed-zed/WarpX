@@ -72,7 +72,7 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
     }
 
     poisson_counter += 1;
-    if ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) {
+    if isPoissonEquationSkipped() {
         return; 
     }
     poisson_counter = 1;

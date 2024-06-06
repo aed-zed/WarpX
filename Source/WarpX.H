@@ -1017,6 +1017,8 @@ public:
 
     amrex::Real getPoissonResidual () const { return poisson_residual; }
 
+    bool isPoissonEquationSkipped () const;
+
     /**
      * \brief
      * This function initializes the E and B fields on each level
