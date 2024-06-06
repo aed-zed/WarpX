@@ -57,7 +57,7 @@ void ResidValue::ComputeDiags (int step)
 
     const auto & warpx = WarpX::GetInstance();
 
-    // do the diag anytime the poisson equation is calculated 
+    // do the diag anytime the poisson equation is calculated
     if (warpx.isPoissonEquationSkipped()) { return; }
 
     m_data[0] = warpx.getPoissonResidual();
