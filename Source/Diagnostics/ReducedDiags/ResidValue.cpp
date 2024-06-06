@@ -53,9 +53,11 @@ ResidValue::ResidValue (const std::string& rd_name)
 void ResidValue::ComputeDiags (int step)
 {
     // Judge if the diags should be done
-    if (!m_intervals.contains(step+1)) { return; }
+    // if (!m_intervals.contains(step+1)) { return; }
 
     const auto & warpx = WarpX::GetInstance();
+
+    // do the diag anytime the poisson equation is calculated 
     if (warpx.isPoissonEquationSkipped()) { return; }
 
     m_data[0] = warpx.getPoissonResidual();
