@@ -52,16 +52,14 @@ ResidValue::ResidValue (const std::string& rd_name)
 // end constructor
 
 // function that computes residual value after poisson equation
-void ParticleNumber::ComputeDiags (int step)
+void ResidValue::ComputeDiags (int step)
 {
     // Judge if the diags should be done
     if (!m_intervals.contains(step+1)) { return; }
 
-    // get MultiParticleContainer class object
     const auto & warpx = WarpX::GetInstance();
     if ((!warpx.poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) { return; }
 
     m_data[0] = warpx.getPoissonResidual();    
     // end loop over species
 }
-// end void ParticleNumber::ComputeDiags
