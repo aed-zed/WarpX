@@ -32,6 +32,15 @@ public:
      */
     void ComputeDiags(int step) final;
 
+    /**
+     * write to file function for costs;  this differs from the base class
+     * `ReducedDiags` in that it will write to the file based on whether the
+     *  Poisson equation was calculated or not, not on the value of intervals
+     *
+     * @param[in] step current time step
+     */
+    void WriteToFile(int step) const final;
+
 private:
     bool skipWrite = false;
 
