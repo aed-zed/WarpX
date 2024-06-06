@@ -28,7 +28,7 @@ using namespace amrex::literals;
 ResidValue::ResidValue (const std::string& rd_name)
 : ReducedDiags{rd_name}
 {
-    m_data.resize(1);
+    m_data.resize(1, 0.0_rt);
     if (amrex::ParallelDescriptor::IOProcessor())
     {
         if ( m_write_header )
@@ -41,6 +41,8 @@ ResidValue::ResidValue (const std::string& rd_name)
             ofs << "[" << c++ << "]step()";
             ofs << m_sep;
             ofs << "[" << c++ << "]time(s)";
+            ofs << m_sep; 
+            ofs << "[" << c++ << "]residual";
             ofs << std::endl;
             // close file
             ofs.close();
@@ -55,7 +57,7 @@ void ResidValue::ComputeDiags (int /*step*/)
     // Judge if the diags should be done
     // if (!m_intervals.contains(step+1)) { return; }
 
-    const auto & warpx = WarpX::GetInstance();
+    auto & warpx = WarpX::GetInstance();
 
     // do the diag anytime the poisson equation is calculated
     if (warpx.isPoissonEquationSkipped()) { return; }
