@@ -3317,7 +3317,7 @@ WarpX::isAnyParticleBoundaryThermal ()
 bool
 WarpX::isPoissonEquationSkipped () const
 {
-    ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0));
+    return ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0));
 }
 
 std::string
