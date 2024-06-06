@@ -75,6 +75,7 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
     if ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) {
         return; 
     }
+    poisson_counter = 1;
 
     if (electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrame ||
         electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrameElectroMagnetostatic) {

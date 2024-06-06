@@ -1015,6 +1015,8 @@ public:
 
     void setVectorPotentialBC (amrex::Vector<amrex::Array<std::unique_ptr<amrex::MultiFab>, 3> >& A) const;
 
+    amrex::Real getPoissonResidual () const { return poisson_residual; }
+
     /**
      * \brief
      * This function initializes the E and B fields on each level
@@ -1280,6 +1282,7 @@ private:
     */
     int poisson_counter = -1;
     mutable int poisson_skips = 1; 
+    mutable amrex::Real poisson_residual = 0.0_rt;
 
     /**
      * \brief
