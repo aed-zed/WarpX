@@ -54,6 +54,7 @@ void ResidValue::ComputeDiags (int step)
 {
     // Judge if the diags should be done
     // if (!m_intervals.contains(step+1)) { return; }
+    step = step + 1; 
 
     const auto & warpx = WarpX::GetInstance();
 
