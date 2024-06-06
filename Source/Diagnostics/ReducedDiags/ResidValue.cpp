@@ -60,6 +60,6 @@ void ResidValue::ComputeDiags (int step)
     const auto & warpx = WarpX::GetInstance();
     if ((!warpx.poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) { return; }
 
-    m_data[0] = warpx.getPoissonResidual();    
+    m_data[0] = warpx.getPoissonResidual();
     // end loop over species
 }

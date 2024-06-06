@@ -27,7 +27,7 @@ public:
     ResidValue(const std::string& rd_name);
 
     /**
-     * This function adds the residual value after the Poisson equation is calcualted. 
+     * This function adds the residual value after the Poisson equation is calcualted.
      *
      * @param[in] step current time step
      */
