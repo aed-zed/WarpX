@@ -22,6 +22,7 @@
 #include "ParticleHistogram2D.H"
 #include "ParticleMomentum.H"
 #include "ParticleNumber.H"
+#include "ResidValue.H"
 #include "RhoMaximum.H"
 #include "Utils/TextMsg.H"
 #include "Utils/WarpXProfilerWrapper.H"
