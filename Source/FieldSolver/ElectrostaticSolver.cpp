@@ -378,7 +378,7 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
     bool const is_solver_multigrid =
         WarpX::poisson_solver_id != PoissonSolverAlgo::IntegratedGreenFunction;
 
-    Real composite_norm = ablastr::fields::computePhi(
+    poisson_residual = ablastr::fields::computePhi(
         sorted_rho,
         sorted_phi,
         beta,
@@ -399,10 +399,10 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
     );
 
 
-    if (composite_norm < self_fields_resid_val) {
+    if (poisson_residual < self_fields_resid_val) {
         poisson_skips *= 2;
     }
-    if (composite_norm > self_fields_resid_val && poisson_skips > 1) {
+    if (poisson_residual > self_fields_resid_val && poisson_skips > 1) {
         poisson_skips /= 2;
     }
 }

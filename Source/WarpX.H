@@ -1282,7 +1282,7 @@ private:
     */
     int poisson_counter = -1;
     mutable int poisson_skips = 1; 
-    mutable amrex::Real poisson_residual = 0.0_rt;
+    mutable amrex::Real poisson_residual = amrex::Real(0.0);
 
     /**
      * \brief
