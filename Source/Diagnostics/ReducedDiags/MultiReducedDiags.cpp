@@ -131,11 +131,17 @@ void MultiReducedDiags::WriteToFile (int step)
     // loop over all reduced diags
     for (int i_rd = 0; i_rd < static_cast<int>(m_rd_names.size()); ++i_rd)
     {
-        // Judge if the diags should be done
-        if (!m_multi_rd[i_rd]->m_intervals.contains(step+1)) { continue; }
 
-        // call the write to file function
-        m_multi_rd[i_rd]->WriteToFile(step);
+        if (m_rd_names[i_rd] == "ResidValue") {
+            m_multi_rd[i_rd]->WriteToFile(step);
+            continue;
+        }
+
+        // Judge if the diags should be done
+        if (m_multi_rd[i_rd]->m_intervals.contains(step+1)) {
+            // call the write to file function
+            m_multi_rd[i_rd]->WriteToFile(step);
+         }
     }
     // end loop over all reduced diags
 }

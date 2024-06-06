@@ -32,6 +32,9 @@ public:
      */
     void ComputeDiags(int step) final;
 
+private:
+    bool skipWrite = false;
+
 };
 
 #endif // WARPX_DIAGNOSTICS_REDUCEDDIAGS_PARTICLENUMBER_H_

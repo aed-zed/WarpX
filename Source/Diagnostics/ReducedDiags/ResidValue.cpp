@@ -60,8 +60,21 @@ void ResidValue::ComputeDiags (int /*step*/)
     auto & warpx = WarpX::GetInstance();
 
     // do the diag anytime the poisson equation is calculated
-    if (warpx.isPoissonEquationSkipped()) { return; }
+    if (warpx.isPoissonEquationSkipped()) { 
+        skipWrite = true;
+        return; 
+    }
+
+    skipWrite = false;
 
     m_data[0] = warpx.getPoissonResidual();
     // end loop over species
+}
+
+void ResidValue::WriteToFile (int step) const 
+{
+    if (skipWrite) {
+        return; 
+    }
+    ReducedDiags::WriteToFile(step);
 }
