@@ -5,16 +5,15 @@
  * License: BSD-3-Clause-LBNL
  */
 
-#ifndef WARPX_DIAGNOSTICS_REDUCEDDIAGS_PARTICLENUMBER_H_
-#define WARPX_DIAGNOSTICS_REDUCEDDIAGS_PARTICLENUMBER_H_
+#ifndef WARPX_DIAGNOSTICS_REDUCEDDIAGS_RESIDVALUE_H_
+#define WARPX_DIAGNOSTICS_REDUCEDDIAGS_RESIDVALUE_H_
 
 #include "ReducedDiags.H"
 
 #include <string>
 
 /**
- *  This class mainly contains a function that computes the total number of macroparticles and of
- *  physical particles (i.e. the sum of the weights) of each species.
+ *  This class mainly contains a function that get the residual value of the poisson equation calculation.
  */
 class ResidValue : public ReducedDiags
 {
