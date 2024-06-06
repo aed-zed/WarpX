@@ -5,11 +5,9 @@
  * License: BSD-3-Clause-LBNL
  */
 
-#include "ParticleNumber.H"
+#include "ResidValue.H"
 
 #include "Diagnostics/ReducedDiags/ReducedDiags.H"
-#include "Particles/MultiParticleContainer.H"
-#include "Particles/WarpXParticleContainer.H"
 #include "WarpX.H"
 
 #include <AMReX_GpuQualifiers.H>
