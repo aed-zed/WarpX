@@ -30,8 +30,8 @@ public:
 
     /**
      *  Write to file function for residual;  this differs from the base class
-     * `ReducedDiags` in that it will not write to the file siince ComputeDiags 
-     *  calls the write to file function instead. 
+     * `ReducedDiags` in that it will not write to the file siince ComputeDiags
+     *  calls the write to file function instead.
      *
      * @param[in] step current time step
      */
