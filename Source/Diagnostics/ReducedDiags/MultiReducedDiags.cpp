@@ -38,17 +38,14 @@
 #include <map>
 
 using namespace amrex;
-
 // constructor
 MultiReducedDiags::MultiReducedDiags ()
 {
     // read reduced diags names
     const ParmParse pp_warpx("warpx");
     m_plot_rd = pp_warpx.queryarr("reduced_diags_names", m_rd_names);
-
     // if names are not given, reduced diags will not be done
     if ( m_plot_rd == 0 ) { return; }
-
     using CS = const std::string& ;
     const auto reduced_diags_dictionary =
         std::map<std::string, std::function<std::unique_ptr<ReducedDiags>(CS)>>{
@@ -75,7 +72,6 @@ MultiReducedDiags::MultiReducedDiags ()
     std::transform(m_rd_names.begin(), m_rd_names.end(), std::back_inserter(m_multi_rd),
         [&](const auto& rd_name){
             const ParmParse pp_rd_name(rd_name);
-
             // read reduced diags type
             std::string rd_type;
             pp_rd_name.get("type", rd_type);
@@ -90,7 +86,6 @@ MultiReducedDiags::MultiReducedDiags ()
     // end loop over all reduced diags
 }
 // end constructor
-
 void MultiReducedDiags::InitData ()
 {
     // loop over all reduced diags
@@ -99,7 +94,6 @@ void MultiReducedDiags::InitData ()
         m_multi_rd[i_rd] -> InitData();
     }
 }
-
 void MultiReducedDiags::LoadBalance () {
     // loop over all reduced diags
     for (int i_rd = 0; i_rd < static_cast<int>(m_rd_names.size()); ++i_rd)
@@ -127,21 +121,14 @@ void MultiReducedDiags::WriteToFile (int step)
 {
     // Only the I/O rank does
     if ( !ParallelDescriptor::IOProcessor() ) { return; }
-
     // loop over all reduced diags
     for (int i_rd = 0; i_rd < static_cast<int>(m_rd_names.size()); ++i_rd)
     {
-
-        if (m_rd_names[i_rd] == "ResidValue") {
-            m_multi_rd[i_rd]->WriteToFile(step);
-            continue;
-        }
-
         // Judge if the diags should be done
-        if (m_multi_rd[i_rd]->m_intervals.contains(step+1)) {
-            // call the write to file function
-            m_multi_rd[i_rd]->WriteToFile(step);
-         }
+        if (!m_multi_rd[i_rd]->m_intervals.contains(step+1)) { continue; }
+
+        // call the write to file function
+        m_multi_rd[i_rd]->WriteToFile(step);
     }
     // end loop over all reduced diags
 }
