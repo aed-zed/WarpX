@@ -3314,14 +3314,6 @@ WarpX::isAnyParticleBoundaryThermal ()
     return false;
 }
 
-bool
-WarpX::isPoissonEquationSkipped () const
-{
-    std::cout << "poisson counter: " << poisson_counter << std::endl;
-    std::cout << "poisson skips: " << poisson_skips << std::endl;
-    return ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0));
-}
-
 std::string
 TagWithLevelSuffix (std::string name, int const level)
 {

@@ -56,8 +56,7 @@ void ResidValue::ComputeDiags (int step)
 
     auto & warpx = WarpX::GetInstance();
     // do the diag anytime the poisson equation is calculated
-    if (warpx.isPoissonEquationSkipped()) {
-        std::cout << "writing to RV.txt skipped" << std::endl;
+    if (warpx.getPoissonSkipped()) {
         return;
     }
     m_data[0] = warpx.getPoissonResidual();

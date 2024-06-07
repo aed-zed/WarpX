@@ -69,10 +69,12 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
         }
     }
     poisson_counter += 1;
-    if (isPoissonEquationSkipped()) {
+    if ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) {
+        poisson_skipped = true;
         return; 
     }
-    // poisson_counter = 0;
+    poisson_skipped = false;
+    poisson_counter = 0;
 
     if (electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrame ||
         electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrameElectroMagnetostatic) {

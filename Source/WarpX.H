@@ -1016,8 +1016,7 @@ public:
     void setVectorPotentialBC (amrex::Vector<amrex::Array<std::unique_ptr<amrex::MultiFab>, 3> >& A) const;
 
     amrex::Real getPoissonResidual () const { return poisson_residual; }
-
-    bool isPoissonEquationSkipped () const;
+    bool getPoissonSkipped () const { return poisson_skipped; }
 
     /**
      * \brief
@@ -1285,6 +1284,7 @@ private:
     int poisson_counter = -1;
     mutable int poisson_skips = 1; 
     mutable amrex::Real poisson_residual = amrex::Real(0.0);
+    bool poisson_skipped = false;
 
     /**
      * \brief
