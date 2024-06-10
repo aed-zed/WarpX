@@ -27,8 +27,6 @@ ResidValue::ResidValue (const std::string& rd_name)
 : ReducedDiags{rd_name}
 {
 
-    // the intervals for resid value do not need to be specified bc it is overridden
-    m_intervals = utils::parser::IntervalsParser();
     m_data.resize(1, 0.0_rt);
     if (amrex::ParallelDescriptor::IOProcessor())
     {
