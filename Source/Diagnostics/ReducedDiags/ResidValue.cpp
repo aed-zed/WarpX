@@ -26,6 +26,9 @@ using namespace amrex::literals;
 ResidValue::ResidValue (const std::string& rd_name)
 : ReducedDiags{rd_name}
 {
+
+    // the intervals are left as blank 
+    m_intervals = [];
     m_data.resize(1, 0.0_rt);
     if (amrex::ParallelDescriptor::IOProcessor())
     {
