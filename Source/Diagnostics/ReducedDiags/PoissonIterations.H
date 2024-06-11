@@ -11,7 +11,7 @@
 #include <string>
 /**
  *  This class mainly contains a function that gets the number of iterations
- *  acheived by the poisson equation before convergence was acheived for 
+ *  acheived by the poisson equation before convergence was acheived for
  *  every timestep that the poisson equation was calculated.
  */
 class PoissonIterations : public ReducedDiags
