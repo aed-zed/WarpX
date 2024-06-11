@@ -14,7 +14,7 @@
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_ParticleReduce.H>
 #include <AMReX_Particles.H>
-#include <AMReX_REAL.H>s
+#include <AMReX_REAL.H>
 
 #include <algorithm>
 #include <map>
