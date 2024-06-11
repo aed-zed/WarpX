@@ -64,5 +64,5 @@ void ResidValue::ComputeDiags (int step)
     ReducedDiags::WriteToFile(step);
 }
 
-void ResidValue::WriteToFile (int /*step*/) const 
+void ResidValue::WriteToFile (int /*step*/) const
 {}

@@ -19,7 +19,7 @@ class PoissonIterations : public ReducedDiags
 public:
 
     /**
-     * The type of data this will collect is ints, not reals. 
+     * The type of data this will collect is ints, not reals.
      */
     std::vector<int> m_data;
 
