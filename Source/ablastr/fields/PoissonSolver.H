@@ -256,7 +256,7 @@ std::tuple<amrex::Real, int> computePhi (amrex::Vector<amrex::MultiFab*> const &
         mlmg.setMaxIter(max_iters);
         mlmg.setAlwaysUseBNorm(always_use_bnorm);
 
-        // Solve Poisson equation at lev
+        // Solve Poisson equation at lev, get the residual and iteration values 
         composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
         poisson_iter = mlmg.getPoissonIters();
 

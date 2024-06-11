@@ -197,6 +197,7 @@ int WarpX::self_fields_max_iters = 200;
 int WarpX::self_fields_verbosity = 2;
 int WarpX::self_fields_max_skips = 100;
 Real WarpX::self_fields_resid_val = 0.0_rt;
+int WarpX::self_fields_poisson_iters = 0;
 
 bool WarpX::do_subcycling = false;
 bool WarpX::do_multi_J = false;
@@ -768,6 +769,7 @@ WarpX::ReadParameters ()
                 pp_warpx, "self_fields_resid_val", self_fields_resid_val);
             pp_warpx.query("self_fields_verbosity", self_fields_verbosity);
             pp_warpx.query("self_fields_max_skips", self_fields_max_skips);
+            pp_warpx.query("self_fields_poisson_iters", self_fields_poisson_iters);
         }
 
         poisson_solver_id = GetAlgorithmInteger(pp_warpx, "poisson_solver");

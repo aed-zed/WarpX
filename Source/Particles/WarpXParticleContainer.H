@@ -350,6 +350,7 @@ public:
     int self_fields_verbosity = 2;
     int self_fields_max_skips = 100;
     amrex::Real self_fields_resid_val = amrex::Real(0.0);
+    int self_fields_poisson_iters = 0; 
 
     // External fields added to particle fields.
     amrex::Vector<amrex::ParticleReal> m_B_external_particle;

@@ -932,6 +932,7 @@ public:
     static int self_fields_max_iters;
     static int self_fields_verbosity;
     static int self_fields_max_skips;
+    static int self_fields_poisson_iters;
 
     static int do_moving_window; // boolean
     static int start_moving_window_step; // the first step to move window
