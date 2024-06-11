@@ -17,6 +17,12 @@
 class PoissonIterations : public ReducedDiags
 {
 public:
+
+    /**
+     * The type of data this will collect is ints, not reals. 
+     */
+    std::vector<int> m_data;
+
     /**
      * constructor
      * @param[in] rd_name reduced diags names
