@@ -22,6 +22,7 @@
 #include "ParticleHistogram2D.H"
 #include "ParticleMomentum.H"
 #include "ParticleNumber.H"
+#include "PoissonIterations.H"
 #include "ResidValue.H"
 #include "RhoMaximum.H"
 #include "Utils/TextMsg.H"
@@ -65,6 +66,7 @@ MultiReducedDiags::MultiReducedDiags ()
             {"ParticleHistogram2D",   [](CS s){return std::make_unique<ParticleHistogram2D>(s);}},
             {"ParticleNumber",        [](CS s){return std::make_unique<ParticleNumber>(s);}},
             {"ParticleExtrema",       [](CS s){return std::make_unique<ParticleExtrema>(s);}},
+            {"PoissonIterations",     [](CS s){return std::make_unique<ParticleExtrema>(s);}},
             {"ResidValue",            [](CS s){return std::make_unique<ResidValue>(s);}},
             {"ChargeOnEB",            [](CS s){return std::make_unique<ChargeOnEB>(s);}}
     };

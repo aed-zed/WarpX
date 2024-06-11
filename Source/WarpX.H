@@ -1018,6 +1018,7 @@ public:
 
     amrex::Real getPoissonResidual () const { return poisson_residual; }
     bool getPoissonSkipped () const { return poisson_skipped; }
+    int getPoissonIterations () const { return poisson_iters; }
 
     /**
      * \brief
@@ -1285,6 +1286,7 @@ private:
     int poisson_counter = -1;
     mutable int poisson_skips = 1; 
     mutable amrex::Real poisson_residual = amrex::Real(0.0);
+    mutable int poisson_iters = 0; 
     bool poisson_skipped = false;
 
     /**

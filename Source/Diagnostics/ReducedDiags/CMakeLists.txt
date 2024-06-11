@@ -15,6 +15,7 @@ foreach(D IN LISTS WarpX_DIMS)
         ParticleMomentum.cpp
         ParticleHistogram.cpp
         ParticleHistogram2D.cpp
+        PoissonIterations.cpp
         ReducedDiags.cpp
         ResidValue.cpp
         FieldMaximum.cpp

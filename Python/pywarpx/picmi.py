@@ -2870,7 +2870,7 @@ class ReducedDiagnostic(picmistandard.base._ClassWithInit, WarpXDiagnosticBase):
         self._simple_reduced_diagnostics = [
             'ParticleEnergy', 'ParticleMomentum', 'FieldEnergy',
             'FieldMomentum', 'FieldMaximum', 'RhoMaximum', 'ParticleNumber',
-            'LoadBalanceCosts', 'LoadBalanceEfficiency', 'ResidValue'
+            'LoadBalanceCosts', 'LoadBalanceEfficiency', 'ResidValue', 'PoissonIterations'
         ]
         # The species diagnostics require a species to be provided
         self._species_reduced_diagnostics = [
