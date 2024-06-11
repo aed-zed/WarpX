@@ -66,7 +66,7 @@ MultiReducedDiags::MultiReducedDiags ()
             {"ParticleHistogram2D",   [](CS s){return std::make_unique<ParticleHistogram2D>(s);}},
             {"ParticleNumber",        [](CS s){return std::make_unique<ParticleNumber>(s);}},
             {"ParticleExtrema",       [](CS s){return std::make_unique<ParticleExtrema>(s);}},
-            {"PoissonIterations",     [](CS s){return std::make_unique<ParticleExtrema>(s);}},
+            {"PoissonIterations",     [](CS s){return std::make_unique<PoissonIterations>(s);}},
             {"ResidValue",            [](CS s){return std::make_unique<ResidValue>(s);}},
             {"ChargeOnEB",            [](CS s){return std::make_unique<ChargeOnEB>(s);}}
     };
