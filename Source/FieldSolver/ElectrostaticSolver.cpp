@@ -379,12 +379,20 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
     poisson_residual = std::get<0>(resid_n_iters);
     poisson_iters = std::get<1>(resid_n_iters);
 
-    if ((poisson_iters <= self_fields_poisson_iters) || (poisson_residual <= self_fields_resid_val)) {
+    if (poisson_iters <= self_fields_poisson_iters) {
         poisson_skips *= 2;
     }
-    if (((poisson_iters > self_fields_poisson_iters) || (poisson_residual > self_fields_resid_val)) && poisson_skips > 1) {
+    if ((poisson_iters > self_fields_poisson_iters) && (poisson_skips > 1)) {
         poisson_skips /= 2;
     }
+
+    /**
+    if (poisson_residual < self_fields_resid_val) {
+        poisson_skips *= 2;
+    }
+    if (poisson_residual > self_fields_resid_val && poisson_skips > 1) {
+        poisson_skips /= 2;
+    }*/
 }
 
 /* \brief Set Dirichlet boundary conditions for the electrostatic solver.
