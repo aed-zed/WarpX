@@ -356,7 +356,7 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
 #endif
     bool const is_solver_multigrid =
         WarpX::poisson_solver_id != PoissonSolverAlgo::IntegratedGreenFunction;
-    poisson_residual = ablastr::fields::computePhi(
+    std::tuple<amrex::Real, int> resid_n_iters = ablastr::fields::computePhi(
         sorted_rho,
         sorted_phi,
         beta,
@@ -375,6 +375,9 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
         gett_new(0),
         eb_farray_box_factory
     );
+
+    poisson_residual = std::get<0>(resid_n_iters);
+    poisson_iters = std::get<1>(resid_n_iters);
 
     if (poisson_residual < self_fields_resid_val) {
         poisson_skips *= 2;

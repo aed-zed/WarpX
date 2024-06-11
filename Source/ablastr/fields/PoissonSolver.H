@@ -94,7 +94,7 @@ template<
     typename T_PostPhiCalculationFunctor = std::nullopt_t,
     typename T_FArrayBoxFactory = void
 >
-amrex::Real computePhi (amrex::Vector<amrex::MultiFab*> const & rho,
+std::tuple<amrex::Real, int> computePhi (amrex::Vector<amrex::MultiFab*> const & rho,
             amrex::Vector<amrex::MultiFab*> & phi,
             std::array<amrex::Real, 3> const beta,
             amrex::Real const relative_tolerance,
@@ -116,6 +116,7 @@ amrex::Real computePhi (amrex::Vector<amrex::MultiFab*> const & rho,
     using namespace amrex::literals;
 
     amrex::Real composite_norminf = 0.0_rt;
+    int poisson_iter = 0; 
 
     ABLASTR_PROFILE("computePhi", false);
 
@@ -257,6 +258,7 @@ amrex::Real computePhi (amrex::Vector<amrex::MultiFab*> const & rho,
 
         // Solve Poisson equation at lev
         composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
+        poisson_iter = mlmg.getPoissonIters();
 
         // needed for solving the levels by levels:
         // - coarser level is initial guess for finer level
@@ -313,7 +315,7 @@ amrex::Real computePhi (amrex::Vector<amrex::MultiFab*> const & rho,
 
     } // loop over lev(elcomps)
 
-    return composite_norminf;
+    return std::make_tuple(composite_norminf, poisson_iter);
 }
 
 } // namespace ablastr::fields
