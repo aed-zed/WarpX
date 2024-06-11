@@ -115,7 +115,7 @@ jobs:
         which nvcc || echo "nvcc not in PATH!"
 
         git clone https://github.com/aed-zed/amrex.git ../amrex
-        cd ../amrex && git checkout --detach sim_speed && cd -
+        cd ../amrex && git checkout sim_speed && git checkout --detach && cd -
         make COMP=gcc QED=FALSE USE_MPI=TRUE USE_GPU=TRUE USE_OMP=FALSE USE_PSATD=TRUE USE_CCACHE=TRUE -j 4
 
         ccache -s
