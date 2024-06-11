@@ -33,7 +33,7 @@ For instance, clone these dependencies to ``$HOME/src``:
    cd $HOME/src
 
    git clone https://github.com/ECP-WarpX/WarpX.git warpx
-   git clone https://github.com/AMReX-Codes/amrex.git
+   git clone https://github.com/aed-zed/amrex.git
    git clone https://github.com/openPMD/openPMD-api.git
    git clone https://github.com/ECP-WarpX/picsar.git
    git clone https://github.com/AMReX-Codes/pyamrex.git

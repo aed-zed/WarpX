@@ -73,7 +73,7 @@ if [ $DO_GIT_CLONE == true ]; then
     rm -rf WarpX picsar amrex
     git clone https://github.com/ECP-WarpX/WarpX.git
     git clone https://github.com/ECP-WarpX/picsar.git
-    git clone --branch development https://github.com/AMReX-Codes/amrex.git
+    git clone --branch development https://github.com/aed-zed/amrex.git
 fi
 
 # compile fcompare

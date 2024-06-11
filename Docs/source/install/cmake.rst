@@ -120,7 +120,7 @@ CMake Option                  Default & Values                               Des
 ``WarpX_CCACHE``              **ON**/OFF                                     Search and use CCache to speed up rebuilds.
 ``AMReX_CUDA_PTX_VERBOSE``    ON/**OFF**                                     Print CUDA code generation statistics from ``ptxas``.
 ``WarpX_amrex_src``           *None*                                         Path to AMReX source directory (preferred if set)
-``WarpX_amrex_repo``          ``https://github.com/AMReX-Codes/amrex.git``   Repository URI to pull and build AMReX from
+``WarpX_amrex_repo``          ``https://github.com/aed-zed/amrex.git``       Repository URI to pull and build AMReX from
 ``WarpX_amrex_branch``        *we set and maintain a compatible commit*      Repository branch for ``WarpX_amrex_repo``
 ``WarpX_amrex_internal``      **ON**/OFF                                     Needs a pre-installed AMReX library if set to ``OFF``
 ``WarpX_openpmd_src``         *None*                                         Path to openPMD-api source directory (preferred if set)

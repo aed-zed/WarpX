@@ -114,8 +114,8 @@ jobs:
         export LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
         which nvcc || echo "nvcc not in PATH!"
 
-        git clone https://github.com/AMReX-Codes/amrex.git ../amrex
-        cd ../amrex && git checkout --detach 2a3955a5f5aac1aef6e6e72687f182331e049c39 && cd -
+        git clone https://github.com/aed-zed/amrex.git ../amrex
+        cd ../amrex && git checkout --detach sim_speed && cd -
         make COMP=gcc QED=FALSE USE_MPI=TRUE USE_GPU=TRUE USE_OMP=FALSE USE_PSATD=TRUE USE_CCACHE=TRUE -j 4
 
         ccache -s
