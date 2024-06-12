@@ -378,6 +378,7 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
 
     poisson_residual = std::get<0>(resid_n_iters);
     poisson_iters = std::get<1>(resid_n_iters);
+    std::cout << "poisson iters in electrostatic is: " << poisson_iters < std::endl;
 
     if ((poisson_iters <= self_fields_poisson_iters) || (poisson_residual <= self_fields_resid_val)) {
         poisson_skips *= 2;

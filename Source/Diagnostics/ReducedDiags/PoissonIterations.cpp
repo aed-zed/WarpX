@@ -27,7 +27,7 @@ PoissonIterations::PoissonIterations (const std::string& rd_name)
 : ReducedDiags{rd_name}
 {
 
-    m_data.resize(1, 0.0_rt);
+    m_data.resize(1, 0);
     if (amrex::ParallelDescriptor::IOProcessor())
     {
         if ( m_write_header )
@@ -61,6 +61,7 @@ void PoissonIterations::ComputeDiags (int step)
         return;
     }
     m_data[0] = warpx.getPoissonIterations();
+    std::cout << "poisson iteration in compute diag: " << std::to_string(m_data[0]) << std::endl;
     ReducedDiags::WriteToFile(step);
 }
 
