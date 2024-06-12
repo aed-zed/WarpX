@@ -27,7 +27,7 @@ PoissonIterations::PoissonIterations (const std::string& rd_name)
 : ReducedDiags{rd_name}
 {
 
-    m_data.resize(1, 0);
+    m_data.resize(1, 0.0_rt);
     if (amrex::ParallelDescriptor::IOProcessor())
     {
         if ( m_write_header )
