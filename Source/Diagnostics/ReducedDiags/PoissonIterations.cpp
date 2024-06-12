@@ -103,5 +103,6 @@ void PoissonIterations::WriteToFile (int step) const
     // close file
     ofs.close();
 
+    write = false; 
 
 }
