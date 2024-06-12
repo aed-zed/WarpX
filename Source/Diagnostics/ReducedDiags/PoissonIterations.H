@@ -45,5 +45,11 @@ public:
      */
     void WriteToFile(int step) const final;
 
+private: 
+    /**
+     * Should this step be written to the file? 
+     */
+    bool write = true; 
+
 };
 #endif // WARPX_DIAGNOSTICS_REDUCEDDIAGS_PARTICLENUMBER_H_

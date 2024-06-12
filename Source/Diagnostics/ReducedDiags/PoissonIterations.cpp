@@ -58,12 +58,50 @@ void PoissonIterations::ComputeDiags (int step)
     auto & warpx = WarpX::GetInstance();
     // do the diag anytime the poisson equation is calculated
     if (warpx.getPoissonSkipped()) {
+        write = false; 
         return;
     }
     m_data[0] = warpx.getPoissonIterations();
-    std::cout << "poisson iteration in compute diag: " << std::to_string(m_data[0]) << std::endl;
-    ReducedDiags::WriteToFile(step);
+    write = true;    
+    WriteToFile(step); 
 }
 
-void PoissonIterations::WriteToFile (int /*step*/) const
-{ }
+void PoissonIterations::WriteToFile (int step) const
+{ 
+    if (!write) {
+        return; 
+    }
+
+    // open file
+    std::ofstream ofs{m_path + m_rd_name + "." + m_extension,
+        std::ofstream::out | std::ofstream::app};
+
+    std::ios::fmtflags originalFlags = ofs.flags();
+    std::streamsize originalPrecision = ofs.precision();
+
+
+    // write step
+    ofs << step+1;
+
+    ofs << m_sep;
+
+    // set precision
+    ofs << std::fixed << std::setprecision(m_precision) << std::scientific;
+
+    // write time
+    ofs << WarpX::GetInstance().gett_new(0);
+
+    ofs.flags(originalFlags);
+    ofs.precision(originalPrecision);
+
+    ofs << std::resetiosflags(std::ios::fixed | std::ios::scientific) << std::setprecision(6);
+    ofs << m_sep << m_data[0];
+
+    // end line
+    ofs << std::endl;
+
+    // close file
+    ofs.close();
+
+
+}
