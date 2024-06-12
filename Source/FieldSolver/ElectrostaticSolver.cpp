@@ -69,6 +69,9 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
         }
     }
     poisson_counter += 1;
+    stdcout << "poisson_skips: " << poisson_skips << stdendl;
+    stdcout << "self_fields_max_skips: " << self_fields_max_skips << stdendl;
+    stdcout << "poisson_counter: " << poisson_counter << stdendl;
     if ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) {
         poisson_skipped = true;
         return; 
@@ -379,20 +382,12 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
     poisson_residual = std::get<0>(resid_n_iters);
     poisson_iters = std::get<1>(resid_n_iters);
 
-    if ((poisson_iters <= self_fields_poisson_iters) || (poisson_residual <= self_fields_resid_val)) {
+    if ((poisson_iters < self_fields_poisson_iters) || (poisson_residual < self_fields_resid_val)) {
         poisson_skips *= 2;
     }
     else if (poisson_skips > 1) {
         poisson_skips /= 2;
     }
-
-    /**
-    if (poisson_residual < self_fields_resid_val) {
-        poisson_skips *= 2;
-    }
-    if (poisson_residual > self_fields_resid_val && poisson_skips > 1) {
-        poisson_skips /= 2;
-    }*/
 }
 
 /* \brief Set Dirichlet boundary conditions for the electrostatic solver.
