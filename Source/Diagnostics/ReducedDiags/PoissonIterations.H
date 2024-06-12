@@ -49,7 +49,7 @@ private:
     /**
      * Should this step be written to the file?
      */
-    bool write = true;
+    mutable bool write = true;
 
 };
 #endif // WARPX_DIAGNOSTICS_REDUCEDDIAGS_PARTICLENUMBER_H_
