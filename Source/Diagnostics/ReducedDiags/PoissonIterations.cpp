@@ -27,7 +27,7 @@ PoissonIterations::PoissonIterations (const std::string& rd_name)
 : ReducedDiags{rd_name}
 {
 
-    m_data.resize(1, 0);
+    m_data.resize(1, 0.0_rt);
     if (amrex::ParallelDescriptor::IOProcessor())
     {
         if ( m_write_header )
@@ -58,13 +58,13 @@ void PoissonIterations::ComputeDiags (int step)
     auto & warpx = WarpX::GetInstance();
     // do the diag anytime the poisson equation is calculated
     if (warpx.getPoissonSkipped()) {
-        write = false;
         return;
     }
-    m_data[0] = warpx.getPoissonIterations();
-    write = true;
-    WriteToFile(step);
+    m_data[0] = static_cast<amrex::Real>(warpx.getPoissonIterations());
+    ReducedDiags::WriteToFile(step);
 }
+/**
+ * 
 
 void PoissonIterations::WriteToFile (int step) const
 {
@@ -105,4 +105,4 @@ void PoissonIterations::WriteToFile (int step) const
 
     write = false;
 
-}
+}*/
