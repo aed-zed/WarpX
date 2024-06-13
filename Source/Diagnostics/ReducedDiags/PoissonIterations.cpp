@@ -64,7 +64,7 @@ void PoissonIterations::ComputeDiags (int step)
     ReducedDiags::WriteToFile(step);
 }
 /**
- * 
+ *
 
 void PoissonIterations::WriteToFile (int step) const
 {
