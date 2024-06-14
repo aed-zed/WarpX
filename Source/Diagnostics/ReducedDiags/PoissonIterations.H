@@ -33,8 +33,16 @@ public:
      */
     void ComputeDiags(int step) final;
 
-private:
-    bool write = false;
+    /**
+     * write to file function
+     *
+     * @param[in] step current time step
+     */
+    virtual void WriteToFile (int step) const;
+
+
+private: 
+    mutable bool write = false; 
 
 };
 #endif // WARPX_DIAGNOSTICS_REDUCEDDIAGS_PARTICLENUMBER_H_
