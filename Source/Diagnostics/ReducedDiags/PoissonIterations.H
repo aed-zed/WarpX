@@ -41,8 +41,8 @@ public:
     virtual void WriteToFile (int step) const;
 
 
-private: 
-    mutable bool write = false; 
+private:
+    mutable bool write = false;
 
 };
 #endif // WARPX_DIAGNOSTICS_REDUCEDDIAGS_PARTICLENUMBER_H_
