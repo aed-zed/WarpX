@@ -58,11 +58,11 @@ void PoissonIterations::ComputeDiags (int step)
     auto & warpx = WarpX::GetInstance();
     // do the diag anytime the poisson equation is calculated
     if (warpx.getPoissonSkipped()) {
-        write = false; 
+        write = false;
         return;
     }
     m_data[0] = warpx.getPoissonIterations();
-    write = true; 
+    write = true;
     PoissonIterations::WriteToFile(step);
 }
 
