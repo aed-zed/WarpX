@@ -452,28 +452,24 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
     parseFlux(pp_species)
 
 
-/**
- *
- *
- *         int max_guard = guard_cells.ng_FieldSolver.max();
-        m_field_factory[lev] = amrex::makeEBFabFactory(Geom(lev), ba, dm,
-                                                       {max_guard, max_guard, max_guard},
-                                                       amrex::EBSupport::full);
 
-DistributionMapping.H line 74
-            explicit DistributionMapping (const BoxArray& boxes,
-                                  int nprocs = ParallelDescriptor::NProcs());
-    /**
+ //        int max_guard = guard_cells.ng_FieldSolver.max();
+   //     m_field_factory[lev] = amrex::makeEBFabFactory(Geom(lev), ba, dm,
+     //                                                  {max_guard, max_guard, max_guard},
+       //                                                amrex::EBSupport::full);
 
-FabArrayBase.cpp --> line 1940
-        fact_crse_patch = makeEBFabFactory(index_space,
-                                           index_space->getGeometry(cdomain),
-                                           ba_crse_patch,
-                                           dm_patch,
-                                           {0,0,0}, EBSupport::basic);
+//DistributionMapping.H line 74
+  //          explicit DistributionMapping (const BoxArray& boxes,
+    //                              int nprocs = ParallelDescriptor::NProcs());
+    
 
+//FabArrayBase.cpp --> line 1940
+  //      fact_crse_patch = makeEBFabFactory(index_space,
+    //                                       index_space->getGeometry(cdomain),
+      //                                     ba_crse_patch,
+        //                                   dm_patch,
+          //                                 {0,0,0}, EBSupport::basic);
 
- */
 }
 #endif
 
