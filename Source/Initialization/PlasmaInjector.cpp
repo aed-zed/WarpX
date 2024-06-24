@@ -22,6 +22,28 @@
 
 #include <ablastr/warn_manager/WarnManager.H>
 
+
+#  include <AMReX_Array.H>
+#  include <AMReX_Array4.H>
+#  include <AMReX_BLProfiler.H>
+#  include <AMReX_Box.H>
+#  include <AMReX_BoxArray.H>
+#  include <AMReX_BoxList.H>
+#  include <AMReX_EB2.H>
+#  include <AMReX_EB_utils.H>
+#  include <AMReX_FabArray.H>
+#  include <AMReX_FabFactory.H>
+#  include <AMReX_GpuControl.H>
+#  include <AMReX_GpuQualifiers.H>
+#  include <AMReX_IntVect.H>
+#  include <AMReX_Loop.H>
+#  include <AMReX_MFIter.H>
+#  include <AMReX_MultiFab.H>
+#  include <AMReX_iMultiFab.H>
+#  include <AMReX_SPACE.H>
+#  include <AMReX_Vector.H>
+
+
 #include <AMReX.H>
 #include <AMReX_BLassert.H>
 #include <AMReX_Config.H>
@@ -370,7 +392,7 @@ void PlasmaInjector::setupNFluxPerCell (amrex::ParmParse const& pp_species)
 
 void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 {
-    utils::parse::getWithParser(pp_species, source_name, "num_particles_per_cell", num_particles_per_cell_real);
+    utils::parser::getWithParser(pp_species, source_name, "num_particles_per_cell", num_particles_per_cell_real);
 #ifdef WARPX_DIM_RZ
     if (WarpX::n_rz_azimuthal_modes > 1) {
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
@@ -384,7 +406,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 
 
     // Get the file
-    utils::parser::get(pp_species, source_name, "stl_file", stl_file);
+    auto & warpx = WaprX::GetInstance(); 
     amrex::EB2::Build(Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
     const & indexSpace = amrex::EB2::IndexSpace::top();
     amrex::Vector<Geometry>& geoms = indexSpace.getGeometries();
