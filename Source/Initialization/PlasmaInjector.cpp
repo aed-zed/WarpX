@@ -417,9 +417,9 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
         std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(*geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
         amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
         amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
-        amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = eb_box_factory.getMultiEBCellFlagFab();
+        amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = field_factory.getMultiEBCellFlagFab();
 
-        for (amrex::MFIter mfi(box, dm); mfi.isValid(); ++mfi) {
+        for (amrex::MFIter mfi(array_box, dm); mfi.isValid(); ++mfi) {
 
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             amrex::FabType fab_type = eb_flag[mfi].getType(box);
