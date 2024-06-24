@@ -409,16 +409,16 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
     auto & warpx = WarpX::GetInstance();
     amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
-    amrex::Vector<amrex::Geometry>& geoms = indexSpace.getGeometries();
+    const amrex::Vector<amrex::Geometry>& geoms = indexSpace.getGeometries();
     for (amrex::Vector<amrex::Geometry>::const_iterator geom = geoms.begin(); geom < geoms.end(); ++geom) {
-        const amrex::Box& domain_box = it->Domain();
+        const amrex::Box& domain_box = geom->Domain();
         const amrex::BoxArray array_box(domain_box);
         const amrex::DistributionMapping dm(array_box);
         amrex::EBFArrayBoxFactory field_factory = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
         amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
         amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = eb_box_factory.getMultiEBCellFlagFab();
 
-        for (MFIter mfi(box, dm); mfi.isValid(); ++mfi) {
+        for (amrex::MFIter mfi(box, dm); mfi.isValid(); ++mfi) {
 
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             amrex::FabType fab_type = eb_flag[mfi].getType(box);
@@ -448,7 +448,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
     // iterate over the levs:
     // const amrex::EB2::Geometry& geo = indexSpace.getGeometry(**insert a box here**);
 
-    parseFlux(pp_species)
+    parseFlux(pp_species);
 
 
 
