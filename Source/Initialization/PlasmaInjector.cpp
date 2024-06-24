@@ -410,11 +410,12 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
     // Get the file
     auto & warpx = WarpX::GetInstance();
     amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
-    const & indexSpace = amrex::EB2::IndexSpace::top();
+    const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
     amrex::Vector<amrex::Geometry>& geoms = indexSpace.getGeometries();
     for (amrex::Vector<amrex::Geometry>::const_iterator it = geoms.begin(); it < geoms.end(); ++it) {
-        const amrex::Box& box = it->Domain();
-        const amrex::DistributionMapping dm(box);
+        const amrex::Box& domain_box = it->Domain();
+        const amrex::BoxArray array_box(domain_box);
+        const amrex::DistributionMapping dm(array_box);
         amrex::EBFArrayBoxFactory field_factory = amrex::makeEBFFabFactory(geom, box, dm, {0, 0, 0}, amrex::EBSupport::full);
         amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
         amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = eb_box_factory.getMultiEBCellFlagFab();
