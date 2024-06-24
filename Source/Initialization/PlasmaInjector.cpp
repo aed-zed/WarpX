@@ -414,7 +414,8 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
         const amrex::Box& domain_box = geom->Domain();
         const amrex::BoxArray array_box(domain_box);
         const amrex::DistributionMapping dm(array_box);
-        amrex::EBFArrayBoxFactory field_factory = amrex::makeEBFabFactory(*geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
+        std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(*geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
+        amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
         amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
         amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = eb_box_factory.getMultiEBCellFlagFab();
 
