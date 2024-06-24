@@ -368,6 +368,92 @@ void PlasmaInjector::setupNFluxPerCell (amrex::ParmParse const& pp_species)
                                 flux_normal_axis, flux_direction);
 }
 
+void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species) 
+{
+    utils::parse::getWithParser(pp_species, source_name, "num_particles_per_cell", num_particles_per_cell_real);
+#ifdef WARPX_DIM_RZ
+    if (WarpX::n_rz_azimuthal_modes > 1) {
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        num_particles_per_cell_real>=2*WarpX::n_rz_azimuthal_modes,
+        "Error: For accurate use of WarpX cylindrical geometry the number "
+        "of particles should be at least two times n_rz_azimuthal_modes "
+        "(Please visit PR#765 for more information.)");
+    }
+#endif
+
+
+
+    // Get the file 
+    utils::parser::get(pp_species, source_name, "stl_file", stl_file); 
+    amrex::EB2::Build(Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
+    const & indexSpace = amrex::EB2::IndexSpace::top(); 
+    amrex::Vector<Geometry>& geoms = indexSpace.getGeometries(); 
+    for (amrex::Vector<Geometry>::const_iterator it = geoms.begin(); it < vec.end(); ++it) {
+        const amrex::Box& box = it.Domain();
+        const amrex::DistributionMapping dm(box);
+        amrex::EBFArrayBoxFactory field_factory = amrex::makeEBFFabFactory(geom, box, dm, {0, 0, 0}, amrex::EBSupport::full);
+        amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
+        amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = eb_box_factory.getMultiEBCellFlagFab();
+
+        for (MFIter mfi(box, dm); mfi.isValid(); ++mfi) { 
+
+            const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
+            amrex::FabType fab_type = eb_flag[mfi].getType(box);
+            if (fab_type == amrex::FabType::regular) continue;
+            if (fab_type == amrex::FabType::covered) continue;
+            auto const& eb_flag_arr = eb_flag.array(mfi);
+            const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
+        
+
+            amrex::ParallelFor( box, 
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+                    // Only cells that are partially covered are important --> actually verify this? 
+                    if (eb_flag_arr(i,j,k).isRegular() || eb_flag_arr(i,j,k).isCovered()) return;
+
+                    // get flag data to check if cell is partially covered
+                    //if (eb_flag_arr(i,j,k).isRegular() || eb_flag_arr(i,j,k).isCovered()) return;
+                    int const i_n = (eb_bnd_normal_arr(i,j,k,0) > 0)? i : i+1;
+                    int const j_n = (eb_bnd_normal_arr(i,j,k,1) > 0)? j : j+1;
+                    int const k_n = (eb_bnd_normal_arr(i,j,k,2) > 0)? k : k+1;
+                    // parse momentum (but no flux_normal_axis / flux_direction) 
+                            // must add new momentum capabilities that calculate momentum based on [x y z] vertex and overall momentum 
+                });
+        }
+
+    }
+
+    // iterate over the levs:
+    // const amrex::EB2::Geometry& geo = indexSpace.getGeometry(**insert a box here**);
+       
+    parseFlux(pp_species)
+    
+    
+/**
+ * 
+ *  
+ *         int max_guard = guard_cells.ng_FieldSolver.max();
+        m_field_factory[lev] = amrex::makeEBFabFactory(Geom(lev), ba, dm,
+                                                       {max_guard, max_guard, max_guard},
+                                                       amrex::EBSupport::full);
+
+DistributionMapping.H line 74
+            explicit DistributionMapping (const BoxArray& boxes,
+                                  int nprocs = ParallelDescriptor::NProcs());
+    /**
+
+FabArrayBase.cpp --> line 1940 
+        fact_crse_patch = makeEBFabFactory(index_space,
+                                           index_space->getGeometry(cdomain),
+                                           ba_crse_patch,
+                                           dm_patch,
+                                           {0,0,0}, EBSupport::basic);
+
+
+ */
+
+
+}
+
 void PlasmaInjector::setupNuniformPerCell (amrex::ParmParse const& pp_species)
 {
     // Note that for RZ, three numbers are expected, r, theta, and z.
