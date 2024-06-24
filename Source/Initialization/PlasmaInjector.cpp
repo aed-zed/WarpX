@@ -406,7 +406,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 #endif
 
 
-    // adding commit for new build 
+    // adding commit for new build
     // Get the file
     auto & warpx = WarpX::GetInstance();
     amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
