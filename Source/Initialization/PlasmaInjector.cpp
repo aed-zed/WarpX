@@ -406,7 +406,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 
 
     // Get the file
-    auto & warpx = WaprX::GetInstance(); 
+    auto & warpx = WaprX::GetInstance();
     amrex::EB2::Build(Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
     const & indexSpace = amrex::EB2::IndexSpace::top();
     amrex::Vector<Geometry>& geoms = indexSpace.getGeometries();
