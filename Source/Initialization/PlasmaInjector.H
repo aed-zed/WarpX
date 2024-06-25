@@ -179,6 +179,7 @@ protected:
 
     std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter> h_inj_mom;
     InjectorMomentum* d_inj_mom = nullptr;
+    std::unique_ptr<amrex::Parser> un_parser; 
     std::unique_ptr<amrex::Parser> ux_parser;
     std::unique_ptr<amrex::Parser> uy_parser;
     std::unique_ptr<amrex::Parser> uz_parser;

@@ -430,15 +430,15 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 
 
             amrex::ParallelFor( box,
-                [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+                [=] AMREX_GPU_DEVICE (int l, int m, int n) {
                     // Only cells that are partially covered are important --> actually verify this?
-                    if (eb_flag_arr(i,j,k).isRegular() || eb_flag_arr(i,j,k).isCovered()) return;
+                    if (eb_flag_arr(l,m,n).isRegular() || eb_flag_arr(l,m,n).isCovered()) return;
 
                     // get flag data to check if cell is partially covered
-                    //if (eb_flag_arr(i,j,k).isRegular() || eb_flag_arr(i,j,k).isCovered()) return;
-                    int const i_n = (eb_bnd_normal_arr(i,j,k,0) > 0)? i : i+1;
-                    int const j_n = (eb_bnd_normal_arr(i,j,k,1) > 0)? j : j+1;
-                    int const k_n = (eb_bnd_normal_arr(i,j,k,2) > 0)? k : k+1;
+                    //if (eb_flag_arr(l,m,n).isRegular() || eb_flag_arr(l,m,n.isCovered()) return;
+                    int const i_n = (eb_bnd_normal_arr(l,m,n,0) > 0)? l : l+1;
+                    int const j_n = (eb_bnd_normal_arr(l,m,n,1) > 0)? m : m+1;
+                    int const k_n = (eb_bnd_normal_arr(l,m,n,2) > 0)? n : n+1;
 
                     // construct InjectorPosition with InjectorPositionSTLPlane
                     h_flux_pos = std::make_unique<InjectorPosition>(
@@ -446,13 +446,16 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
                         xmin, xmax, ymin, ymax, zmin, zmax,
                         i_n, j_n, k_n);
 
-                #ifdef AMREX_USE_GPU
+#ifdef AMREX_USE_GPU
                     d_flux_pos = static_cast<InjectorPosition*>
                         (amrex::The_Arena()->alloc(sizeof(InjectorPosition)));
-                    amrex::Gpu::htod_memcpy_async(d_flux_pos, h_flox_pos.get(), sizeof(InjectorPosition));
-                #else
+                    amrex::Gpu::htod_memcpy_async(d_flux_pos, h_flux_pos.get(), sizeof(InjectorPosition));
+#else
                     d_flux_pos = h_flux_pos.get();
-                #endif
+#endif
+                    SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
+                                                un_parser, h_mom_temp, h_mom_vel, 
+                                                i_n, j_n, k_n);
                 });
         }
 
