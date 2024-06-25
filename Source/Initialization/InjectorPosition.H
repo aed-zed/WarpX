@@ -226,7 +226,7 @@ struct InjectorPosition
         }
         case Type::stlplane:
         {
-            return object.stlplane.getPositionUnitVBox(i_part, ref_fac, engine);
+            return object.stlplane.getPositionUnitBox(i_part, ref_fac, engine);
         }
         default:
         {
