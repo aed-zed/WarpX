@@ -114,7 +114,7 @@ private:
 // random distribution on a plane inside a unit cell.
 struct InjectorPositionSTLPlane
 {
-    InjectorPositionSTLPlane (int const& a_i, int const& a_j, int const& a_k) noexcept : i(i), j(j), k(k) {}
+    InjectorPositionSTLPlane (int const& a_i, int const& a_j, int const& a_k) noexcept : i(a_i), j(a_j), k(a_k) {}
 
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
@@ -224,6 +224,10 @@ struct InjectorPosition
         {
             return object.randomplane.getPositionUnitBox(i_part, ref_fac, engine);
         }
+        case Type::stlplane:
+        {
+            return object.stlplane.getPositionUnitVBox(i_part, ref_fac, engine);
+        }
         default:
         {
             return object.random.getPositionUnitBox(i_part, ref_fac, engine);
@@ -273,7 +277,7 @@ struct InjectorPosition
     }
 
 private:
-    enum struct Type { random, randomplane, regular };
+    enum struct Type { random, randomplane, regular, stlplane };
     Type type;
 
     // An instance of union Object constructs and stores any one of
