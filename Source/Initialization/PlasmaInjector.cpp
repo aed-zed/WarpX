@@ -439,18 +439,18 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
                     int const i_n = (eb_bnd_normal_arr(i,j,k,0) > 0)? i : i+1;
                     int const j_n = (eb_bnd_normal_arr(i,j,k,1) > 0)? j : j+1;
                     int const k_n = (eb_bnd_normal_arr(i,j,k,2) > 0)? k : k+1;
-                    
+
                     // construct InjectorPosition with InjectorPositionSTLPlane
                     h_flux_pos = std::make_unique<InjectorPosition>(
-                        (InjectorPositionSTLPlane*)nullptr, 
-                        xmin, xmax, ymin, ymax, zmin, zmax, 
+                        (InjectorPositionSTLPlane*)nullptr,
+                        xmin, xmax, ymin, ymax, zmin, zmax,
                         i_n, j_n, k_n);
-                    
+
                 #ifdef AMREX_USE_GPU
                     d_flux_pos = static_cast<InjectorPosition*>
                         (amrex::The_Arena()->alloc(sizeof(InjectorPosition)));
                     amrex::Gpu::htod_memcpy_async(d_flux_pos, h_flox_pos.get(), sizeof(InjectorPosition));
-                #else   
+                #else
                     d_flux_pos = h_flux_pos.get();
                 #endif
                 });

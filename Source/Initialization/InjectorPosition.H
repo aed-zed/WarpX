@@ -123,17 +123,17 @@ struct InjectorPositionSTLPlane
                         amrex::RandomEngine const& engine) const noexcept
     {
         using namespace amrex::literals;
-        
-        amrex::Real x = static_cast<amrex::Real>(i) * amrex::Random(engine); 
-        amrex::Real y = static_cast<amrex::Real>(j) * amrex::Random(engine); 
-        amrex::Real z = static_cast<amrex::Real>(k) * amrex::Random(engine); 
+
+        amrex::Real x = static_cast<amrex::Real>(i) * amrex::Random(engine);
+        amrex::Real y = static_cast<amrex::Real>(j) * amrex::Random(engine);
+        amrex::Real z = static_cast<amrex::Real>(k) * amrex::Random(engine);
 
         return amrex::XDim3{x, y, z};
     }
 private:
     int i;
     int j;
-    int k; 
+    int k;
 };
 
 
@@ -289,7 +289,7 @@ private:
         InjectorPositionRandom random;
         InjectorPositionRandomPlane randomplane;
         InjectorPositionRegular regular;
-        InjectorPositionSTLPlane stlplane; 
+        InjectorPositionSTLPlane stlplane;
     };
     Object object;
 
