@@ -37,6 +37,13 @@ namespace SpeciesUtils {
         std::unique_ptr<VelocityProperties>& h_mom_vel,
         int flux_normal_axis=0, int flux_direction=0);
 
+    void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& style,
+        std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
+        std::unique_ptr<amrex::Parser>& un_parser,
+        std::unique_ptr<TemperatureProperties>& h_mom_temp,
+        std::unique_ptr<VelocityProperties>& h_mom_vel,
+        int const& i, int const& j, int const& k);
+
 }
 
 #endif // WARPX_SPECIES_UTILS_H_

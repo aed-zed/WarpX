@@ -125,7 +125,6 @@ namespace SpeciesUtils {
         int flux_normal_axis, int flux_direction)
     {
         using namespace amrex::literals;
-
         const amrex::ParmParse pp_species(species_name);
 
         // parse momentum information
@@ -281,6 +280,65 @@ namespace SpeciesUtils {
         } else {
             StringParseAbortMessage("Momentum distribution type", mom_dist_s);
         }
+    }
+
+
+    void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& style,
+        std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
+        std::unique_ptr<amrex::Parser>& un_parser,
+        std::unique_ptr<TemperatureProperties>& h_mom_temp,
+        std::unique_ptr<VelocityProperties>& h_mom_vel,
+        int const& i, int const& j, int const& k) {
+
+        using namespace amrex::literals;
+        const amrex::ParmParse pp_species(species_name);
+
+        // parse momentum information
+        std::string mom_dist_s;
+        utils::parser::get(pp_species, source_name, "momentum_distribution_type", mom_dist_s);
+        std::transform(mom_dist_s.begin(),
+                       mom_dist_s.end(),
+                       mom_dist_s.begin(),
+                       ::tolower);
+        if (mom_dist_s == "at_rest") {
+            constexpr amrex::Real ux = 0._rt;
+            constexpr amrex::Real uy = 0._rt;
+            constexpr amrex::Real uz = 0._rt;
+            // Construct InjectorMomentum with InjectorMomentumConstant.
+            h_inj_mom.reset(new InjectorMomentum((InjectorMomentumConstant*)nullptr, ux, uy, uz));
+        } else if (mom_dist_s == "constant") {
+            constexpr amrex::Real ux = static_cast<amrex::Real>(i); 
+            constexpr amrex::Real uy = static_cast<amrex::Real>(j); 
+            constexpr amrex::Real uz = static_cast<amrex::Real>(k); 
+            h_inj_mom.reset(new InjectorMomentum((InjectorMomentumConstant*)nullptr, ux, uy, uz));
+        } else if (mom_dist_s == "gaussian") {
+            amrex::Real un_m = 0._rt;  
+            amrex::Real un_th = 0._rt; 
+            utils::parser::queryWithParser(pp_species, source_name, "un_m", un_m);
+            utils::parser::queryWithParser(pp_species, source_name, "un_th", un_th);
+            constexpr amrex::Real ux = static_cast<amrex::Real>(i) * un_m; 
+            constexpr amrex::Real uy = static_cast<amrex::Real>(j) * un_m; 
+            constexpr amrex::Real uz = static_cast<amrex::Real>(k) * un_m; 
+            h_inj_mom.reset(new InjectorMomentum((InjectorMomentumGaussian*)nullptr,
+                            ux, uy, uz, un_th, un_th, un_th));
+        } else if (mom_dist_s == "gaussianflux") {
+            //TO DO
+        } else if (mom_dist_s == "uniform") {
+            amrex::Real un_m = 0._rt;  
+            amrex::Real un_th = 0._rt; 
+            utils::parser::queryWithParser(pp_species, source_name, "un_m", un_m);
+            utils::parser::queryWithParser(pp_species, source_name, "un_th", un_th);
+            constexpr amrex::Real ux = static_cast<amrex::Real>(i) * un_m; 
+            constexpr amrex::Real uy = static_cast<amrex::Real>(j) * un_m; 
+            constexpr amrex::Real uz = static_cast<amrex::Real>(k) * un_m; 
+            h_inj_mom.reset(new InjectorMomentum((InjectorMomentumUniform*)nullptr,
+                            ux, uy, uz, un_th, un_th, un_th));
+        } 
+        // DO THE REST
+        else {
+            StringParseAbortMessage("Momentum distribution type", mom_dist_s);
+        }
+
     }
 
 }
