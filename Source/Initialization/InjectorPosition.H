@@ -110,6 +110,33 @@ private:
     amrex::Dim3 ppc;
 };
 
+// struct whose getPositionUnitBox returns x, y and z for a particle with
+// random distribution on a plane inside a unit cell.
+struct InjectorPositionSTLPlane
+{
+    InjectorPositionSTLPlane (int const& i, int const& j, int const& k) noexcept : i(i), j(j), k(k) {}
+
+    [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
+    amrex::XDim3
+    getPositionUnitBox (int /*i_part*/, amrex::IntVect const /*ref_fac*/,
+                        amrex::RandomEngine const& engine) const noexcept
+    {
+        using namespace amrex::literals;
+        
+        amrex::Real x = static_cast<amrex::Real>(i) * amrex::Random(engine); 
+        amrex::Real y = static_cast<amrex::Real>(j) * amrex::Random(engine); 
+        amrex::Real z = static_cast<amrex::Real>(k) * amrex::Random(engine); 
+
+        return amrex::XDim3{x, y, z};
+    }
+private:
+    int i;
+    int j;
+    int k; 
+};
+
+
 // Base struct for position injector.
 // InjectorPosition contains a union (called Object) that holds any one
 // instance of:
@@ -152,6 +179,19 @@ struct InjectorPosition
                       amrex::Dim3 const& a_ppc)
         : type(Type::regular),
           object(t, a_ppc),
+          xmin(a_xmin), xmax(a_xmax),
+          ymin(a_ymin), ymax(a_ymax),
+          zmin(a_zmin), zmax(a_zmax)
+    { }
+
+    // This constructor stores a InjectorPositionSTLPlane in union object.
+    InjectorPosition (InjectorPositionSTLPlane* t,
+                      amrex::Real a_xmin, amrex::Real a_xmax,
+                      amrex::Real a_ymin, amrex::Real a_ymax,
+                      amrex::Real a_zmin, amrex::Real a_zmax,
+                      int const& i, int const& j, int const& k)
+        : type(Type::stlplane),
+          object(t, i, j, k),
           xmin(a_xmin), xmax(a_xmax),
           ymin(a_ymin), ymax(a_ymax),
           zmin(a_zmin), zmax(a_zmax)
@@ -244,9 +284,12 @@ private:
             : randomplane(a_dir) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}
+        Object (InjectorPositionSTLPlane*, int const& i, int const& j, int const& k) noexcept
+            : stlplane(i, j, k) {}
         InjectorPositionRandom random;
         InjectorPositionRandomPlane randomplane;
         InjectorPositionRegular regular;
+        InjectorPositionSTLPlane stlplane; 
     };
     Object object;
 
