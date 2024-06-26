@@ -157,6 +157,47 @@ private:
 
 
 // struct whose getMomentum returns momentum for 1 particle, from random
+// gaussian flux distribution in the specified direction.
+// Direction is determined by stl file plane.
+struct InjectorMomentumSTLGaussianFlux
+{
+    InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
+                                     int const a_i, int const a_j, int const a_k) noexcept
+        : u_m(a_un_m), u_th(a_un_th), m_i(a_i), m_j(a_j), m_k(a_k)
+    {
+    }
+
+    [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
+    amrex::XDim3
+    getMomentum (amrex::Real /*x*/, amrex::Real /*y*/, amrex::Real /*z*/,
+                 amrex::RandomEngine const& engine) const noexcept
+    {
+        using namespace amrex::literals;
+
+        amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
+        // add a variable that determines if it should go inwards or outwards (default is inwards)
+
+        amrex::Real const ux = m_i * u; 
+        amrex::Real const uy = m_j * u;
+        amrex::Real const uz = m_k * u; 
+        return amrex::XDim3{ux, uy, uz};
+    }
+
+    [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
+    amrex::XDim3
+    getBulkMomentum (amrex::Real /*x*/, amrex::Real /*y*/, amrex::Real /*z*/) const noexcept
+    {
+        return amrex::XDim3{m_ux_m, m_uy_m, m_uz_m};
+    }
+
+private:
+    amrex::Real u_m, u_th
+    int const m_i, m_j, m_k;  
+};
+
+// struct whose getMomentum returns momentum for 1 particle, from random
 // uniform distribution u_min < u < u_max
 struct InjectorMomentumUniform
 {
