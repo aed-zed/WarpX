@@ -189,7 +189,11 @@ struct InjectorMomentumSTLGaussianFlux
     amrex::XDim3
     getBulkMomentum (amrex::Real /*x*/, amrex::Real /*y*/, amrex::Real /*z*/) const noexcept
     {
-        return amrex::XDim3{m_ux_m, m_uy_m, m_uz_m};
+        
+        amrex::Real const ux = m_i * u_m;
+        amrex::Real const uy = m_j * u_m;
+        amrex::Real const uz = m_k * u_m;
+        return amrex::XDim3{ux, uy, uz};
     }
 
 private:
