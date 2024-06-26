@@ -815,7 +815,7 @@ private:
         InjectorMomentumConstant constant;
         InjectorMomentumGaussian gaussian;
         InjectorMomentumGaussianFlux gaussianflux;
-        InjectorMomentumSTLGaussianFlux stlgaussianflux; 
+        InjectorMomentumSTLGaussianFlux stlgaussianflux;
         InjectorMomentumUniform uniform;
         InjectorMomentumBoltzmann boltzmann;
         InjectorMomentumJuttner juttner;
