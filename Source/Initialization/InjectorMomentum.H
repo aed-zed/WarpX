@@ -178,9 +178,9 @@ struct InjectorMomentumSTLGaussianFlux
         amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
         // add a variable that determines if it should go inwards or outwards (default is inwards)
 
-        amrex::Real const ux = m_i * u; 
+        amrex::Real const ux = m_i * u;
         amrex::Real const uy = m_j * u;
-        amrex::Real const uz = m_k * u; 
+        amrex::Real const uz = m_k * u;
         return amrex::XDim3{ux, uy, uz};
     }
 
@@ -194,7 +194,7 @@ struct InjectorMomentumSTLGaussianFlux
 
 private:
     amrex::Real u_m, u_th
-    int const m_i, m_j, m_k;  
+    int const m_i, m_j, m_k;
 };
 
 // struct whose getMomentum returns momentum for 1 particle, from random
