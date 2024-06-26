@@ -435,7 +435,6 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
                     if (eb_flag_arr(l,m,n).isRegular() || eb_flag_arr(l,m,n).isCovered()) return;
 
                     // get flag data to check if cell is partially covered
-                    //if (eb_flag_arr(l,m,n).isRegular() || eb_flag_arr(l,m,n.isCovered()) return;
                     int const i_n = (eb_bnd_normal_arr(l,m,n,0) > 0)? l : l+1;
                     int const j_n = (eb_bnd_normal_arr(l,m,n,1) > 0)? m : m+1;
                     int const k_n = (eb_bnd_normal_arr(l,m,n,2) > 0)? n : n+1;
@@ -454,7 +453,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
                     d_flux_pos = h_flux_pos.get();
 #endif
                     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
-                                                un_parser, h_mom_temp, h_mom_vel,
+                                                h_inj_mom, un_parser, h_mom_temp, h_mom_vel,
                                                 i_n, j_n, k_n);
                 });
         }
