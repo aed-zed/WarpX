@@ -37,7 +37,12 @@ int main(int argc, char* argv[])
 
         warpx.InitData();
 
+        auto evolve_timer = ablastr::utils::timer::Timer{};
+        evolve_timer.record_start_time();
         warpx.Evolve();
+        evolve_timer.record_stop_time();
+        amrex::Print() << "Evolve Step Time        : "
+                       << evolve.timer.get_global_duration() << '\n';
 
         amrex::Print() <<
             ablastr::warn_manager::GetWMInstance().PrintGlobalWarnings("THE END");

@@ -379,7 +379,7 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
     poisson_residual = std::get<0>(resid_n_iters);
     poisson_iters = std::get<1>(resid_n_iters);
 
-    if ((poisson_iters < self_fields_poisson_iters) || (poisson_residual < self_fields_resid_val)) {
+    if ((poisson_iters =< self_fields_poisson_iters) || (poisson_residual < self_fields_resid_val)) {
         if (poisson_skips < self_fields_max_skips) {
             poisson_skips *= 2;
         }
