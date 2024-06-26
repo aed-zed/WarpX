@@ -193,7 +193,7 @@ struct InjectorMomentumSTLGaussianFlux
     }
 
 private:
-    amrex::Real u_m, u_th
+    amrex::Real u_m, u_th;
     int const m_i, m_j, m_k;
 };
 
