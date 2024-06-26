@@ -585,6 +585,14 @@ struct InjectorMomentum
           object(t,a_ux_m,a_uy_m,a_uz_m,a_ux_th,a_uy_th,a_uz_th)
     { }
 
+    // This constructor stores a InjectorMomentumSTLGaussianFlux in union object.
+    InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
+                      amrex::Real a_un_m, amrex::Real a_un_th,
+                      int const a_i, int const a_j, int const a_k)
+        : type(Type::stlgaussianflux),
+          object(t, a_un_m, a_un_th, a_i, a_j, a_k)
+    { }
+
     // This constructor stores a InjectorMomentumGaussianFlux in union object.
     InjectorMomentum (InjectorMomentumGaussianFlux* t,
                       amrex::Real a_ux_m, amrex::Real a_uy_m, amrex::Real a_uz_m,
@@ -660,6 +668,10 @@ struct InjectorMomentum
         {
             return object.gaussianflux.getMomentum(x,y,z,engine);
         }
+        case Type::stlgaussianflux:
+        {
+            return object.stlgaussianflux.getMomentum(x,y,z,engine);
+        }
         case Type::uniform:
         {
             return object.uniform.getMomentum(x,y,z,engine);
@@ -713,6 +725,10 @@ struct InjectorMomentum
         {
             return object.gaussianflux.getBulkMomentum(x,y,z);
         }
+        case Type::stlgaussianflux:
+        {
+            return object.gaussianflux.getBulkMomentum(x,y,z);
+        }
         case Type::uniform:
         {
             return object.uniform.getBulkMomentum(x,y,z);
@@ -741,7 +757,7 @@ struct InjectorMomentum
         }
     }
 
-    enum struct Type { constant, gaussian, gaussianflux, uniform, boltzmann, juttner, radial_expansion, parser, gaussianparser };
+    enum struct Type { constant, gaussian, gaussianflux, stlgaussianflux, uniform, boltzmann, juttner, radial_expansion, parser, gaussianparser };
     Type type;
 
 private:
@@ -764,6 +780,10 @@ private:
                 amrex::Real a_uy_th, amrex::Real a_uz_th,
                 int a_flux_normal_axis, int a_flux_direction) noexcept
             : gaussianflux(a_ux_m,a_uy_m,a_uz_m,a_ux_th,a_uy_th,a_uz_th,a_flux_normal_axis,a_flux_direction) {}
+        Object (InjectorMomentumSTLGaussianFlux*,
+                amrex::Real a_un_m, amrex::Real a_un_th,
+                int const a_i, int const a_j, int const a_k) noexcept
+            : stlgaussianflux(a_un_m, a_un_th, a_i, a_j, a_k) {}
         Object (InjectorMomentumUniform*,
                 amrex::Real a_ux_min, amrex::Real a_uy_min,
                 amrex::Real a_uz_min, amrex::Real a_ux_max,
@@ -795,6 +815,7 @@ private:
         InjectorMomentumConstant constant;
         InjectorMomentumGaussian gaussian;
         InjectorMomentumGaussianFlux gaussianflux;
+        InjectorMomentumSTLGaussianFlux stlgaussianflux; 
         InjectorMomentumUniform uniform;
         InjectorMomentumBoltzmann boltzmann;
         InjectorMomentumJuttner juttner;
