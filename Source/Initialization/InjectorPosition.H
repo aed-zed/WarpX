@@ -189,9 +189,9 @@ struct InjectorPosition
                       amrex::Real a_xmin, amrex::Real a_xmax,
                       amrex::Real a_ymin, amrex::Real a_ymax,
                       amrex::Real a_zmin, amrex::Real a_zmax,
-                      int const& i, int const& j, int const& k)
+                      int const& a_i, int const& a_j, int const& a_k)
         : type(Type::stlplane),
-          object(t, i, j, k),
+          object(t, a_i, a_j, a_k),
           xmin(a_xmin), xmax(a_xmax),
           ymin(a_ymin), ymax(a_ymax),
           zmin(a_zmin), zmax(a_zmax)
