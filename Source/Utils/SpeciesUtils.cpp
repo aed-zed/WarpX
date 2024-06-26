@@ -301,11 +301,7 @@ namespace SpeciesUtils {
                        mom_dist_s.begin(),
                        ::tolower);
         if (mom_dist_s == "at_rest") {
-            constexpr amrex::Real ux = 0._rt;
-            constexpr amrex::Real uy = 0._rt;
-            constexpr amrex::Real uz = 0._rt;
-            // Construct InjectorMomentum with InjectorMomentumConstant.
-            h_inj_mom.reset(new InjectorMomentum((InjectorMomentumConstant*)nullptr, ux, uy, uz));
+            // the same 
         } else if (mom_dist_s == "constant") {
             constexpr amrex::Real ux = static_cast<amrex::Real>(i); 
             constexpr amrex::Real uy = static_cast<amrex::Real>(j); 
@@ -324,17 +320,12 @@ namespace SpeciesUtils {
         } else if (mom_dist_s == "gaussianflux") {
             //TO DO
         } else if (mom_dist_s == "uniform") {
-            amrex::Real un_m = 0._rt;  
-            amrex::Real un_th = 0._rt; 
-            utils::parser::queryWithParser(pp_species, source_name, "un_m", un_m);
-            utils::parser::queryWithParser(pp_species, source_name, "un_th", un_th);
-            constexpr amrex::Real ux = static_cast<amrex::Real>(i) * un_m; 
-            constexpr amrex::Real uy = static_cast<amrex::Real>(j) * un_m; 
-            constexpr amrex::Real uz = static_cast<amrex::Real>(k) * un_m; 
-            h_inj_mom.reset(new InjectorMomentum((InjectorMomentumUniform*)nullptr,
-                            ux, uy, uz, un_th, un_th, un_th));
-        } 
-        // DO THE REST
+            //TO DO 
+        } else if (mom_dist_s == "maxwell_boltzmann") || (mom_dist_s == "maxwell_juttner") || (mom_dist_s == "radial expansion") {
+            // The same
+        } else if (mom_dist_s == "parse_momentum_function") {
+            //To DO 
+        }
         else {
             StringParseAbortMessage("Momentum distribution type", mom_dist_s);
         }
