@@ -283,7 +283,7 @@ namespace SpeciesUtils {
     }
 
 
-    void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& style,
+    void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& /*style*/,
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
         int const& i, int const& j, int const& k) {
 
