@@ -285,9 +285,6 @@ namespace SpeciesUtils {
 
     void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& style,
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
-        std::unique_ptr<amrex::Parser>& un_parser,
-        std::unique_ptr<TemperatureProperties>& h_mom_temp,
-        std::unique_ptr<VelocityProperties>& h_mom_vel,
         int const& i, int const& j, int const& k) {
 
         using namespace amrex::literals;

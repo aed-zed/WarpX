@@ -453,8 +453,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
                     d_flux_pos = h_flux_pos.get();
 #endif
                     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
-                                                h_inj_mom, un_parser, h_mom_temp, h_mom_vel,
-                                                i_n, j_n, k_n);
+                                                h_inj_mom, i_n, j_n, k_n);
                 });
         }
 
