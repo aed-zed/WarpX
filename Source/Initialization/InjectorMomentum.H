@@ -727,7 +727,7 @@ struct InjectorMomentum
         }
         case Type::stlgaussianflux:
         {
-            return object.gaussianflux.getBulkMomentum(x,y,z);
+            return object.stlgaussianflux.getBulkMomentum(x,y,z);
         }
         case Type::uniform:
         {
