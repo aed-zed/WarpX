@@ -162,43 +162,75 @@ private:
 struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
-                                     int const a_i, int const a_j, int const a_k) noexcept
-        : u_m(a_un_m), u_th(a_un_th), m_i(a_i), m_j(a_j), m_k(a_k)
+                                    std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
+                                    amrex::MFiter& a_mfi) noexcept
+        : u_m(a_un_m), u_th(a_un_th), field_factory_ptr(a_field_factory_ptr), mfi(a_mfi)
     {
     }
 
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getMomentum (amrex::Real /*x*/, amrex::Real /*y*/, amrex::Real /*z*/,
+    getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
                  amrex::RandomEngine const& engine) const noexcept
     {
         using namespace amrex::literals;
 
-        amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
-        // add a variable that determines if it should go inwards or outwards (default is inwards)
+        for (amrex::MFIter mfi(Ex, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() ); 
+            if box.contains(x, y, z)! {
+                continue; 
+            }
+            amrex::EBFArrayBoxFactory field_factory = &field_factory_ptr; 
+            amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal(); 
+            const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
-        amrex::Real const ux = m_i * u;
-        amrex::Real const uy = m_j * u;
-        amrex::Real const uz = m_k * u;
-        return amrex::XDim3{ux, uy, uz};
+            int const m_i = (eb_bnd_normal_arr(l,m,n,0) > 0)? l : l+1;
+            int const m_j = (eb_bnd_normal_arr(l,m,n,1) > 0)? m : m+1;
+            int const m_k = (eb_bnd_normal_arr(l,m,n,2) > 0)? n : n+1;
+
+            amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
+            // add a variable that determines if it should go inwards or outwards (default is inwards)
+
+            amrex::Real const ux = m_i * u;
+            amrex::Real const uy = m_j * u;
+            amrex::Real const uz = m_k * u;
+            return amrex::XDim3{ux, uy, uz};
+
+        }
     }
 
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getBulkMomentum (amrex::Real /*x*/, amrex::Real /*y*/, amrex::Real /*z*/) const noexcept
+    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
 
-        amrex::Real const ux = m_i * u_m;
-        amrex::Real const uy = m_j * u_m;
-        amrex::Real const uz = m_k * u_m;
-        return amrex::XDim3{ux, uy, uz};
+
+        for (amrex::MFIter mfi(Ex, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() ); 
+            if box.contains(x, y, z)! {
+                continue; 
+            }
+            amrex::EBFArrayBoxFactory field_factory = &field_factory_ptr; 
+            amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal(); 
+            const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
+
+            int const m_i = (eb_bnd_normal_arr(l,m,n,0) > 0)? l : l+1;
+            int const m_j = (eb_bnd_normal_arr(l,m,n,1) > 0)? m : m+1;
+            int const m_k = (eb_bnd_normal_arr(l,m,n,2) > 0)? n : n+1;
+
+            amrex::Real const ux = m_i * u;
+            amrex::Real const uy = m_j * u;
+            amrex::Real const uz = m_k * u;
+            return amrex::XDim3{ux, uy, uz};
+
+        }
     }
 
 private:
-    amrex::Real u_m, u_th;
-    int const m_i, m_j, m_k;
+    std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
+    amrex::MFiter& a_mfi
 };
 
 // struct whose getMomentum returns momentum for 1 particle, from random

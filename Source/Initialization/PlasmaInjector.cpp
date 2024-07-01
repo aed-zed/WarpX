@@ -406,58 +406,31 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 #endif
 
     // Get the file
+
+    // when getting EB charge, default was lev 0 so we're just gonna do that here too and hope for the best. 
     auto & warpx = WarpX::GetInstance();
+    int const lev = 0; 
     amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
-    const amrex::Vector<amrex::Geometry>& geoms = indexSpace.getGeometries();
-    for (amrex::Vector<amrex::Geometry>::const_iterator geom = geoms.begin(); geom < geoms.end(); ++geom) {
-        const amrex::Box& domain_box = geom->Domain();
-        const amrex::BoxArray array_box(domain_box);
-        const amrex::DistributionMapping dm(array_box);
-        std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(*geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
-        amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
-        amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
-        amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = field_factory.getMultiEBCellFlagFab();
-
-        for (amrex::MFIter mfi(array_box, dm); mfi.isValid(); ++mfi) {
-
-            const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
-            amrex::FabType fab_type = eb_flag[mfi].getType(box);
-            if (fab_type == amrex::FabType::regular) continue;
-            if (fab_type == amrex::FabType::covered) continue;
-            auto const& eb_flag_arr = eb_flag.array(mfi);
-            const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
-
-
-            amrex::ParallelFor( box,
-                [=] AMREX_GPU_DEVICE (int l, int m, int n) {
-                    // Only cells that are partially covered are important --> actually verify this?
-                    if (eb_flag_arr(l,m,n).isRegular() || eb_flag_arr(l,m,n).isCovered()) return;
-
-                    // get flag data to check if cell is partially covered
-                    int const i_n = (eb_bnd_normal_arr(l,m,n,0) > 0)? l : l+1;
-                    int const j_n = (eb_bnd_normal_arr(l,m,n,1) > 0)? m : m+1;
-                    int const k_n = (eb_bnd_normal_arr(l,m,n,2) > 0)? n : n+1;
-
-                    // construct InjectorPosition with InjectorPositionSTLPlane
-                    h_flux_pos = std::make_unique<InjectorPosition>(
-                        (InjectorPositionSTLPlane*)nullptr,
-                        xmin, xmax, ymin, ymax, zmin, zmax,
-                        i_n, j_n, k_n);
-
+    const amrex::Geometry>& geom = indexSpace.getGeometry(lev);
+    const amrex::Box& domain_box = geom->Domain();
+    const amrex::BoxArray array_box(domain_box);
+    const amrex::DistributionMapping dm(array_box);
+    std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(*geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
+    amrex::MFiter mfi(array_box, dm); 
+    h_flux_pos = std::make_unique<InjectorPosition> (
+        (InjectorPositionRandom*)nullptr, 
+        xmin, xmax, ymin, ymax, zmin, zmax)
 #ifdef AMREX_USE_GPU
-                    d_flux_pos = static_cast<InjectorPosition*>
-                        (amrex::The_Arena()->alloc(sizeof(InjectorPosition)));
-                    amrex::Gpu::htod_memcpy_async(d_flux_pos, h_flux_pos.get(), sizeof(InjectorPosition));
+    d_flux_pos = static_cast<InjectorPosition*>
+        (amrex::The_Arena()->alloc(sizeof(InjectorPosition)));
+        amrex::Gpu::htod_memcpy_async(d_flux_pos, h_flux_pos.get(), sizeof(InjectorPosition));
 #else
-                    d_flux_pos = h_flux_pos.get();
+    d_flux_pos = h_flux_pos.get();
 #endif
-                    SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
-                                                h_inj_mom, i_n, j_n, k_n);
-                });
-        }
-
-    }
+    parseFlux(pp_species)
+    SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
+                                h_inj_mom, field_factory_ptr.get(), mfi);
 
     // iterate over the levs:
     // const amrex::EB2::Geometry& geo = indexSpace.getGeometry(**insert a box here**);
