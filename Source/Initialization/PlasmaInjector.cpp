@@ -407,9 +407,9 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 
     // Get the file
 
-    // when getting EB charge, default was lev 0 so we're just gonna do that here too and hope for the best. 
+    // when getting EB charge, default was lev 0 so we're just gonna do that here too and hope for the best.
     auto & warpx = WarpX::GetInstance();
-    int const lev = 0; 
+    int const lev = 0;
     amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
     const amrex::Geometry>& geom = indexSpace.getGeometry(lev);
@@ -417,9 +417,9 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
     const amrex::BoxArray array_box(domain_box);
     const amrex::DistributionMapping dm(array_box);
     std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(*geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
-    amrex::MFiter mfi(array_box, dm); 
+    amrex::MFiter mfi(array_box, dm);
     h_flux_pos = std::make_unique<InjectorPosition> (
-        (InjectorPositionRandom*)nullptr, 
+        (InjectorPositionRandom*)nullptr,
         xmin, xmax, ymin, ymax, zmin, zmax)
 #ifdef AMREX_USE_GPU
     d_flux_pos = static_cast<InjectorPosition*>
