@@ -219,7 +219,7 @@ struct InjectorMomentumSTLGaussianFlux
             int const m_i = eb_bnd_normal_arr(x,y,z,0);
             int const m_j = eb_bnd_normal_arr(x,y,z,1);
             int const m_k = eb_bnd_normal_arr(x,y,z,2);
-            
+
             amrex::Real const ux = m_i * u;
             amrex::Real const uy = m_j * u;
             amrex::Real const uz = m_k * u;
