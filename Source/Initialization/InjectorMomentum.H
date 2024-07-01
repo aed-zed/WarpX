@@ -229,6 +229,7 @@ struct InjectorMomentumSTLGaussianFlux
     }
 
 private:
+    amrex::Real u_m, u_th;
     std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr;
     amrex::MFiter& a_mfi;
 };
