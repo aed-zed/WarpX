@@ -114,7 +114,7 @@ private:
 // random distribution on a plane inside a unit cell.
 struct InjectorPositionSTLPlane
 {
-    InjectorPositionSTLPlane (int const& a_i, int const& a_j, int const& a_k) noexcept : i(a_i), j(a_j), k(a_k) {}
+    InjectorPositionSTLPlane (std::unique_ptr<amrex::EBFArray) noexcept : i(a_i), j(a_j), k(a_k) {}
 
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE

@@ -229,8 +229,8 @@ struct InjectorMomentumSTLGaussianFlux
     }
 
 private:
-    std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
-    amrex::MFiter& a_mfi
+    std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr;
+    amrex::MFiter& a_mfi;
 };
 
 // struct whose getMomentum returns momentum for 1 particle, from random
@@ -620,9 +620,10 @@ struct InjectorMomentum
     // This constructor stores a InjectorMomentumSTLGaussianFlux in union object.
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
-                      int const a_i, int const a_j, int const a_k)
+                      std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
+                      amrex::MFiter& a_mfi)
         : type(Type::stlgaussianflux),
-          object(t, a_un_m, a_un_th, a_i, a_j, a_k)
+          object(t, a_un_m, a_un_th, a_field_factory_ptr, a_mfi)
     { }
 
     // This constructor stores a InjectorMomentumGaussianFlux in union object.
@@ -814,7 +815,8 @@ private:
             : gaussianflux(a_ux_m,a_uy_m,a_uz_m,a_ux_th,a_uy_th,a_uz_th,a_flux_normal_axis,a_flux_direction) {}
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
-                int const a_i, int const a_j, int const a_k) noexcept
+                std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
+                amrex::MFiter& a_mfi) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_i, a_j, a_k) {}
         Object (InjectorMomentumUniform*,
                 amrex::Real a_ux_min, amrex::Real a_uy_min,
