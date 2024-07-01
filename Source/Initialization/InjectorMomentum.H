@@ -185,9 +185,9 @@ struct InjectorMomentumSTLGaussianFlux
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
-            int const m_i = (eb_bnd_normal_arr(l,m,n,0) > 0)? l : l+1;
-            int const m_j = (eb_bnd_normal_arr(l,m,n,1) > 0)? m : m+1;
-            int const m_k = (eb_bnd_normal_arr(l,m,n,2) > 0)? n : n+1;
+            int const m_i = eb_bnd_normal_arr(x,y,z,0);
+            int const m_j = eb_bnd_normal_arr(x,y,z,1);
+            int const m_k = eb_bnd_normal_arr(x,y,z,2);
 
             amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
             // add a variable that determines if it should go inwards or outwards (default is inwards)
@@ -216,10 +216,10 @@ struct InjectorMomentumSTLGaussianFlux
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
-            int const m_i = (eb_bnd_normal_arr(l,m,n,0) > 0)? l : l+1;
-            int const m_j = (eb_bnd_normal_arr(l,m,n,1) > 0)? m : m+1;
-            int const m_k = (eb_bnd_normal_arr(l,m,n,2) > 0)? n : n+1;
-
+            int const m_i = eb_bnd_normal_arr(x,y,z,0);
+            int const m_j = eb_bnd_normal_arr(x,y,z,1);
+            int const m_k = eb_bnd_normal_arr(x,y,z,2);
+            
             amrex::Real const ux = m_i * u;
             amrex::Real const uy = m_j * u;
             amrex::Real const uz = m_k * u;
