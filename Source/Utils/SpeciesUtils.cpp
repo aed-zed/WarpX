@@ -342,6 +342,6 @@ namespace SpeciesUtils {
         }
 
     }
-#ifdef AMREX_USE_EB
+#endif
 
 }
