@@ -201,7 +201,7 @@ struct InjectorMomentumSTLGaussianFlux
         using namespace amrex::literals;
 
 
-        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory const&>(*field_factory_ptr);
+        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory &>(*field_factory_ptr);
         amrex::BoxArray ba = field_factory.boxArray();
         amrex::DistributionMapping dm = field_factory.DistributionMap();
         for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
@@ -223,8 +223,10 @@ struct InjectorMomentumSTLGaussianFlux
             amrex::Real const uy = m_j * u_m;
             amrex::Real const uz = m_k * u_m;
             return amrex::XDim3{ux, uy, uz};
-
         }
+
+        noVectorFound(x, y, z);
+
     }
 
     [[nodiscard]]
@@ -234,7 +236,7 @@ struct InjectorMomentumSTLGaussianFlux
     {
 
 
-        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory const&>(*field_factory_ptr);
+        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory &>(*field_factory_ptr);
         amrex::BoxArray ba = field_factory.boxArray();
         amrex::DistributionMapping dm = field_factory.DistributionMap();
         for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
@@ -253,14 +255,24 @@ struct InjectorMomentumSTLGaussianFlux
             amrex::Real const uy = m_j * u_m;
             amrex::Real const uz = m_k * u_m;
             return amrex::XDim3{ux, uy, uz};
-
         }
+
+        noVectorFound(x, y, z);
     }
 
 private:
     amrex::Real u_m, u_th;
     std::unique_ptr<amrex::EBFArrayBoxFactory>* field_factory_ptr;
     amrex::MFIter& mfi;
+
+    void noVectorFound(amrex::Real x, amrex::Real y, amrex::Real z) {
+        std::stringstream stringstream;
+        stringstream << "the normal vector at coordinates (" << x << ", " y << ", " z << ") not found";
+        std::string message = stringstream.str();
+        WARPX_ABORT_WITH_MESSAGE(message);
+    }
+
+
 };
 
 #endif
