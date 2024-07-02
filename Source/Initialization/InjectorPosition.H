@@ -110,32 +110,6 @@ private:
     amrex::Dim3 ppc;
 };
 
-// struct whose getPositionUnitBox returns x, y and z for a particle with
-// random distribution on a plane inside a unit cell.
-struct InjectorPositionSTLPlane
-{
-    InjectorPositionSTLPlane (std::unique_ptr<amrex::EBFArray) noexcept : i(a_i), j(a_j), k(a_k) {}
-
-    [[nodiscard]]
-    AMREX_GPU_HOST_DEVICE
-    amrex::XDim3
-    getPositionUnitBox (int /*i_part*/, amrex::IntVect const /*ref_fac*/,
-                        amrex::RandomEngine const& engine) const noexcept
-    {
-        using namespace amrex::literals;
-
-        amrex::Real x = static_cast<amrex::Real>(i) * amrex::Random(engine);
-        amrex::Real y = static_cast<amrex::Real>(j) * amrex::Random(engine);
-        amrex::Real z = static_cast<amrex::Real>(k) * amrex::Random(engine);
-
-        return amrex::XDim3{x, y, z};
-    }
-private:
-    int i;
-    int j;
-    int k;
-};
-
 
 // Base struct for position injector.
 // InjectorPosition contains a union (called Object) that holds any one
@@ -184,19 +158,6 @@ struct InjectorPosition
           zmin(a_zmin), zmax(a_zmax)
     { }
 
-    // This constructor stores a InjectorPositionSTLPlane in union object.
-    InjectorPosition (InjectorPositionSTLPlane* t,
-                      amrex::Real a_xmin, amrex::Real a_xmax,
-                      amrex::Real a_ymin, amrex::Real a_ymax,
-                      amrex::Real a_zmin, amrex::Real a_zmax,
-                      int const& a_i, int const& a_j, int const& a_k)
-        : type(Type::stlplane),
-          object(t, a_i, a_j, a_k),
-          xmin(a_xmin), xmax(a_xmax),
-          ymin(a_ymin), ymax(a_ymax),
-          zmin(a_zmin), zmax(a_zmax)
-    { }
-
     ~InjectorPosition () = default;
 
     // Explicitly prevent the compiler from generating copy constructors
@@ -223,10 +184,6 @@ struct InjectorPosition
         case Type::randomplane:
         {
             return object.randomplane.getPositionUnitBox(i_part, ref_fac, engine);
-        }
-        case Type::stlplane:
-        {
-            return object.stlplane.getPositionUnitBox(i_part, ref_fac, engine);
         }
         default:
         {
@@ -277,7 +234,7 @@ struct InjectorPosition
     }
 
 private:
-    enum struct Type { random, randomplane, regular, stlplane };
+    enum struct Type { random, randomplane, regular};
     Type type;
 
     // An instance of union Object constructs and stores any one of
@@ -288,12 +245,9 @@ private:
             : randomplane(a_dir) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}
-        Object (InjectorPositionSTLPlane*, int const& i, int const& j, int const& k) noexcept
-            : stlplane(i, j, k) {}
         InjectorPositionRandom random;
         InjectorPositionRandomPlane randomplane;
         InjectorPositionRegular regular;
-        InjectorPositionSTLPlane stlplane;
     };
     Object object;
 
