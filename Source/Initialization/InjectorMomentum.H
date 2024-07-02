@@ -884,7 +884,9 @@ private:
         InjectorMomentumConstant constant;
         InjectorMomentumGaussian gaussian;
         InjectorMomentumGaussianFlux gaussianflux;
+#ifdef AMREX_USE_EB
         InjectorMomentumSTLGaussianFlux stlgaussianflux;
+#endif
         InjectorMomentumUniform uniform;
         InjectorMomentumBoltzmann boltzmann;
         InjectorMomentumJuttner juttner;
