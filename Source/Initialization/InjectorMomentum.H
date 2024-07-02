@@ -202,8 +202,8 @@ struct InjectorMomentumSTLGaussianFlux
 
 
         amrex::EBFArrayBoxFactory field_factory = &field_factory_ptr;
-        amrex::BoxArray ba = field_factory.boxArray(); 
-        amrex::DistributionMapping dm = field_factory.DistributionMapping(); 
+        amrex::BoxArray ba = field_factory.boxArray();
+        amrex::DistributionMapping dm = field_factory.DistributionMapping();
         for (amrex::MFIter mfi(ba, dm, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (box.contains(x, y, z)!) {
