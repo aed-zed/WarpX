@@ -258,7 +258,7 @@ private:
     amrex::MFIter& a_mfi;
 };
 
-#endif 
+#endif
 
 // struct whose getMomentum returns momentum for 1 particle, from random
 // uniform distribution u_min < u < u_max
