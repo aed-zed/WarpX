@@ -417,7 +417,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
     const amrex::BoxArray array_box(domain_box);
     const amrex::DistributionMapping dm(array_box);
     std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
-    amrex::MultiFab multifab(array_box, dm, 1, 1); 
+    amrex::MultiFab multifab(array_box, dm, 1, 1);
 
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandom*)nullptr,
