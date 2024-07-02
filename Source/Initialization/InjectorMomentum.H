@@ -189,7 +189,7 @@ struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
                                     amrex::EBFArrayBoxFactory* a_field_factory_ptr,
-                                    amrex::MultiFab a_multifab) noexcept
+                                    amrex::MultiFab& a_multifab) noexcept
         : u_m(a_un_m), u_th(a_un_th), field_factory_ptr(a_field_factory_ptr), multifab(a_multifab)
     {
     }
@@ -202,7 +202,7 @@ struct InjectorMomentumSTLGaussianFlux
     {
         using namespace amrex::literals;
 
-        for (amrex::MFIter mfi(multifab, amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
+        for (amrex::MFIter mfi(multifab, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
                 continue;
@@ -234,7 +234,7 @@ struct InjectorMomentumSTLGaussianFlux
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
 
-        for (amrex::MFIter mfi(multifab, amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
+        for (amrex::MFIter mfi(multifab, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
                 continue;
@@ -260,7 +260,7 @@ struct InjectorMomentumSTLGaussianFlux
 private:
     amrex::Real u_m, u_th;
     amrex::EBFArrayBoxFactory* field_factory_ptr;
-    amrex::MultiFab multifab;
+    amrex::MultiFab& multifab;
 };
 
 #endif
@@ -654,7 +654,7 @@ struct InjectorMomentum
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
                       amrex::EBFArrayBoxFactory* a_field_factory_ptr,
-                      amrex::MultiFab a_multifab)
+                      amrex::MultiFab& a_multifab)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_field_factory_ptr, a_multifab)
     { }
@@ -868,7 +868,7 @@ private:
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
                 amrex::EBFArrayBoxFactory* a_field_factory_ptr,
-                amrex::MultiFab a_multifab) noexcept
+                amrex::MultiFab& a_multifab) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_field_factory_ptr, a_multifab) {}
 #endif
         Object (InjectorMomentumUniform*,

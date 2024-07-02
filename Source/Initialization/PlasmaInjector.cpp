@@ -413,11 +413,12 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
     amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
     const amrex::Geometry& geom = indexSpace.getGeometry(lev);
-    const amrex::Box& domain_box = geom->Domain();
+    const amrex::Box& domain_box = geom.Domain();
     const amrex::BoxArray array_box(domain_box);
     const amrex::DistributionMapping dm(array_box);
-    std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(*geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
-    amrex::MFiter mfi(array_box, dm, amrex::TilingIfNotGPUT());
+    std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
+    amrex::MultiFab multifab(array_box, dm, 1, 1); 
+
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandom*)nullptr,
         xmin, xmax, ymin, ymax, zmin, zmax)
@@ -430,7 +431,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 #endif
     parseFlux(pp_species);
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
-                                h_inj_mom, field_factory_ptr.get(), mfi);
+                                h_inj_mom, field_factory_ptr.get(), multifab);
 
     // iterate over the levs:
     // const amrex::EB2::Geometry& geo = indexSpace.getGeometry(**insert a box here**);
