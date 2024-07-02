@@ -260,7 +260,7 @@ struct InjectorMomentumSTLGaussianFlux
 private:
     amrex::Real u_m, u_th;
     amrex::EBFArrayBoxFactory* field_factory_ptr;
-    amrex::MultiFab a_multifab;
+    amrex::MultiFab multifab;
 };
 
 #endif
