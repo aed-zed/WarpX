@@ -258,7 +258,7 @@ struct InjectorMomentumSTLGaussianFlux
 
 private:
     amrex::Real u_m, u_th;
-    std::unique_ptr<amrex::EBFArrayBoxFactory>* field_factory_ptr;
+    amrex::EBFArrayBoxFactory* field_factory_ptr;
     amrex::MFIter& mfi;
 
     void noVectorFound(amrex::Real x, amrex::Real y, amrex::Real z) const {
@@ -661,7 +661,7 @@ struct InjectorMomentum
     // This constructor stores a InjectorMomentumSTLGaussianFlux in union object.
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
-                      std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
+                      amrex::EBFArrayBoxFactory* a_field_factory_ptr,
                       amrex::MFIter& a_mfi)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_field_factory_ptr, a_mfi)
@@ -875,7 +875,7 @@ private:
 #ifdef AMREX_USE_EB
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
-                std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
+                amrex::EBFArrayBoxFactory* a_field_factory_ptr,
                 amrex::MFIter& a_mfi) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_field_factory_ptr, a_mfi) {}
 #endif
