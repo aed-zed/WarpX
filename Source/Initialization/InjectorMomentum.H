@@ -189,8 +189,8 @@ struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
                                     amrex::EBFArrayBoxFactory* a_field_factory_ptr,
-                                    amrex::BoxArray* a_ba,
-                                    amrex::DistributionMapping* a_dm) noexcept
+                                    const amrex::BoxArray* a_ba,
+                                    const amrex::DistributionMapping* a_dm) noexcept
         : u_m(a_un_m), u_th(a_un_th), field_factory_ptr(a_field_factory_ptr), ba(a_ba), dm(a_dm)
     {
     }
@@ -261,8 +261,8 @@ struct InjectorMomentumSTLGaussianFlux
 private:
     amrex::Real u_m, u_th;
     amrex::EBFArrayBoxFactory* field_factory_ptr;
-    amrex::BoxArray* ba;
-    amrex::DistributionMapping* dm;
+    const amrex::BoxArray* ba;
+    const amrex::DistributionMapping* dm;
 };
 
 #endif
@@ -656,8 +656,8 @@ struct InjectorMomentum
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
                       amrex::EBFArrayBoxFactory* a_field_factory_ptr,
-                      amrex::BoxArray* a_ba,
-                      amrex::DistributionMapping* a_dm)
+                      const amrex::BoxArray* a_ba,
+                      const amrex::DistributionMapping* a_dm)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_field_factory_ptr, a_ba, a_dm)
     { }
@@ -871,8 +871,8 @@ private:
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
                 amrex::EBFArrayBoxFactory* a_field_factory_ptr,
-                amrex::BoxArray* a_ba,
-                amrex::DistributionMapping* a_dm) noexcept
+                const amrex::BoxArray* a_ba,
+                const amrex::DistributionMapping* a_dm) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_field_factory_ptr, a_ba, a_dm) {}
 #endif
         Object (InjectorMomentumUniform*,
