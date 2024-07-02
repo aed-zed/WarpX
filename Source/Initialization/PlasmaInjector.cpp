@@ -157,6 +157,8 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name,
         setupNRandomPerCell(pp_species);
     } else if (injection_style == "nfluxpercell") {
         setupNFluxPerCell(pp_species);
+    } else if (injection_style == "stlfluxpercell") {
+        setupNCLInjection(pp_species);
     } else if (injection_style == "nuniformpercell") {
         setupNuniformPerCell(pp_species);
     } else if (injection_style == "external_file") {
@@ -392,7 +394,7 @@ void PlasmaInjector::setupNFluxPerCell (amrex::ParmParse const& pp_species)
 }
 
 #ifdef AMREX_USE_EB
-void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
+void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 {
     utils::parser::getWithParser(pp_species, source_name, "num_particles_per_cell", num_particles_per_cell_real);
 #ifdef WARPX_DIM_RZ
@@ -432,29 +434,6 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
     parseFlux(pp_species);
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
                                 h_inj_mom, field_factory_ptr.get(), &array_box, &dm);
-
-    // iterate over the levs:
-    // const amrex::EB2::Geometry& geo = indexSpace.getGeometry(**insert a box here**);
-
-
-
-
- //        int max_guard = guard_cells.ng_FieldSolver.max();
-   //     m_field_factory[lev] = amrex::makeEBFabFactory(Geom(lev), ba, dm,
-     //                                                  {max_guard, max_guard, max_guard},
-       //                                                amrex::EBSupport::full);
-
-//DistributionMapping.H line 74
-  //          explicit DistributionMapping (const BoxArray& boxes,
-    //                              int nprocs = ParallelDescriptor::NProcs());
-
-
-//FabArrayBase.cpp --> line 1940
-  //      fact_crse_patch = makeEBFabFactory(index_space,
-    //                                       index_space->getGeometry(cdomain),
-      //                                     ba_crse_patch,
-        //                                   dm_patch,
-          //                                 {0,0,0}, EBSupport::basic);
 
 }
 #endif
