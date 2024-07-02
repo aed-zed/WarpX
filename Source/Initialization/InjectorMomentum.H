@@ -200,16 +200,14 @@ struct InjectorMomentumSTLGaussianFlux
     {
         using namespace amrex::literals;
 
-
-        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory&>(*field_factory_ptr);
-        amrex::BoxArray ba = field_factory.boxArray();
-        amrex::DistributionMapping dm = field_factory.DistributionMap();
+        amrex::BoxArray ba = field_factory->boxArray();
+        amrex::DistributionMapping dm = field_factory->DistributionMap();
         for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
                 continue;
             }
-            amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
+            amrex::MultiCutFab const& eb_bnd_normal = field_factory->getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
             amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
@@ -235,16 +233,14 @@ struct InjectorMomentumSTLGaussianFlux
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
 
-
-        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory&>(*field_factory_ptr);
-        amrex::BoxArray ba = field_factory.boxArray();
-        amrex::DistributionMapping dm = field_factory.DistributionMap();
+        amrex::BoxArray ba = field_factory->boxArray();
+        amrex::DistributionMapping dm = field_factory->DistributionMap();
         for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
                 continue;
             }
-            amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
+            amrex::MultiCutFab const& eb_bnd_normal = field_factory->getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
             amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
