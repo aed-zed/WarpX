@@ -207,7 +207,7 @@ struct InjectorMomentumSTLGaussianFlux
             }
 
             amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
-            amrex::MultiCutFab const& eb_bnd_normal = field_factory->getBndryNormal();
+            amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
             amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
@@ -240,7 +240,7 @@ struct InjectorMomentumSTLGaussianFlux
             }
 
             amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
-            amrex::MultiCutFab const& eb_bnd_normal = field_factory->getBndryNormal();
+            amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
             amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
