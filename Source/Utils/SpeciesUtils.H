@@ -64,7 +64,7 @@ namespace SpeciesUtils {
 #ifdef AMREX_USE_EB
     void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& style,
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
-        std::unique_ptr<amrex::EBFArrayBoxFactory>* field_factory_ptr,
+        amrex::EBFArrayBoxFactory* field_factory_ptr,
         amrex::MFiter& mfi);
 #ifdef AMREX_USE_EB
 
