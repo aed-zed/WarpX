@@ -201,7 +201,7 @@ struct InjectorMomentumSTLGaussianFlux
         using namespace amrex::literals;
 
 
-        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory &>(*field_factory_ptr);
+        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory>&(*field_factory_ptr);
         amrex::BoxArray ba = field_factory.boxArray();
         amrex::DistributionMapping dm = field_factory.DistributionMap();
         for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
@@ -236,7 +236,7 @@ struct InjectorMomentumSTLGaussianFlux
     {
 
 
-        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory &>(*field_factory_ptr);
+        amrex::EBFArrayBoxFactory & field_factory = static_cast<amrex::EBFArrayBoxFactory>&(*field_factory_ptr);
         amrex::BoxArray ba = field_factory.boxArray();
         amrex::DistributionMapping dm = field_factory.DistributionMap();
         for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
@@ -265,7 +265,7 @@ private:
     std::unique_ptr<amrex::EBFArrayBoxFactory>* field_factory_ptr;
     amrex::MFIter& mfi;
 
-    void noVectorFound(amrex::Real x, amrex::Real y, amrex::Real z) {
+    void noVectorFound(amrex::Real x, amrex::Real y, amrex::Real z) const {
         std::stringstream stringstream;
         stringstream << "the normal vector at coordinates (" << x << ", " << y << ", " << z << ") not found";
         std::string message = stringstream.str();
