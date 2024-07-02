@@ -393,9 +393,9 @@ void PlasmaInjector::setupNFluxPerCell (amrex::ParmParse const& pp_species)
                                 flux_normal_axis, flux_direction);
 }
 
-#ifdef AMREX_USE_EB
 void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 {
+#ifdef AMREX_USE_EB
     utils::parser::getWithParser(pp_species, source_name, "num_particles_per_cell", num_particles_per_cell_real);
 #ifdef WARPX_DIM_RZ
     if (WarpX::n_rz_azimuthal_modes > 1) {
@@ -434,9 +434,8 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     parseFlux(pp_species);
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
                                 h_inj_mom, field_factory_ptr.get(), &array_box, &dm);
-
-}
 #endif
+}
 
 
 void PlasmaInjector::setupNuniformPerCell (amrex::ParmParse const& pp_species)
