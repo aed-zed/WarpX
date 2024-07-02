@@ -431,10 +431,14 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 #else
     d_flux_pos = h_flux_pos.get();
 #endif
+#endif
     parseFlux(pp_species);
+
+#ifdef AMREX_USE_EB
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
                                 h_inj_mom, field_factory_ptr.get(), &array_box, &dm);
 #endif
+
 }
 
 
