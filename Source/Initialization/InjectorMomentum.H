@@ -223,10 +223,10 @@ struct InjectorMomentumSTLGaussianFlux
             return amrex::XDim3{ux, uy, uz};
         }
 
+        std::stringstream stringstream;
         stringstream << "the normal vector at coordinates (" << x << ", " << y << ", " << z << ") not found";
         std::string message = stringstream.str();
         throw std::runtime_error(message);
-
     }
 
     [[nodiscard]]
@@ -255,6 +255,7 @@ struct InjectorMomentumSTLGaussianFlux
             return amrex::XDim3{ux, uy, uz};
         }
 
+        std::stringstream stringstream;
         stringstream << "the normal vector at coordinates (" << x << ", " << y << ", " << z << ") not found";
         std::string message = stringstream.str();
         throw std::runtime_error(message);
