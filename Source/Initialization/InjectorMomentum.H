@@ -16,8 +16,7 @@
 #include "Utils/TextMsg.H"
 #include "Utils/WarpXConst.H"
 
-
-
+#ifdef AMREX_USE_EB
 #include <AMReX_Array.H>
 #include <AMReX_Array4.H>
 #include <AMReX_BLProfiler.H>
@@ -37,15 +36,17 @@
 #include <AMReX_iMultiFab.H>
 #include <AMReX_SPACE.H>
 #include <AMReX_Vector.H>
+#endif
+
+
+
 #include <AMReX.H>
 #include <AMReX_Config.H>
 #include <AMReX_Dim3.H>
 #include <AMReX_GpuQualifiers.H>
 #include <AMReX_REAL.H>
-#include <AMReX_EB_FArrayBox.H>
 #include <AMReX_Parser.H>
 #include <AMReX_Random.H>
-#include <memory>
 
 #include <AMReX_BaseFwd.H>
 
@@ -178,6 +179,7 @@ private:
     int m_flux_direction;
 };
 
+#ifdef AMREX_USE_EB
 
 // struct whose getMomentum returns momentum for 1 particle, from random
 // gaussian flux distribution in the specified direction.
@@ -256,6 +258,8 @@ private:
     std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr;
     amrex::MFIter& a_mfi;
 };
+
+#endif 
 
 // struct whose getMomentum returns momentum for 1 particle, from random
 // uniform distribution u_min < u < u_max
