@@ -200,7 +200,7 @@ struct InjectorMomentumSTLGaussianFlux
     {
         using namespace amrex::literals;
 
-        for (mfi; mfi.isValid(); ++mfi) {
+        for (; mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
                 continue;
@@ -217,9 +217,9 @@ struct InjectorMomentumSTLGaussianFlux
             amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
             // add a variable that determines if it should go inwards or outwards (default is inwards)
 
-            amrex::Real const ux = m_i * u_m;
-            amrex::Real const uy = m_j * u_m;
-            amrex::Real const uz = m_k * u_m;
+            amrex::Real const ux = m_i * u;
+            amrex::Real const uy = m_j * u;
+            amrex::Real const uz = m_k * u;
             return amrex::XDim3{ux, uy, uz};
         }
 
@@ -233,7 +233,7 @@ struct InjectorMomentumSTLGaussianFlux
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
 
-        for (mfi; mfi.isValid(); ++mfi) {
+        for (; mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
                 continue;
