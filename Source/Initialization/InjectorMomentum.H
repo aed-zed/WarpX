@@ -223,7 +223,7 @@ struct InjectorMomentumSTLGaussianFlux
             return amrex::XDim3{ux, uy, uz};
         }
 
-        return amrex::XDim3(); 
+        return amrex::XDim3();
     }
 
     [[nodiscard]]
@@ -252,7 +252,7 @@ struct InjectorMomentumSTLGaussianFlux
             return amrex::XDim3{ux, uy, uz};
         }
 
-        return amrex::XDim3(); 
+        return amrex::XDim3();
     }
 
 private:
