@@ -201,9 +201,9 @@ struct InjectorMomentumSTLGaussianFlux
         using namespace amrex::literals;
 
 
-        amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
+        const amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;        
         amrex::BoxArray ba = field_factory.boxArray();
-        amrex::DistributionMap dm = field_factory.DistributionMap();
+        amrex::DistributionMapping dm = field_factory.DistributionMap();
         for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
@@ -212,9 +212,9 @@ struct InjectorMomentumSTLGaussianFlux
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
-            int const m_i = eb_bnd_normal_arr(x,y,z,0);
-            int const m_j = eb_bnd_normal_arr(x,y,z,1);
-            int const m_k = eb_bnd_normal_arr(x,y,z,2);
+            amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
+            amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
+            amrex::Real m_k = eb_bnd_normal_arr(x,y,z,2);
 
             amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
             // add a variable that determines if it should go inwards or outwards (default is inwards)
@@ -234,9 +234,9 @@ struct InjectorMomentumSTLGaussianFlux
     {
 
 
-        amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
+        const amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
         amrex::BoxArray ba = field_factory.boxArray();
-        amrex::DistributionMap dm = field_factory.DistributionMap();
+        amrex::DistributionMapping dm = field_factory.DistributionMap();
         for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
@@ -245,9 +245,9 @@ struct InjectorMomentumSTLGaussianFlux
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
-            int const m_i = eb_bnd_normal_arr(x,y,z,0);
-            int const m_j = eb_bnd_normal_arr(x,y,z,1);
-            int const m_k = eb_bnd_normal_arr(x,y,z,2);
+            amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
+            amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
+            amrex::Real m_k = eb_bnd_normal_arr(x,y,z,2);
 
             amrex::Real const ux = m_i * u_m;
             amrex::Real const uy = m_j * u_m;
