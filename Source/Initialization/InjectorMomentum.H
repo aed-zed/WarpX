@@ -201,7 +201,7 @@ struct InjectorMomentumSTLGaussianFlux
         using namespace amrex::literals;
 
 
-        const amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;        
+        const amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
         amrex::BoxArray ba = field_factory.boxArray();
         amrex::DistributionMapping dm = field_factory.DistributionMap();
         for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
