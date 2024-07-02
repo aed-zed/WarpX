@@ -729,7 +729,7 @@ struct InjectorMomentum
         case Type::gaussianflux:
         {
             return object.gaussianflux.getMomentum(x,y,z,engine);
-        } 
+        }
 #ifdef AMREX_USE_EB
         case Type::stlgaussianflux:
         {
@@ -823,18 +823,18 @@ struct InjectorMomentum
         }
     }
 
-    enum struct Type { 
-        constant, 
-        gaussian, 
-        gaussianflux, 
+    enum struct Type {
+        constant,
+        gaussian,
+        gaussianflux,
 #ifdef AMREX_USE_EB
         stlgaussianflux,
-#endif 
+#endif
         uniform,
-        boltzmann, 
-        juttner, 
-        radial_expansion, 
-        parser, 
+        boltzmann,
+        juttner,
+        radial_expansion,
+        parser,
         gaussianparser
     };
     Type type;
