@@ -412,7 +412,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
     int const lev = 0;
     amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
-    const amrex::Geometry>& geom = indexSpace.getGeometry(lev);
+    const amrex::Geometry& geom = indexSpace.getGeometry(lev);
     const amrex::Box& domain_box = geom->Domain();
     const amrex::BoxArray array_box(domain_box);
     const amrex::DistributionMapping dm(array_box);
@@ -428,7 +428,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 #else
     d_flux_pos = h_flux_pos.get();
 #endif
-    parseFlux(pp_species)
+    parseFlux(pp_species); 
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
                                 h_inj_mom, field_factory_ptr.get(), mfi);
 
