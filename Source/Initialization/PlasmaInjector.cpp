@@ -158,7 +158,7 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name,
     } else if (injection_style == "nfluxpercell") {
         setupNFluxPerCell(pp_species);
     } else if (injection_style == "stlfluxpercell") {
-        setupNCLInjection(pp_species);
+        setupSTLFluxInjection(pp_species);
     } else if (injection_style == "nuniformpercell") {
         setupNuniformPerCell(pp_species);
     } else if (injection_style == "external_file") {
