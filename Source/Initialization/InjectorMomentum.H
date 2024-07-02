@@ -180,14 +180,13 @@ private:
 };
 
 #ifdef AMREX_USE_EB
-
 // struct whose getMomentum returns momentum for 1 particle, from random
 // gaussian flux distribution in the specified direction.
 // Direction is determined by stl file plane.
 struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
-                                    std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr,
+                                    std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
                                     amrex::MFIter& a_mfi) noexcept
         : u_m(a_un_m), u_th(a_un_th), field_factory_ptr(a_field_factory_ptr), mfi(a_mfi)
     {
@@ -206,7 +205,7 @@ struct InjectorMomentumSTLGaussianFlux
             if box.contains(x, y, z)! {
                 continue;
             }
-            amrex::EB2::EBFArrayBoxFactory field_factory = &field_factory_ptr;
+            amrex::EBFArrayBoxFactory field_factory = &field_factory_ptr;
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
@@ -237,7 +236,7 @@ struct InjectorMomentumSTLGaussianFlux
             if box.contains(x, y, z)! {
                 continue;
             }
-            amrex::EB2::EBFArrayBoxFactory field_factory = &field_factory_ptr;
+            amrex::EBFArrayBoxFactory field_factory = &field_factory_ptr;
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
@@ -255,7 +254,7 @@ struct InjectorMomentumSTLGaussianFlux
 
 private:
     amrex::Real u_m, u_th;
-    std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr;
+    std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr;
     amrex::MFIter& a_mfi;
 };
 
@@ -645,6 +644,7 @@ struct InjectorMomentum
           object(t,a_ux_m,a_uy_m,a_uz_m,a_ux_th,a_uy_th,a_uz_th)
     { }
 
+#ifdef AMREX_USE_EB
     // This constructor stores a InjectorMomentumSTLGaussianFlux in union object.
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
@@ -653,6 +653,7 @@ struct InjectorMomentum
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_field_factory_ptr, a_mfi)
     { }
+#endif
 
     // This constructor stores a InjectorMomentumGaussianFlux in union object.
     InjectorMomentum (InjectorMomentumGaussianFlux* t,
@@ -788,7 +789,11 @@ struct InjectorMomentum
         }
         case Type::stlgaussianflux:
         {
+#ifdef AMREX_USE_EB
             return object.stlgaussianflux.getBulkMomentum(x,y,z);
+#else
+            throw std::runtime_error("AMREX_USE_EB is not defined, cannot proceed with stlgaussianflux.");
+#endif
         }
         case Type::uniform:
         {
@@ -841,11 +846,13 @@ private:
                 amrex::Real a_uy_th, amrex::Real a_uz_th,
                 int a_flux_normal_axis, int a_flux_direction) noexcept
             : gaussianflux(a_ux_m,a_uy_m,a_uz_m,a_ux_th,a_uy_th,a_uz_th,a_flux_normal_axis,a_flux_direction) {}
+#ifdef AMREX_USE_EB
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
                 std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr,
                 amrex::MFIter& a_mfi) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_i, a_j, a_k) {}
+#endif
         Object (InjectorMomentumUniform*,
                 amrex::Real a_ux_min, amrex::Real a_uy_min,
                 amrex::Real a_uz_min, amrex::Real a_ux_max,
