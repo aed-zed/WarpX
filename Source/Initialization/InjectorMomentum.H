@@ -196,7 +196,7 @@ struct InjectorMomentumSTLGaussianFlux
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
-                 amrex::RandomEngine const& engine) const
+                 amrex::RandomEngine const& engine) const noexcept
     {
         using namespace amrex::literals;
 
@@ -223,16 +223,13 @@ struct InjectorMomentumSTLGaussianFlux
             return amrex::XDim3{ux, uy, uz};
         }
 
-        std::stringstream stringstream;
-        stringstream << "the normal vector at coordinates (" << x << ", " << y << ", " << z << ") not found";
-        std::string message = stringstream.str();
-        throw std::runtime_error(message);
+        return amrex::XDim3(); 
     }
 
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const
+    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
 
         for (; mfi.isValid(); ++mfi) {
@@ -255,10 +252,7 @@ struct InjectorMomentumSTLGaussianFlux
             return amrex::XDim3{ux, uy, uz};
         }
 
-        std::stringstream stringstream;
-        stringstream << "the normal vector at coordinates (" << x << ", " << y << ", " << z << ") not found";
-        std::string message = stringstream.str();
-        throw std::runtime_error(message);
+        return amrex::XDim3(); 
     }
 
 private:
