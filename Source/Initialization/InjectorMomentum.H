@@ -201,12 +201,12 @@ struct InjectorMomentumSTLGaussianFlux
         using namespace amrex::literals;
 
 
-        amrex::EBFArrayBoxFactory field_factory = *field_factory_ptr;
+        amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
         amrex::BoxArray ba = field_factory.boxArray();
-        amrex::DistributionMapping dm = field_factory.DistributionMapping();
-        for (amrex::MFIter mfi(ba, dm, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        amrex::DistributionMap dm = field_factory.DistributionMap();
+        for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
-            if (box.contains(x, y, z))! {
+            if (!box.contains(x, y, z)) {
                 continue;
             }
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
@@ -234,12 +234,14 @@ struct InjectorMomentumSTLGaussianFlux
     {
 
 
-        for (amrex::MFIter mfi(Ex, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
+        amrex::BoxArray ba = field_factory.boxArray();
+        amrex::DistributionMap dm = field_factory.DistributionMap();
+        for (amrex::MFIter mfi(ba, dm, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
-            if (box.contains(x, y, z))! {
+            if (!box.contains(x, y, z)) {
                 continue;
             }
-            amrex::EBFArrayBoxFactory field_factory = &field_factory_ptr;
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
@@ -651,7 +653,7 @@ struct InjectorMomentum
     // This constructor stores a InjectorMomentumSTLGaussianFlux in union object.
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
-                      std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr,
+                      std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
                       amrex::MFIter& a_mfi)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_field_factory_ptr, a_mfi)
@@ -865,7 +867,7 @@ private:
 #ifdef AMREX_USE_EB
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
-                std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr,
+                std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
                 amrex::MFIter& a_mfi) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_field_factory_ptr, a_mfi) {}
 #endif
