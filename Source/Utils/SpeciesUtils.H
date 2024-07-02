@@ -7,6 +7,30 @@
 #ifndef WARPX_SPECIES_UTILS_H_
 #define WARPX_SPECIES_UTILS_H_
 
+
+#ifdef AMREX_USE_EB
+#include <AMReX_Array.H>
+#include <AMReX_Array4.H>
+#include <AMReX_BLProfiler.H>
+#include <AMReX_Box.H>
+#include <AMReX_BoxArray.H>
+#include <AMReX_BoxList.H>
+#include <AMReX_EB2.H>
+#include <AMReX_EB_utils.H>
+#include <AMReX_FabArray.H>
+#include <AMReX_FabFactory.H>
+#include <AMReX_GpuControl.H>
+#include <AMReX_GpuQualifiers.H>
+#include <AMReX_IntVect.H>
+#include <AMReX_Loop.H>
+#include <AMReX_MFIter.H>
+#include <AMReX_MultiFab.H>
+#include <AMReX_iMultiFab.H>
+#include <AMReX_SPACE.H>
+#include <AMReX_Vector.H>
+#endif
+
+
 #include <AMReX_REAL.H>
 #include "Initialization/InjectorDensity.H"
 #include "Initialization/InjectorMomentum.H"
@@ -37,10 +61,13 @@ namespace SpeciesUtils {
         std::unique_ptr<VelocityProperties>& h_mom_vel,
         int flux_normal_axis=0, int flux_direction=0);
 
+#ifdef AMREX_USE_EB
     void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& style,
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
         std::unique_ptr<amrex::EBFArrayBoxFactory>* field_factory_ptr,
         amrex::MFiter& mfi);
+#ifdef AMREX_USE_EB
+
 
 }
 

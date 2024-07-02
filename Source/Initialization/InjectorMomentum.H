@@ -729,11 +729,13 @@ struct InjectorMomentum
         case Type::gaussianflux:
         {
             return object.gaussianflux.getMomentum(x,y,z,engine);
-        }
+        } 
+#ifdef AMREX_USE_EB
         case Type::stlgaussianflux:
         {
             return object.stlgaussianflux.getMomentum(x,y,z,engine);
         }
+#endif
         case Type::uniform:
         {
             return object.uniform.getMomentum(x,y,z,engine);
@@ -787,14 +789,12 @@ struct InjectorMomentum
         {
             return object.gaussianflux.getBulkMomentum(x,y,z);
         }
+#ifdef AMREX_USE_EB
         case Type::stlgaussianflux:
         {
-#ifdef AMREX_USE_EB
             return object.stlgaussianflux.getBulkMomentum(x,y,z);
-#else
-            throw std::runtime_error("AMREX_USE_EB is not defined, cannot proceed with stlgaussianflux.");
-#endif
         }
+#endif
         case Type::uniform:
         {
             return object.uniform.getBulkMomentum(x,y,z);
@@ -823,7 +823,20 @@ struct InjectorMomentum
         }
     }
 
-    enum struct Type { constant, gaussian, gaussianflux, stlgaussianflux, uniform, boltzmann, juttner, radial_expansion, parser, gaussianparser };
+    enum struct Type { 
+        constant, 
+        gaussian, 
+        gaussianflux, 
+#ifdef AMREX_USE_EB
+        stlgaussianflux,
+#endif 
+        uniform,
+        boltzmann, 
+        juttner, 
+        radial_expansion, 
+        parser, 
+        gaussianparser
+    };
     Type type;
 
 private:
