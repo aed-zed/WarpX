@@ -52,6 +52,8 @@
 
 #include <cmath>
 #include <string>
+#include <memory>
+
 
 // struct whose getMomentum returns constant momentum.
 struct InjectorMomentumConstant
