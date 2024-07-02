@@ -267,7 +267,7 @@ private:
 
     void noVectorFound(amrex::Real x, amrex::Real y, amrex::Real z) {
         std::stringstream stringstream;
-        stringstream << "the normal vector at coordinates (" << x << ", " y << ", " z << ") not found";
+        stringstream << "the normal vector at coordinates (" << x << ", " << y << ", " << z << ") not found";
         std::string message = stringstream.str();
         WARPX_ABORT_WITH_MESSAGE(message);
     }
