@@ -431,7 +431,7 @@ void PlasmaInjector::setupNCLInjection (amrex::ParmParse const& pp_species)
 #endif
     parseFlux(pp_species);
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
-                                h_inj_mom, field_factory_ptr.get(), multifab);
+                                h_inj_mom, field_factory_ptr.get(), &multifab);
 
     // iterate over the levs:
     // const amrex::EB2::Geometry& geo = indexSpace.getGeometry(**insert a box here**);

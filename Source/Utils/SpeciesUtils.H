@@ -65,7 +65,7 @@ namespace SpeciesUtils {
     void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& style,
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
         amrex::EBFArrayBoxFactory* field_factory_ptr,
-        amrex::MultiFab multifab);
+        amrex::MultiFab* multifab);
 #endif
 
 
