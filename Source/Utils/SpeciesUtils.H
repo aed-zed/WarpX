@@ -66,7 +66,7 @@ namespace SpeciesUtils {
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
         amrex::EBFArrayBoxFactory* field_factory_ptr,
         amrex::MFiter& mfi);
-#ifdef AMREX_USE_EB
+#endif
 
 
 }
