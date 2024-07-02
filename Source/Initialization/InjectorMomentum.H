@@ -21,6 +21,7 @@
 #include <AMReX_Dim3.H>
 #include <AMReX_GpuQualifiers.H>
 #include <AMReX_REAL.H>
+#include <AMReX_MFIter.H>
 #include <AMReX_Parser.H>
 #include <AMReX_Random.H>
 
@@ -162,8 +163,8 @@ private:
 struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
-                                    std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
-                                    amrex::MFiter& a_mfi) noexcept
+                                    std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr,
+                                    amrex::MFIter& a_mfi) noexcept
         : u_m(a_un_m), u_th(a_un_th), field_factory_ptr(a_field_factory_ptr), mfi(a_mfi)
     {
     }
@@ -181,7 +182,7 @@ struct InjectorMomentumSTLGaussianFlux
             if box.contains(x, y, z)! {
                 continue;
             }
-            amrex::EBFArrayBoxFactory field_factory = &field_factory_ptr;
+            amrex::EB2::EBFArrayBoxFactory field_factory = &field_factory_ptr;
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
@@ -212,7 +213,7 @@ struct InjectorMomentumSTLGaussianFlux
             if box.contains(x, y, z)! {
                 continue;
             }
-            amrex::EBFArrayBoxFactory field_factory = &field_factory_ptr;
+            amrex::EB2::EBFArrayBoxFactory field_factory = &field_factory_ptr;
             amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
             const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
 
@@ -230,8 +231,8 @@ struct InjectorMomentumSTLGaussianFlux
 
 private:
     amrex::Real u_m, u_th;
-    std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr;
-    amrex::MFiter& a_mfi;
+    std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr;
+    amrex::MFIter& a_mfi;
 };
 
 // struct whose getMomentum returns momentum for 1 particle, from random
@@ -621,8 +622,8 @@ struct InjectorMomentum
     // This constructor stores a InjectorMomentumSTLGaussianFlux in union object.
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
-                      std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
-                      amrex::MFiter& a_mfi)
+                      std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr,
+                      amrex::MFIter& a_mfi)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_field_factory_ptr, a_mfi)
     { }
@@ -816,8 +817,8 @@ private:
             : gaussianflux(a_ux_m,a_uy_m,a_uz_m,a_ux_th,a_uy_th,a_uz_th,a_flux_normal_axis,a_flux_direction) {}
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
-                std::unique_ptr<amrex::EBFArrayBoxFactory>* a_field_factory_ptr,
-                amrex::MFiter& a_mfi) noexcept
+                std::unique_ptr<amrex::EB2::EBFArrayBoxFactory>* a_field_factory_ptr,
+                amrex::MFIter& a_mfi) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_i, a_j, a_k) {}
         Object (InjectorMomentumUniform*,
                 amrex::Real a_ux_min, amrex::Real a_uy_min,
