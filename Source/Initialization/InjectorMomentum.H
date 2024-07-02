@@ -16,18 +16,36 @@
 #include "Utils/TextMsg.H"
 #include "Utils/WarpXConst.H"
 
+
+
+#include <AMReX_Array.H>
+#include <AMReX_Array4.H>
+#include <AMReX_BLProfiler.H>
+#include <AMReX_Box.H>
+#include <AMReX_BoxArray.H>
+#include <AMReX_BoxList.H>
+#include <AMReX_EB2.H>
+#include <AMReX_EB_utils.H>
+#include <AMReX_FabArray.H>
+#include <AMReX_FabFactory.H>
+#include <AMReX_GpuControl.H>
+#include <AMReX_GpuQualifiers.H>
+#include <AMReX_IntVect.H>
+#include <AMReX_Loop.H>
+#include <AMReX_MFIter.H>
+#include <AMReX_MultiFab.H>
+#include <AMReX_iMultiFab.H>
+#include <AMReX_SPACE.H>
+#include <AMReX_Vector.H>
 #include <AMReX.H>
 #include <AMReX_Config.H>
 #include <AMReX_Dim3.H>
 #include <AMReX_GpuQualifiers.H>
 #include <AMReX_REAL.H>
-#include <AMReX_MFIter.H>
-#include <AMReX_EB2.H>
 #include <AMReX_EB_FArrayBox.H>
 #include <AMReX_Parser.H>
 #include <AMReX_Random.H>
 #include <memory>
-
 
 #include <AMReX_BaseFwd.H>
 
