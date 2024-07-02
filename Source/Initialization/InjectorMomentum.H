@@ -223,7 +223,9 @@ struct InjectorMomentumSTLGaussianFlux
             return amrex::XDim3{ux, uy, uz};
         }
 
-        noVectorFound(x, y, z);
+        stringstream << "the normal vector at coordinates (" << x << ", " << y << ", " << z << ") not found";
+        std::string message = stringstream.str();
+        throw std::runtime_error(message);
 
     }
 
@@ -253,21 +255,15 @@ struct InjectorMomentumSTLGaussianFlux
             return amrex::XDim3{ux, uy, uz};
         }
 
-        noVectorFound(x, y, z);
+        stringstream << "the normal vector at coordinates (" << x << ", " << y << ", " << z << ") not found";
+        std::string message = stringstream.str();
+        throw std::runtime_error(message);
     }
 
 private:
     amrex::Real u_m, u_th;
     amrex::EBFArrayBoxFactory* field_factory_ptr;
     amrex::MFIter& mfi;
-
-    void noVectorFound(amrex::Real x, amrex::Real y, amrex::Real z) const {
-        std::stringstream stringstream;
-        stringstream << "the normal vector at coordinates (" << x << ", " << y << ", " << z << ") not found";
-        std::string message = stringstream.str();
-        WARPX_ABORT_WITH_MESSAGE(message);
-    }
-
 
 };
 
