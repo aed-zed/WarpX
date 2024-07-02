@@ -22,8 +22,12 @@
 #include <AMReX_GpuQualifiers.H>
 #include <AMReX_REAL.H>
 #include <AMReX_MFIter.H>
+#include <AMReX_EB2.H>
+#include <AMReX_EB_FArrayBox.H>
 #include <AMReX_Parser.H>
 #include <AMReX_Random.H>
+#include <memory>
+
 
 #include <AMReX_BaseFwd.H>
 
@@ -177,7 +181,7 @@ struct InjectorMomentumSTLGaussianFlux
     {
         using namespace amrex::literals;
 
-        for (amrex::MFIter mfi(Ex, TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+        for (amrex::MFIter mfi(Ex, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if box.contains(x, y, z)! {
                 continue;
@@ -193,9 +197,9 @@ struct InjectorMomentumSTLGaussianFlux
             amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
             // add a variable that determines if it should go inwards or outwards (default is inwards)
 
-            amrex::Real const ux = m_i * u;
-            amrex::Real const uy = m_j * u;
-            amrex::Real const uz = m_k * u;
+            amrex::Real const ux = m_i * u_m;
+            amrex::Real const uy = m_j * u_m;
+            amrex::Real const uz = m_k * u_m;
             return amrex::XDim3{ux, uy, uz};
 
         }
@@ -221,9 +225,9 @@ struct InjectorMomentumSTLGaussianFlux
             int const m_j = eb_bnd_normal_arr(x,y,z,1);
             int const m_k = eb_bnd_normal_arr(x,y,z,2);
 
-            amrex::Real const ux = m_i * u;
-            amrex::Real const uy = m_j * u;
-            amrex::Real const uz = m_k * u;
+            amrex::Real const ux = m_i * u_m;
+            amrex::Real const uy = m_j * u_m;
+            amrex::Real const uz = m_k * u_m;
             return amrex::XDim3{ux, uy, uz};
 
         }
