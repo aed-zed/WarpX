@@ -196,7 +196,7 @@ struct InjectorMomentumSTLGaussianFlux
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
-                 amrex::RandomEngine const& engine) const noexcept
+                 amrex::RandomEngine const& engine) const
     {
         using namespace amrex::literals;
 
@@ -232,7 +232,7 @@ struct InjectorMomentumSTLGaussianFlux
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
+    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const
     {
 
         for (; mfi.isValid(); ++mfi) {
