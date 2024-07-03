@@ -203,10 +203,6 @@ struct InjectorMomentumSTLGaussianFlux
     {
         using namespace amrex::literals;
 
-// Loop over boxes
-#ifdef AMREX_USE_OMP
-#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
-#endif
         for (amrex::MFIter mfi(*ba, *dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
@@ -241,10 +237,6 @@ struct InjectorMomentumSTLGaussianFlux
 
         using namespace amrex::literals;
 
-// Loop over boxes
-#ifdef AMREX_USE_OMP
-#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
-#endif
         for (amrex::MFIter mfi(*ba, *dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
             const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
             if (!box.contains(x, y, z)) {
