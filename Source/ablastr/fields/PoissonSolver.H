@@ -58,7 +58,7 @@
 
 namespace ablastr::fields {
 
-// all side effects other than rho should happen 
+// all side effects other than rho should happen
 
 /** Compute the potential `phi` by solving the Poisson equation
  *
@@ -261,7 +261,7 @@ std::tuple<amrex::Real, int> computePhi (amrex::Vector<amrex::MultiFab*> const &
 
         // Solve Poisson equation at lev, get the residual and iteration values
         // set defaults to -1
-        if (!poisson_skipped) {   
+        if (!poisson_skipped) {
             composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
             poisson_iter = mlmg.getPoissonIters();
 
