@@ -378,7 +378,7 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
         this->ref_ratio,
         post_phi_calculation,
         gett_new(0),
-        eb_farray_box_factory,
+        eb_farray_box_factory
     );
 
     if (!poisson_skipped) {
