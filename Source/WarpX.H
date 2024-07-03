@@ -1283,11 +1283,11 @@ private:
      * Depending on the input skip_poisson_calc, the calculation of the poisson equation
      * will be skipped.
     */
-    int poisson_counter = -1;
+    mutable int poisson_counter = -1;
     mutable int poisson_skips = 1; 
     mutable amrex::Real poisson_residual = amrex::Real(0.0);
     mutable int poisson_iters = 0; 
-    bool poisson_skipped = false;
+    mutable bool poisson_skipped = false;
 
     /**
      * \brief
