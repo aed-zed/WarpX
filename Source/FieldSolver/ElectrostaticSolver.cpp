@@ -68,13 +68,6 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
             }
         }
     }
-    poisson_counter += 1;
-    if ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) {
-        poisson_skipped = true;
-        return; 
-    }
-    poisson_skipped = false;
-    poisson_counter = 0;
 
     if (electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrame ||
         electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrameElectroMagnetostatic) {
@@ -356,6 +349,16 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
 #endif
     bool const is_solver_multigrid =
         WarpX::poisson_solver_id != PoissonSolverAlgo::IntegratedGreenFunction;
+
+    poisson_counter += 1;
+    if ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) {
+        poisson_skipped = true;
+    }
+    else {
+        poisson_skipped = false;
+        poisson_counter = 0;
+    }
+
     // create duplicate computePhi skip --> do computePhi but get rid of solve step 
     std::tuple<amrex::Real, int> resid_n_iters = ablastr::fields::computePhi(
         sorted_rho,
@@ -374,20 +377,24 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
         this->ref_ratio,
         post_phi_calculation,
         gett_new(0),
-        eb_farray_box_factory
+        eb_farray_box_factory,
+        poisson_skipped
     );
 
-    poisson_residual = std::get<0>(resid_n_iters);
-    poisson_iters = std::get<1>(resid_n_iters);
+    if (!poisson_skipped) {
+        poisson_residual = std::get<0>(resid_n_iters);
+        poisson_iters = std::get<1>(resid_n_iters);
 
-    if ((poisson_iters <= self_fields_poisson_iters) || (poisson_residual < self_fields_resid_val)) {
-        if (poisson_skips < self_fields_max_skips) {
-            poisson_skips *= 2;
+        if ((poisson_iters <= self_fields_poisson_iters) || (poisson_residual < self_fields_resid_val)) {
+            if (poisson_skips < self_fields_max_skips) {
+                poisson_skips *= 2;
+            }
+        }
+        else if (poisson_skips > 1) {
+            poisson_skips /= 2;
         }
     }
-    else if (poisson_skips > 1) {
-        poisson_skips /= 2;
-    }
+
 }
 
 /* \brief Set Dirichlet boundary conditions for the electrostatic solver.
