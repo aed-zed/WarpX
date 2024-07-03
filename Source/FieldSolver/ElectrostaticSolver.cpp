@@ -361,6 +361,7 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
 
     // create duplicate computePhi skip --> do computePhi but get rid of solve step 
     std::tuple<amrex::Real, int> resid_n_iters = ablastr::fields::computePhi(
+        poisson_skipped,
         sorted_rho,
         sorted_phi,
         beta,
@@ -378,7 +379,6 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
         post_phi_calculation,
         gett_new(0),
         eb_farray_box_factory,
-        poisson_skipped
     );
 
     if (!poisson_skipped) {
