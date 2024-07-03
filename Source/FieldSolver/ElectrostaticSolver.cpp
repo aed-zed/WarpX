@@ -356,6 +356,7 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
 #endif
     bool const is_solver_multigrid =
         WarpX::poisson_solver_id != PoissonSolverAlgo::IntegratedGreenFunction;
+    // create duplicate computePhi skip --> do computePhi but get rid of solve step 
     std::tuple<amrex::Real, int> resid_n_iters = ablastr::fields::computePhi(
         sorted_rho,
         sorted_phi,
