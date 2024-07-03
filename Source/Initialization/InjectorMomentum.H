@@ -240,7 +240,7 @@ struct InjectorMomentumSTLGaussianFlux
     {
 
         using namespace amrex::literals;
-    
+
 // Loop over boxes
 #ifdef AMREX_USE_OMP
 #pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
