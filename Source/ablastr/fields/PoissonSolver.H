@@ -58,7 +58,7 @@
 
 namespace ablastr::fields {
 
-    std::unique_ptr<amrex::MLMG> mlmg_ptr = nullptr;   
+    std::unique_ptr<amrex::MLMG> mlmg_ptr = nullptr;
 
 // all side effects other than rho should happen
 
@@ -263,8 +263,8 @@ std::tuple<amrex::Real, int> computePhi (
         linop.setRZ(true);
 #endif
 
-        if !(mlmg_ptr && poisson_skipped) { 
-            mlmg_ptr = std::make_unique<amrex::MLMG>(linop); 
+        if !(mlmg_ptr && poisson_skipped) {
+            mlmg_ptr = std::make_unique<amrex::MLMG>(linop);
             mlmg_ptr->setVerbose(verbosity);
             mlmg_ptr->setMaxIter(max_iters);
             mlmg_ptr->setAlwaysUseBNorm(always_use_bnorm);
