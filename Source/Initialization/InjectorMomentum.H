@@ -190,7 +190,7 @@ struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
                                     const amrex::Vector<amrex::Box>* a_ba,
-                                    const amrex::Vector<const amrex::Array4<const amrex::Real>>* a_arrays) noexcept
+                                    amrex::Vector<const amrex::Array4<const amrex::Real>>* a_arrays) noexcept
         : u_m(a_un_m), u_th(a_un_th), ba(a_ba), arrays(a_arrays)
     {
     }
@@ -248,7 +248,7 @@ struct InjectorMomentumSTLGaussianFlux
 private:
     amrex::Real u_m, u_th;
     const amrex::Vector<amrex::Box>* ba;
-    const amrex::Vector<const amrex::Array4<const amrex::Real>>* arrays;
+    amrex::Vector<const amrex::Array4<const amrex::Real>>* arrays;
 };
 
 #endif
@@ -642,7 +642,7 @@ struct InjectorMomentum
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
                       const amrex::Vector<amrex::Box>* a_ba,
-                      const amrex::Vector<const amrex::Array4<const amrex::Real>>* a_arrays)
+                      amrex::Vector<const amrex::Array4<const amrex::Real>>* a_arrays)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_ba, a_arrays)
     { }
@@ -856,7 +856,7 @@ private:
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
                 const amrex::Vector<amrex::Box>* a_ba,
-                const amrex::Vector<const amrex::Array4<const amrex::Real>>* a_arrays) noexcept
+                amrex::Vector<const amrex::Array4<const amrex::Real>>* a_arrays) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_ba, a_arrays) {}
 #endif
         Object (InjectorMomentumUniform*,
