@@ -201,8 +201,6 @@ struct InjectorMomentumSTLGaussianFlux
         calcMomentum (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
     {
 
-        using namespace amrex::literals;
-
         // how can i use x y z given that ba and array:4 have to take in integers
         int int_x = amrex::Math::round(x);
         int int_y = amrex::Math::round(y);
@@ -235,7 +233,6 @@ struct InjectorMomentumSTLGaussianFlux
     {
         amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
         return calcMomentum(x, y, z, enginer, u);
-        using namespace amrex::literals;
     }
 
     [[nodiscard]]
