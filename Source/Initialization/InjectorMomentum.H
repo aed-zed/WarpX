@@ -190,7 +190,7 @@ struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
                                     const amrex::Vector<amrex::Box>* a_ba,
-                                    amrex::Vector<const amrex::Array4<const amrex::Real>>* a_arrays) noexcept
+                                    amrex::Vector<amrex::Array4<const amrex::Real>>* a_arrays) noexcept
         : u_m(a_un_m), u_th(a_un_th), ba(a_ba), arrays(a_arrays)
     {
     }
@@ -211,7 +211,7 @@ struct InjectorMomentumSTLGaussianFlux
         for (int i = 0; i < ba->size(); ++i) {
 
             if ((*ba)[i].contains(int_x, int_y, int_z)) {
-                const amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = (*arrays)[i];
+                amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = (*arrays)[i];
 
                 amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
                 amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
@@ -248,7 +248,7 @@ struct InjectorMomentumSTLGaussianFlux
 private:
     amrex::Real u_m, u_th;
     const amrex::Vector<amrex::Box>* ba;
-    amrex::Vector<const amrex::Array4<const amrex::Real>>* arrays;
+    amrex::Vector<amrex::Array4<const amrex::Real>>* arrays;
 };
 
 #endif
@@ -642,7 +642,7 @@ struct InjectorMomentum
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
                       const amrex::Vector<amrex::Box>* a_ba,
-                      amrex::Vector<const amrex::Array4<const amrex::Real>>* a_arrays)
+                      amrex::Vector<amrex::Array4<const amrex::Real>>* a_arrays)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_ba, a_arrays)
     { }
@@ -856,7 +856,7 @@ private:
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
                 const amrex::Vector<amrex::Box>* a_ba,
-                amrex::Vector<const amrex::Array4<const amrex::Real>>* a_arrays) noexcept
+                amrex::Vector<amrex::Array4<const amrex::Real>>* a_arrays) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_ba, a_arrays) {}
 #endif
         Object (InjectorMomentumUniform*,

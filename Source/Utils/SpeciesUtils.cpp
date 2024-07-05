@@ -312,7 +312,7 @@ namespace SpeciesUtils {
     void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& /*style*/,
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
         const amrex::Vector<amrex::Box>* ba,
-        amrex::Vector<const amrex::Array4<const amrex::Real>>* arrays) {
+        amrex::Vector<amrex::Array4<const amrex::Real>>* arrays) {
 
         using namespace amrex::literals;
         const amrex::ParmParse pp_species(species_name);
