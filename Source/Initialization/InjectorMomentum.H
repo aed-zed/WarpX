@@ -204,7 +204,7 @@ struct InjectorMomentumSTLGaussianFlux
 
         for (std::size_t i = 0; i < ba->size(); ++i) {
             if ba[i].contains(x, y, z) {
-                const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i]; 
+                const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i];
 
                 amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
                 amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
@@ -232,7 +232,7 @@ struct InjectorMomentumSTLGaussianFlux
 
         for (std::size_t i = 0; i < ba->size(); ++i) {
             if ba[i].contains(x, y, z) {
-                const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i]; 
+                const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i];
 
                 amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
                 amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
