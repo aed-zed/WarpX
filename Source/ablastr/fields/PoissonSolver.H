@@ -263,7 +263,7 @@ std::tuple<amrex::Real, int> computePhi (
         linop.setRZ(true);
 #endif
 
-        if (!(mlmg_ptr && poisson_skipped)) {
+        if ((mlmg_ptr == nullptr) || (!poisson_skipped)) {
             mlmg_ptr = std::make_unique<amrex::MLMG>(linop);
             mlmg_ptr->setVerbose(verbosity);
             mlmg_ptr->setMaxIter(max_iters);
@@ -338,6 +338,9 @@ std::tuple<amrex::Real, int> computePhi (
             std::cout << "post phi calculation pre conditional" << std::endl;
             if (post_phi_calculation.has_value()) {
                 std::cout << "setting post_phi_calculation value" << std::endl;
+                if (mlmg_ptr == nullptr) {
+                    std::cout << "mlmg is a null pointer" << std::endl; 
+                }
                 post_phi_calculation.value()(*mlmg_ptr, lev);
             }
         }
