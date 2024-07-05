@@ -275,7 +275,7 @@ std::tuple<amrex::Real, int> computePhi (
 
         // Solve Poisson equation at lev, get the residual and iteration values
         // set defaults to -1
-        if ((!poisson_skipped) || (number_iterations < 3) {
+        if ((!poisson_skipped) || (number_iterations < 3)) {
             std::cout << "Doing poisson solve" << std::endl;
             composite_norminf = mlmg_ptr->solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
             poisson_iter = mlmg_ptr->getPoissonIters();
