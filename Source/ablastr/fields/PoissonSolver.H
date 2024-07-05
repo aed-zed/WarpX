@@ -59,6 +59,7 @@
 namespace ablastr::fields {
 
     std::unique_ptr<amrex::MLMG> mlmg_ptr = nullptr;
+    int number_iterations = 0; 
 
 // all side effects other than rho should happen
 
@@ -274,7 +275,7 @@ std::tuple<amrex::Real, int> computePhi (
 
         // Solve Poisson equation at lev, get the residual and iteration values
         // set defaults to -1
-        if (!poisson_skipped) {
+        if ((!poisson_skipped) || (number_iterations < 3) {
             std::cout << "Doing poisson solve" << std::endl;
             composite_norminf = mlmg_ptr->solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
             poisson_iter = mlmg_ptr->getPoissonIters();
@@ -351,6 +352,7 @@ std::tuple<amrex::Real, int> computePhi (
 
 
     std::cout << "returning value in poissonsolver" << std::endl;
+    number_iterations += 1; 
 
     return std::make_tuple(composite_norminf, poisson_iter);
 }
