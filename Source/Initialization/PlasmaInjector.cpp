@@ -424,12 +424,13 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
 
     amrex::Vector<amrex::Box> b_array;
-    amrex::Vector<const amrex::Array4<const amrex::Real>> normal_arrays;
-    for (amrex::MFIter mfi(array_box, dm, amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
+    amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
+    for (amrex::MFIter mfi(array_box, dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
         const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector());
         b_array.push_back(box);
 
-        amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = const_cast<ab_bnd_normal.array(mfi)>;
+        const amrex::Array4<const amrex::Real> & const_eb_bnd_normal_arr = ab_bnd_normal.array(mfi);
+        amrex::Array4<const amrex::Real>& eb_bn_normal_arr = const_cast<const_eb_bnd_normal_arr>; 
         normal_arrays.push_back(eb_bnd_normal_arr);
     }
 
