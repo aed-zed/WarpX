@@ -119,6 +119,11 @@ std::tuple<amrex::Real, int> computePhi (
 {
     using namespace amrex::literals;
 
+
+    std::cout << "Inside computePhi in ablastr::fields" << std::endl;
+    std::cout << "poisson_skipped has value: " << poisson_skipped << std::endl;
+
+
     amrex::Real composite_norminf = 0.0_rt;
     int poisson_iter = 0;
 
@@ -265,53 +270,55 @@ std::tuple<amrex::Real, int> computePhi (
         if (!poisson_skipped) {
             composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
             poisson_iter = mlmg.getPoissonIters();
+        }
+
+        // needed for solving the levels by levels:
+        // - coarser level is initial guess for finer level
+        // - coarser level provides boundary values for finer level patch
+        // Interpolation from phi[lev] to phi[lev+1]
+        // (This provides both the boundary conditions and initial guess for phi[lev+1])
+        if (lev < finest_level) {
+
+            std::cout << "Inside loop for phi[lev] to phi[lev+1] interpolation" << std::endl;
 
 
-            // needed for solving the levels by levels:
-            // - coarser level is initial guess for finer level
-            // - coarser level provides boundary values for finer level patch
-            // Interpolation from phi[lev] to phi[lev+1]
-            // (This provides both the boundary conditions and initial guess for phi[lev+1])
-            if (lev < finest_level) {
+            // Allocate phi_cp for lev+1
+            amrex::BoxArray ba = phi[lev+1]->boxArray();
+            const amrex::IntVect& refratio = rel_ref_ratio.value()[lev];
+            ba.coarsen(refratio);
+            const int ncomp = linop.getNComp();
+            amrex::MultiFab phi_cp(ba, phi[lev+1]->DistributionMap(), ncomp, 1);
 
-                // Allocate phi_cp for lev+1
-                amrex::BoxArray ba = phi[lev+1]->boxArray();
-                const amrex::IntVect& refratio = rel_ref_ratio.value()[lev];
-                ba.coarsen(refratio);
-                const int ncomp = linop.getNComp();
-                amrex::MultiFab phi_cp(ba, phi[lev+1]->DistributionMap(), ncomp, 1);
+            // Copy from phi[lev] to phi_cp (in parallel)
+            const amrex::IntVect& ng = amrex::IntVect::TheUnitVector();
+            const amrex::Periodicity& crse_period = geom[lev].periodicity();
 
-                // Copy from phi[lev] to phi_cp (in parallel)
-                const amrex::IntVect& ng = amrex::IntVect::TheUnitVector();
-                const amrex::Periodicity& crse_period = geom[lev].periodicity();
+            ablastr::utils::communication::ParallelCopy(
+                phi_cp,
+                *phi[lev],
+                0,
+                0,
+                1,
+                ng,
+                ng,
+                do_single_precision_comms,
+                crse_period
+            );
 
-                ablastr::utils::communication::ParallelCopy(
-                    phi_cp,
-                    *phi[lev],
-                    0,
-                    0,
-                    1,
-                    ng,
-                    ng,
-                    do_single_precision_comms,
-                    crse_period
-                );
-
-                // Local interpolation from phi_cp to phi[lev+1]
+            // Local interpolation from phi_cp to phi[lev+1]
 #ifdef AMREX_USE_OMP
 #pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
 #endif
-                for (amrex::MFIter mfi(*phi[lev + 1], amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
-                    amrex::Array4<amrex::Real> const phi_fp_arr = phi[lev + 1]->array(mfi);
-                    amrex::Array4<amrex::Real const> const phi_cp_arr = phi_cp.array(mfi);
+            for (amrex::MFIter mfi(*phi[lev + 1], amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                amrex::Array4<amrex::Real> const phi_fp_arr = phi[lev + 1]->array(mfi);
+                amrex::Array4<amrex::Real const> const phi_cp_arr = phi_cp.array(mfi);
 
-                    details::PoissonInterpCPtoFP const interp(phi_fp_arr, phi_cp_arr, refratio);
+                details::PoissonInterpCPtoFP const interp(phi_fp_arr, phi_cp_arr, refratio);
 
-                    amrex::Box const b = mfi.tilebox(phi[lev + 1]->ixType().toIntVect());
-                    amrex::ParallelFor(b, interp);
-                }
-
+                amrex::Box const b = mfi.tilebox(phi[lev + 1]->ixType().toIntVect());
+                amrex::ParallelFor(b, interp);
             }
+
         }
 
         // Run additional operations, such as calculation of the E field for embedded boundaries
