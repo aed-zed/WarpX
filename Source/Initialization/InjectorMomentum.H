@@ -31,6 +31,7 @@
 #include <AMReX_GpuQualifiers.H>
 #include <AMReX_IntVect.H>
 #include <AMReX_Loop.H>
+#include <AMReX_Math.H>
 #include <AMReX_MFIter.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_iMultiFab.H>
@@ -203,13 +204,18 @@ struct InjectorMomentumSTLGaussianFlux
         using namespace amrex::literals;
 
         // how can i use x y z given that ba and array:4 have to take in integers
-        for (std::size_t i = 0; i < ba->size(); ++i) {
-            if (ba[i].contains(x, y, z)) {
+        int int_x = amrex::Math::round(x);
+        int int_y = amrex::Math::round(y);
+        int int_z = amrex::Math::round(z);
+
+        for (int i = 0; i < ba->size(); ++i) {
+
+            if (ba[i].contains(int_x, int_y, int_z)) {
                 const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i];
 
-                amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
-                amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
-                amrex::Real m_k = eb_bnd_normal_arr(x,y,z,2);
+                amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
+                amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
+                amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
 
                 amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
                 // add a variable that determines if it should go inwards or outwards (default is inwards)
@@ -230,14 +236,17 @@ struct InjectorMomentumSTLGaussianFlux
     {
 
         using namespace amrex::literals;
+        int int_x = amrex::Math::round(x);
+        int int_y = amrex::Math::round(y);
+        int int_z = amrex::Math::round(z);
 
         for (std::size_t i = 0; i < ba->size(); ++i) {
-            if (ba[i].contains(x, y, z)) {
+            if ((*ba)[i].contains(x, y, z)) {
                 const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i];
 
-                amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
-                amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
-                amrex::Real m_k = eb_bnd_normal_arr(x,y,z,2);
+                amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
+                amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
+                amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
 
                 amrex::Real const ux = m_i * u_m;
                 amrex::Real const uy = m_j * u_m;
