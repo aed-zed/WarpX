@@ -419,9 +419,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     const amrex::BoxArray array_box(domain_box);
     const amrex::DistributionMapping dm(array_box);
     std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
-    amrex::EBFArrayBoxFactory field_factory = *field_factory;
-    amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
-
+    amrex::MultiCutFab const& eb_bnd_normal = field_factory->getBndryNormal();
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
@@ -430,7 +428,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
         b_array.push_back(box);
 
         const amrex::Array4<const amrex::Real> & const_eb_bnd_normal_arr = ab_bnd_normal.array(mfi);
-        amrex::Array4<const amrex::Real>& eb_bn_normal_arr = const_cast<const_eb_bnd_normal_arr>;
+        amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_normal_arr);
         normal_arrays.push_back(eb_bnd_normal_arr);
     }
 
