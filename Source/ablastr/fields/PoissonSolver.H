@@ -58,6 +58,8 @@
 
 namespace ablastr::fields {
 
+    std::unique_ptr<amrex::MLMG> mlmg_ptr = nullptr;   
+
 // all side effects other than rho should happen
 
 /** Compute the potential `phi` by solving the Poisson equation
@@ -260,11 +262,13 @@ std::tuple<amrex::Real, int> computePhi (
 #ifdef WARPX_DIM_RZ
         linop.setRZ(true);
 #endif
-        amrex::MLMG mlmg(linop); // actual solver defined here
-        mlmg.setVerbose(verbosity);
-        mlmg.setMaxIter(max_iters);
-        mlmg.setAlwaysUseBNorm(always_use_bnorm);
 
+        if !(mlmg_ptr && poisson_skipped) { 
+            mlmg_ptr = std::make_unique<amrex::MLMG>(linop); 
+            mlmg_ptr->setVerbose(verbosity);
+            mlmg_ptr->setMaxIter(max_iters);
+            mlmg_ptr->setAlwaysUseBNorm(always_use_bnorm);
+        }
 
         std::cout << "Right before poisson solve conditional" << std::endl;
 
@@ -272,8 +276,8 @@ std::tuple<amrex::Real, int> computePhi (
         // set defaults to -1
         if (!poisson_skipped) {
             std::cout << "Doing poisson solve" << std::endl;
-            composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
-            poisson_iter = mlmg.getPoissonIters();
+            composite_norminf = mlmg_ptr->solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
+            poisson_iter = mlmg_ptr->getPoissonIters();
         }
         std::cout << "poisson solve conditional over" << std::endl;
 
@@ -334,7 +338,7 @@ std::tuple<amrex::Real, int> computePhi (
             std::cout << "post phi calculation pre conditional" << std::endl;
             if (post_phi_calculation.has_value()) {
                 std::cout << "setting post_phi_calculation value" << std::endl;
-                post_phi_calculation.value()(mlmg, lev);
+                post_phi_calculation.value()(*mlmg_ptr, lev);
             }
         }
 
