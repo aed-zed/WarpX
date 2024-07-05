@@ -311,9 +311,8 @@ namespace SpeciesUtils {
 #ifdef AMREX_USE_EB
     void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& /*style*/,
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
-        amrex::EBFArrayBoxFactory* field_factory_ptr,
-        const amrex::Vector<amrex::BoxArray>* ba,
-        const amrex::Vector<amrex::Array4<const amrex::Real>>* arrays) {
+        const amrex::Vector<amrex::Box>* ba,
+        const amrex::Vector<const amrex::Array4<const amrex::Real>>* arrays) {
 
         using namespace amrex::literals;
         const amrex::ParmParse pp_species(species_name);
@@ -331,7 +330,7 @@ namespace SpeciesUtils {
             utils::parser::queryWithParser(pp_species, source_name, "un_m",  un_m);
             utils::parser::queryWithParser(pp_species, source_name, "un_th", un_th);
              h_inj_mom.reset(new InjectorMomentum((InjectorMomentumSTLGaussianFlux*)nullptr,
-                                                un_m, un_th, field_factory_ptr, ba, arrays));
+                                                un_m, un_th, ba, arrays));
         }
         else {
             std::stringstream stringstream;

@@ -419,7 +419,20 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     const amrex::BoxArray array_box(domain_box);
     const amrex::DistributionMapping dm(array_box);
     std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
-    amrex::MultiFab multifab(array_box, dm, 1, 1);
+    amrex::EBFArrayBoxFactory field_factory = *field_factory; 
+    amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal(); 
+
+
+    amrex::Vector<amrex::Box> b_array; 
+    amrex::Vector<const amrex::Array4<const amrex::Real>> normal_arrays;
+    for (amrex::MFIter mfi(array_box, dm, amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
+        const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector()); 
+        b_array.push_back(box); 
+
+        const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = ab_bnd_normal.array(mfi); 
+        normal_arrays.push_back(eb_bnd_normal_arr);
+    }
+
 
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandom*)nullptr,
@@ -436,7 +449,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
 #ifdef AMREX_USE_EB
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
-                                h_inj_mom, field_factory_ptr.get(), &array_box, &dm);
+                                h_inj_mom, &b_array, &normal_arrays);
 #endif
 
 }
