@@ -265,12 +265,18 @@ std::tuple<amrex::Real, int> computePhi (
         mlmg.setMaxIter(max_iters);
         mlmg.setAlwaysUseBNorm(always_use_bnorm);
 
+
+        std::cout << "Right before poisson solve conditional" << std::endl;
+
         // Solve Poisson equation at lev, get the residual and iteration values
         // set defaults to -1
         if (!poisson_skipped) {
+            std::cout << "Doing poisson solve" << std::endl;
             composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
             poisson_iter = mlmg.getPoissonIters();
         }
+        std::cout << "poisson solve conditional over" << std::endl;
+
 
         // needed for solving the levels by levels:
         // - coarser level is initial guess for finer level
@@ -321,6 +327,9 @@ std::tuple<amrex::Real, int> computePhi (
 
         }
 
+        std::cout << "post phi calculations being done here" << std::endl;
+
+
         // Run additional operations, such as calculation of the E field for embedded boundaries
         if constexpr (!std::is_same<T_PostPhiCalculationFunctor, std::nullopt_t>::value) {
             if (post_phi_calculation.has_value()) {
@@ -329,6 +338,9 @@ std::tuple<amrex::Real, int> computePhi (
         }
 
     } // loop over lev(elcomps)
+
+
+    std::cout << "returning value in poissonsolver" << std::endl;
 
     return std::make_tuple(composite_norminf, poisson_iter);
 }
