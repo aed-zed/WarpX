@@ -263,7 +263,7 @@ std::tuple<amrex::Real, int> computePhi (
         linop.setRZ(true);
 #endif
 
-        if !(mlmg_ptr && poisson_skipped) {
+        if (!(mlmg_ptr && poisson_skipped)) {
             mlmg_ptr = std::make_unique<amrex::MLMG>(linop);
             mlmg_ptr->setVerbose(verbosity);
             mlmg_ptr->setMaxIter(max_iters);
