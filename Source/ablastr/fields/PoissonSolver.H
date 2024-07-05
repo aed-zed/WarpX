@@ -339,7 +339,7 @@ std::tuple<amrex::Real, int> computePhi (
             if (post_phi_calculation.has_value()) {
                 std::cout << "setting post_phi_calculation value" << std::endl;
                 if (mlmg_ptr == nullptr) {
-                    std::cout << "mlmg is a null pointer" << std::endl; 
+                    std::cout << "mlmg is a null pointer" << std::endl;
                 }
                 post_phi_calculation.value()(*mlmg_ptr, lev);
             }
