@@ -201,6 +201,8 @@ struct InjectorMomentumSTLGaussianFlux
         calcMomentum (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
     {
 
+        using namespace amrex::literals;
+
         // how can i use x y z given that ba and array:4 have to take in integers
         int int_x = amrex::Math::round(x);
         int int_y = amrex::Math::round(y);
@@ -209,7 +211,7 @@ struct InjectorMomentumSTLGaussianFlux
         for (int i = 0; i < ba->size(); ++i) {
 
             if ((*ba)[i].contains(int_x, int_y, int_z)) {
-                const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = (*arrays)[i];
+                const amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = (*arrays)[i];
 
                 amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
                 amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
@@ -232,7 +234,7 @@ struct InjectorMomentumSTLGaussianFlux
                  amrex::RandomEngine const& engine) const noexcept
     {
         amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
-        return calcMomentum(x, y, z, enginer, u);
+        return calcMomentum(x, y, z, u);
     }
 
     [[nodiscard]]
@@ -240,7 +242,7 @@ struct InjectorMomentumSTLGaussianFlux
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
-        return calcMomentum(x, y, z, u_m)
+        return calcMomentum(x, y, z, u_m);
     }
 
 private:
