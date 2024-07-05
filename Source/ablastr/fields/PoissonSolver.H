@@ -329,13 +329,16 @@ std::tuple<amrex::Real, int> computePhi (
 
         std::cout << "post phi calculations being done here" << std::endl;
 
-
         // Run additional operations, such as calculation of the E field for embedded boundaries
         if constexpr (!std::is_same<T_PostPhiCalculationFunctor, std::nullopt_t>::value) {
+            std::cout << "post phi calculation pre conditional" << std::endl;
             if (post_phi_calculation.has_value()) {
+                std::cout << "setting post_phi_calculation value" << std::endl;
                 post_phi_calculation.value()(mlmg, lev);
             }
         }
+
+        std::cout << "end of iterating through lev loop iteration" << std::endl;
 
     } // loop over lev(elcomps)
 
