@@ -189,70 +189,61 @@ struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
                                     amrex::EBFArrayBoxFactory* a_field_factory_ptr,
-                                    const amrex::BoxArray* a_ba,
-                                    const amrex::DistributionMapping* a_dm) noexcept
+                                    const amrex::Vector<amrex::BoxArray>* a_ba,
+                                    const amrex::Vector<amrex::DistributionMapping>* a_dm) noexcept
         : u_m(a_un_m), u_th(a_un_th), field_factory_ptr(a_field_factory_ptr), ba(a_ba), dm(a_dm)
     {
     }
 
     [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
                  amrex::RandomEngine const& engine) const noexcept
     {
         using namespace amrex::literals;
 
-        for (amrex::MFIter mfi(*ba, *dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
-            const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
-            if (!box.contains(x, y, z)) {
-                continue;
+        for (std::size_t i = 0; i < ba->size(); ++i) {
+            if ba[i].contains(x, y, z) {
+                const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i]; 
+
+                amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
+                amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
+                amrex::Real m_k = eb_bnd_normal_arr(x,y,z,2);
+
+                amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
+                // add a variable that determines if it should go inwards or outwards (default is inwards)
+
+                amrex::Real const ux = m_i * u;
+                amrex::Real const uy = m_j * u;
+                amrex::Real const uz = m_k * u;
+                return amrex::XDim3{ux, uy, uz};
             }
-
-            amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
-            amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
-            const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
-
-            amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
-            amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
-            amrex::Real m_k = eb_bnd_normal_arr(x,y,z,2);
-
-            amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
-            // add a variable that determines if it should go inwards or outwards (default is inwards)
-
-            amrex::Real const ux = m_i * u;
-            amrex::Real const uy = m_j * u;
-            amrex::Real const uz = m_k * u;
-            return amrex::XDim3{ux, uy, uz};
         }
-
         return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
     }
 
     [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
 
         using namespace amrex::literals;
 
-        for (amrex::MFIter mfi(*ba, *dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
-            const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector() );
-            if (!box.contains(x, y, z)) {
-                continue;
+        for (std::size_t i = 0; i < ba->size(); ++i) {
+            if ba[i].contains(x, y, z) {
+                const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i]; 
+
+                amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
+                amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
+                amrex::Real m_k = eb_bnd_normal_arr(x,y,z,2);
+
+                amrex::Real const ux = m_i * u_m;
+                amrex::Real const uy = m_j * u_m;
+                amrex::Real const uz = m_k * u_m;
+                return amrex::XDim3{ux, uy, uz};
             }
-
-            amrex::EBFArrayBoxFactory& field_factory = *field_factory_ptr;
-            amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
-            const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
-
-            amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
-            amrex::Real m_j = eb_bnd_normal_arr(x,y,z,1);
-            amrex::Real m_k = eb_bnd_normal_arr(x,y,z,2);
-
-            amrex::Real const ux = m_i * u_m;
-            amrex::Real const uy = m_j * u_m;
-            amrex::Real const uz = m_k * u_m;
-            return amrex::XDim3{ux, uy, uz};
         }
 
         return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
@@ -261,8 +252,8 @@ struct InjectorMomentumSTLGaussianFlux
 private:
     amrex::Real u_m, u_th;
     amrex::EBFArrayBoxFactory* field_factory_ptr;
-    const amrex::BoxArray* ba;
-    const amrex::DistributionMapping* dm;
+    const amrex::Vector<amrex::BoxArray>* ba;
+    const amrex::Vector>amrex::Array4<const amrex::Real>>* arrays;
 };
 
 #endif
@@ -656,8 +647,8 @@ struct InjectorMomentum
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
                       amrex::EBFArrayBoxFactory* a_field_factory_ptr,
-                      const amrex::BoxArray* a_ba,
-                      const amrex::DistributionMapping* a_dm)
+                      const amrex::Vector<amrex::BoxArray>* a_ba,
+                      const amrex::Vector<amrex::DistributionMapping>* a_dm)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_field_factory_ptr, a_ba, a_dm)
     { }
@@ -715,6 +706,7 @@ struct InjectorMomentum
     // call getMomentum from the object stored in the union
     // (the union is called Object, and the instance is called object).
     [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
                  amrex::RandomEngine const& engine) const noexcept
@@ -774,6 +766,7 @@ struct InjectorMomentum
     // call getBulkMomentum from the object stored in the union
     // (the union is called Object, and the instance is called object).
     [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
@@ -869,8 +862,8 @@ private:
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
                 amrex::EBFArrayBoxFactory* a_field_factory_ptr,
-                const amrex::BoxArray* a_ba,
-                const amrex::DistributionMapping* a_dm) noexcept
+                const amrex::Vector<amrex::BoxArray>* a_ba,
+                const amrex::Vector<amrex::DistributionMapping>* a_dm) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_field_factory_ptr, a_ba, a_dm) {}
 #endif
         Object (InjectorMomentumUniform*,
