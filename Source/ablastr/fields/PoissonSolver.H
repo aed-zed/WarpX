@@ -265,7 +265,7 @@ std::tuple<amrex::Real, int> computePhi (
 #endif
 
         if ((mlmg_ptr == nullptr) || (!poisson_skipped) || (number_iterations < 3))  {
-            std::cout << "resetting value of mlmg" << std::endl
+            std::cout << "resetting value of mlmg" << std::endl; 
             mlmg_ptr = std::make_unique<amrex::MLMG>(linop);
             mlmg_ptr->setVerbose(verbosity);
             mlmg_ptr->setMaxIter(max_iters);
