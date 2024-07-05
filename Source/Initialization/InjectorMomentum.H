@@ -202,8 +202,9 @@ struct InjectorMomentumSTLGaussianFlux
     {
         using namespace amrex::literals;
 
+        // how can i use x y z given that ba and array:4 have to take in integers 
         for (std::size_t i = 0; i < ba->size(); ++i) {
-            if ba[i].contains(x, y, z) {
+            if (ba[i].contains(x, y, z)) {
                 const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i];
 
                 amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
@@ -231,7 +232,7 @@ struct InjectorMomentumSTLGaussianFlux
         using namespace amrex::literals;
 
         for (std::size_t i = 0; i < ba->size(); ++i) {
-            if ba[i].contains(x, y, z) {
+            if (ba[i].contains(x, y, z)) {
                 const amrex::Array4<const amrex::Real> & eb_bnd_normal_arr = arrays[i];
 
                 amrex::Real m_i = eb_bnd_normal_arr(x,y,z,0);
@@ -250,8 +251,8 @@ struct InjectorMomentumSTLGaussianFlux
 
 private:
     amrex::Real u_m, u_th;
-    const amrex::Vector<amrex::BoxArray>* ba;
-    const amrex::Vector<amrex::Array4<const amrex::Real>>* arrays;
+    const amrex::Vector<amrex::Box>* ba;
+    const amrex::Vector<const amrex::Array4<const amrex::Real>>* arrays;
 };
 
 #endif
