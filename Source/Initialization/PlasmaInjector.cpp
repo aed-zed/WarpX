@@ -430,7 +430,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
         b_array.push_back(box);
 
         const amrex::Array4<const amrex::Real> & const_eb_bnd_normal_arr = ab_bnd_normal.array(mfi);
-        amrex::Array4<const amrex::Real>& eb_bn_normal_arr = const_cast<const_eb_bnd_normal_arr>; 
+        amrex::Array4<const amrex::Real>& eb_bn_normal_arr = const_cast<const_eb_bnd_normal_arr>;
         normal_arrays.push_back(eb_bnd_normal_arr);
     }
 
