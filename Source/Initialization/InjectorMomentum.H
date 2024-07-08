@@ -197,14 +197,17 @@ struct InjectorMomentumSTLGaussianFlux
     arrays_gpu = static_cast<std::vector<amrex::Array4<const amrex::Real>>*>(
         amrex::The_Arena()->alloc(sizeof(std::vector<amrex::Array4<const amrex::Real>>)));
     amrex::Gpu::htod_memcpy_async(arrays_gpu, a_arrays, sizeof(std::vector<amrex::Array4<const amrex::Real>>));
-    arrays = arrays_gpu;
+
+    ba_gpu = static_cast<std::vector<amrex::Box>*>(
+    amrex::The_Arena()->alloc(sizeof(std::vector<amrex::Box>)));
+    amrex::Gpu::htod_memcpy_async(arrays_gpu, a_arrays, sizeof(std::vector<amrex::Box>));
 #endif
     }
 
     [[nodiscard]]
-        AMREX_GPU_HOST_DEVICE
+        AMREX_HOST
         amrex::XDim3
-        calcMomentum (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
+        calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
     {
 
         using namespace amrex::literals;
@@ -233,6 +236,38 @@ struct InjectorMomentumSTLGaussianFlux
         return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
     }
 
+        [[nodiscard]]
+        AMREX_DEVICE
+        amrex::XDim3
+        calcMomentumDevice (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
+    {
+
+        using namespace amrex::literals;
+
+        // how can i use x y z given that ba and array:4 have to take in integers
+        int int_x = amrex::Math::round(x);
+        int int_y = amrex::Math::round(y);
+        int int_z = amrex::Math::round(z);
+
+        for (size_t i = 0; i < ba_gpu->size(); ++i) {
+
+            if ((*ba_gpu)[i].contains(int_x, int_y, int_z)) {
+                amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = (*arrays_gpu)[i];
+
+                amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
+                amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
+                amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
+
+                // add a variable that determines if it should go inwards or outwards (default is inwards)
+                amrex::Real const ux = m_i * momentum;
+                amrex::Real const uy = m_j * momentum;
+                amrex::Real const uz = m_k * momentum;
+                return amrex::XDim3{ux, uy, uz};
+            }
+        }
+        return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
+    }
+
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
@@ -240,7 +275,11 @@ struct InjectorMomentumSTLGaussianFlux
                  amrex::RandomEngine const& engine) const noexcept
     {
         amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
-        return calcMomentum(x, y, z, u);
+#ifdef __CUDA_ARCH__
+        return calcMomentumHost(x, y, z, u);
+#else
+        return calcMomentumDevice(x, y, z, u);
+#endif 
     }
 
     [[nodiscard]]
@@ -248,16 +287,21 @@ struct InjectorMomentumSTLGaussianFlux
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
-        return calcMomentum(x, y, z, u_m);
+#ifdef __CUDA_ARCH__
+        return calcMomentumHost(x, y, z, u_m);
+#else
+        return calcMomentumDevice(x, y, z, u_m); 
+#endif
     }
 
 private:
     amrex::Real u_m, u_th;
     const std::vector<amrex::Box>* ba;
     std::vector<amrex::Array4<const amrex::Real>>* arrays;
-#ifdef AMREX_USE_GPU
-    std::vector<amrex::Array4<const amrex::Real>>* arrays_gpu;
-#endif
+
+    // gpu things
+    std::vector<amrex::Array4<const amrex::Real>>* arrays_gpu = nullptr;
+    std::vector<amrex::Box>* ba_gpu = nullptr; 
 };
 
 #endif
