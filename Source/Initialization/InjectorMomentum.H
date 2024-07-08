@@ -300,7 +300,7 @@ private:
     amrex::Real u_m, u_th;
     amrex::AsyncArray<amrex::Box>& ba;
     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays;
-    int size; 
+    int size;
 };
 
 #endif
