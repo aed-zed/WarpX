@@ -210,8 +210,8 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-        auto const& boxes = ba.data();
-        auto const& array = arrays.data();
+        amrex::Box* boxes = ba.data();
+        amrex::Array4<const amrex::Real>>* array = arrays.data();
         for (int i = 0; i < boxes->size(); ++i) {
 
             if (boxes[i].contains(int_x, int_y, int_z)) {
@@ -244,33 +244,29 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-
-        amrex::XDim3 answer{0.0_rt, 0.0_rt, 0.0_rt};
+        amrex::XDim3* answer_ptr = amrex::XDim3(0.0_rt, 0.0_rt, 0.0_rt); 
         auto const& boxes = ba.data();
         auto const& array = arrays.data();
         int n = array->size();
         amrex::ParallelFor(n, [=] AMREX_GPU_DEVICE (int i) {
-                if (boxes[i].contains(int_x, int_y, int_z)) {
-                    amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
+            if (boxes[i].contains(int_x, int_y, int_z)) {
+                amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
 
-                    amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
-                    amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
-                    amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
+                amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
+                amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
+                amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
 
-                    // add a variable that determines if it should go inwards or outwards (default is inwards)
-                    amrex::Real const ux = m_i * momentum;
-                    amrex::Real const uy = m_j * momentum;
-                    amrex::Real const uz = m_k * momentum;
+                // add a variable that determines if it should go inwards or outwards (default is inwards)
+                amrex::Real const ux = m_i * momentum;
+                amrex::Real const uy = m_j * momentum;
+                amrex::Real const uz = m_k * momentum;
 
-                    amrex::Gpu::atomicAdd(&answer.x, ux);
-                    amrex::Gpu::atomicAdd(&answer.y, uy);
-                    amrex::Gpu::atomicAdd(&answer.z, uz);
-
-                }
+                *answer_ptr = amrex::XDim3(ux, uy, uz); 
+            }
         });
 
         amrex::Gpu::synchronize();
-        return answer;
+        return *answer;
     }
 
     [[nodiscard]]
