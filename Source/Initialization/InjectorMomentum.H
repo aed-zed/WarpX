@@ -279,7 +279,7 @@ struct InjectorMomentumSTLGaussianFlux
         return calcMomentumHost(x, y, z, u);
 #else
         return calcMomentumDevice(x, y, z, u);
-#endif 
+#endif
     }
 
     [[nodiscard]]
@@ -290,7 +290,7 @@ struct InjectorMomentumSTLGaussianFlux
 #ifdef __CUDA_ARCH__
         return calcMomentumHost(x, y, z, u_m);
 #else
-        return calcMomentumDevice(x, y, z, u_m); 
+        return calcMomentumDevice(x, y, z, u_m);
 #endif
     }
 
@@ -301,7 +301,7 @@ private:
 
     // gpu things
     std::vector<amrex::Array4<const amrex::Real>>* arrays_gpu = nullptr;
-    std::vector<amrex::Box>* ba_gpu = nullptr; 
+    std::vector<amrex::Box>* ba_gpu = nullptr;
 };
 
 #endif
