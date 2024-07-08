@@ -311,8 +311,8 @@ namespace SpeciesUtils {
 #ifdef AMREX_USE_EB
     void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& /*style*/,
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
-        const std::vector<amrex::Box>* ba,
-        std::vector<amrex::Array4<const amrex::Real>>* arrays) {
+        amrex::AsyncArray<amrex::Box>& ba,
+        amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays) {
 
         using namespace amrex::literals;
         const amrex::ParmParse pp_species(species_name);

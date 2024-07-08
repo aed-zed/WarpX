@@ -33,6 +33,7 @@
 #include <AMReX_EB_utils.H>
 #include <AMReX_FabArray.H>
 #include <AMReX_FabFactory.H>
+#include <AMReX_GpuAsyncArray.H>
 #include <AMReX_GpuControl.H>
 #include <AMReX_GpuQualifiers.H>
 #include <AMReX_IntVect.H>
@@ -432,6 +433,8 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
         normal_arrays.push_back(eb_bnd_normal_arr);
     }
 
+    amrex::AsyncArray<amrex::Box> async_barray(b_array.data(), b_array.size()); 
+    amrex::AsyncArray<amrex::Box> async_narray(normal_arrays.data(), normal_arrays.size());
 
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandom*)nullptr,
@@ -448,7 +451,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
 #ifdef AMREX_USE_EB
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
-                                h_inj_mom, &b_array, &normal_arrays);
+                                h_inj_mom, async_barray, async_narray);
 #endif
 
 }

@@ -189,19 +189,10 @@ private:
 struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
-                                    const std::vector<amrex::Box>* a_ba,
-                                    std::vector<amrex::Array4<const amrex::Real>>* a_arrays) noexcept
+                                     amrex::AsyncArray<amrex::Box>& a_ba,
+                                     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays) noexcept
         : u_m(a_un_m), u_th(a_un_th), ba(a_ba), arrays(a_arrays)
-    {
-#ifdef AMREX_USE_GPU
-    arrays_gpu = static_cast<std::vector<amrex::Array4<const amrex::Real>>*>(
-        amrex::The_Arena()->alloc(sizeof(std::vector<amrex::Array4<const amrex::Real>>)));
-    amrex::Gpu::htod_memcpy_async(arrays_gpu, a_arrays, sizeof(std::vector<amrex::Array4<const amrex::Real>>));
-
-    ba_gpu = static_cast<std::vector<amrex::Box>*>(
-        amrex::The_Arena()->alloc(sizeof(std::vector<amrex::Box>)));
-    amrex::Gpu::htod_memcpy_async(arrays_gpu, a_arrays, sizeof(std::vector<amrex::Box>));
-#endif
+    {   
     }
 
     [[nodiscard]]
@@ -217,10 +208,14 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-        for (size_t i = 0; i < ba->size(); ++i) {
+        ba.copyToHost(); 
+        arrays.copyToHost(); 
+        auto const& boxes = ba.data();
+        auto const& array = arrays.data(); 
+        for (int i = 0; i < ba->size(); ++i) {
 
-            if ((*ba)[i].contains(int_x, int_y, int_z)) {
-                amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = (*arrays)[i];
+            if (boxes[i].contains(int_x, int_y, int_z)) {
+                amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
 
                 amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
                 amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
@@ -249,23 +244,35 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-        for (size_t i = 0; i < ba_gpu->size(); ++i) {
 
-            if ((*ba_gpu)[i].contains(int_x, int_y, int_z)) {
-                amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = (*arrays_gpu)[i];
+        amrex::XDim3 answer{0.0_rt, 0.0_rt, 0.0_rt};
+        ba.copyToDevice(); 
+        arrays.copyToDevice(); 
+        auto const& boxes = ba.data();
+        auto const& array = arrays.data(); 
+        int n = array.size(); 
+        amrex::ParallelFor(n, [=] AMREX_GPU_DEVICE (int i) {
+                if boxes[i].contains(int_x, int_y, int_z) {
+                    amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
 
-                amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
-                amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
-                amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
+                    amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
+                    amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
+                    amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
 
-                // add a variable that determines if it should go inwards or outwards (default is inwards)
-                amrex::Real const ux = m_i * momentum;
-                amrex::Real const uy = m_j * momentum;
-                amrex::Real const uz = m_k * momentum;
-                return amrex::XDim3{ux, uy, uz};
-            }
-        }
-        return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
+                    // add a variable that determines if it should go inwards or outwards (default is inwards)
+                    amrex::Real const ux = m_i * momentum;
+                    amrex::Real const uy = m_j * momentum;
+                    amrex::Real const uz = m_k * momentum;
+
+                    amrex::Gpu::atomicAdd(&answer.x, ux); 
+                    amrex::Gpu::atomicAdd(&answer.y, uy); 
+                    amrex::Gpu::atomicAdd(&answer.z, uz); 
+
+                }
+        })
+
+        amrex::GPU::Device::synchronize(); 
+        return answer; 
     }
 
     [[nodiscard]]
@@ -296,12 +303,8 @@ struct InjectorMomentumSTLGaussianFlux
 
 private:
     amrex::Real u_m, u_th;
-    const std::vector<amrex::Box>* ba;
-    std::vector<amrex::Array4<const amrex::Real>>* arrays;
-
-    // gpu things
-    std::vector<amrex::Array4<const amrex::Real>>* arrays_gpu = nullptr;
-    std::vector<amrex::Box>* ba_gpu = nullptr;
+    amrex::AsyncArray<amrex::Box>& a_ba;
+    amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays; 
 };
 
 #endif
@@ -694,8 +697,8 @@ struct InjectorMomentum
     // This constructor stores a InjectorMomentumSTLGaussianFlux in union object.
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
-                      const std::vector<amrex::Box>* a_ba,
-                      std::vector<amrex::Array4<const amrex::Real>>* a_arrays)
+                      amrex::AsyncArray<amrex::Box>& a_ba,
+                      amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_ba, a_arrays)
     { }
@@ -908,8 +911,8 @@ private:
 #ifdef AMREX_USE_EB
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
-                const std::vector<amrex::Box>* a_ba,
-                std::vector<amrex::Array4<const amrex::Real>>* a_arrays) noexcept
+                amrex::AsyncArray<amrex::Box>& a_ba,
+                amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_ba, a_arrays) {}
 #endif
         Object (InjectorMomentumUniform*,
