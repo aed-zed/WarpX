@@ -199,13 +199,13 @@ struct InjectorMomentumSTLGaussianFlux
     amrex::Gpu::htod_memcpy_async(arrays_gpu, a_arrays, sizeof(std::vector<amrex::Array4<const amrex::Real>>));
 
     ba_gpu = static_cast<std::vector<amrex::Box>*>(
-    amrex::The_Arena()->alloc(sizeof(std::vector<amrex::Box>)));
+        amrex::The_Arena()->alloc(sizeof(std::vector<amrex::Box>)));
     amrex::Gpu::htod_memcpy_async(arrays_gpu, a_arrays, sizeof(std::vector<amrex::Box>));
 #endif
     }
 
     [[nodiscard]]
-        AMREX_HOST
+        AMREX_GPU_HOST
         amrex::XDim3
         calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
     {
@@ -236,8 +236,8 @@ struct InjectorMomentumSTLGaussianFlux
         return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
     }
 
-        [[nodiscard]]
-        AMREX_DEVICE
+    [[nodiscard]]
+        AMREX_GPU_DEVICE
         amrex::XDim3
         calcMomentumDevice (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
     {
