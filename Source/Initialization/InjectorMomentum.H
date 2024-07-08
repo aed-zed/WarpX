@@ -210,9 +210,9 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-        amrex::Box* boxes = ba->data();
-        amrex::Array4<const amrex::Real>* array = arrays->data();
-        int n = arrays->size();
+        amrex::Box* boxes = ba.data();
+        amrex::Array4<const amrex::Real>* array = arrays.data();
+        int n = arrays.size();
         for (size_t i = 0; i < n; ++i) {
             if (boxes[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
@@ -245,9 +245,9 @@ struct InjectorMomentumSTLGaussianFlux
         int int_z = amrex::Math::round(z);
 
         amrex::XDim3 answer_ptr = amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
-        amrex::Box* boxes = ba->data();
-        amrex::Array4<const amrex::Real>* array = arrays->data();
-        int n = array->size();
+        amrex::Box* boxes = ba.data();
+        amrex::Array4<const amrex::Real>* array = arrays.data();
+        int n = arrays.size();
         amrex::ParallelFor(n, [=] AMREX_GPU_DEVICE (int i) {
             if (boxes[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
