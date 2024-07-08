@@ -212,7 +212,7 @@ struct InjectorMomentumSTLGaussianFlux
 
         amrex::Box* boxes = ba.data();
         amrex::Array4<const amrex::Real>* array = arrays.data();
-        for (int i = 0; i < ba->size(); ++i) {
+        for (int i = 0; i < ba.size(); ++i) {
 
             if (boxes[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
@@ -261,7 +261,7 @@ struct InjectorMomentumSTLGaussianFlux
                 amrex::Real const uy = m_j * momentum;
                 amrex::Real const uz = m_k * momentum;
 
-                *answer_ptr = amrex::XDim3{ux, uy, uz};
+                *answer_ptr = &amrex::XDim3{ux, uy, uz};
             }
         });
 
