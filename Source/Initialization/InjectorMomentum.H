@@ -212,7 +212,8 @@ struct InjectorMomentumSTLGaussianFlux
 
         amrex::Box* boxes = ba->data();
         amrex::Array4<const amrex::Real>* array = arrays->data();
-        for (size_t i = 0; i < array->size(); ++i) {
+        int n = arrays->size();
+        for (size_t i = 0; i < n; ++i) {
             if (boxes[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
 
