@@ -28,6 +28,8 @@
 #include <AMReX_FabArray.H>
 #include <AMReX_FabFactory.H>
 #include <AMReX_GpuControl.H>
+#include <AMReX_GpuDevice.H>
+#include <AMReX_GpuLaunch.H>
 #include <AMReX_GpuQualifiers.H>
 #include <AMReX_IntVect.H>
 #include <AMReX_Loop.H>
@@ -210,7 +212,7 @@ struct InjectorMomentumSTLGaussianFlux
 
         auto const& boxes = ba.data();
         auto const& array = arrays.data();
-        for (int i = 0; i < ba.size(); ++i) {
+        for (int i = 0; i < boxes->size(); ++i) {
 
             if (boxes[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
@@ -246,9 +248,9 @@ struct InjectorMomentumSTLGaussianFlux
         amrex::XDim3 answer{0.0_rt, 0.0_rt, 0.0_rt};
         auto const& boxes = ba.data();
         auto const& array = arrays.data();
-        int n = array.size();
+        int n = array->size();
         amrex::ParallelFor(n, [=] AMREX_GPU_DEVICE (int i) {
-                if boxes[i].contains(int_x, int_y, int_z) {
+                if (boxes[i].contains(int_x, int_y, int_z)) {
                     amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
 
                     amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
@@ -267,7 +269,7 @@ struct InjectorMomentumSTLGaussianFlux
                 }
         });
 
-        amrex::GPU::Device::synchronize();
+        amrex::Gpu::synchronize();
         return answer;
     }
 
