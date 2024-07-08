@@ -260,9 +260,9 @@ struct InjectorMomentumSTLGaussianFlux
                 amrex::Real const uy = m_j * momentum;
                 amrex::Real const uz = m_k * momentum;
 
-                *answer_ptr.x = ux; 
-                *answer_ptr.y = uy; 
-                *answer_ptr.z = uz; 
+                *answer_ptr.x = ux;
+                *answer_ptr.y = uy;
+                *answer_ptr.z = uz;
             }
         });
 
