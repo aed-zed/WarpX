@@ -421,8 +421,8 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
     amrex::MultiCutFab const& eb_bnd_normal = field_factory->getBndryNormal();
 
-    std::Vector<amrex::Box> b_array;
-    std::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
+    std::vector<amrex::Box> b_array;
+    std::vector<amrex::Array4<const amrex::Real>> normal_arrays;
     for (amrex::MFIter mfi(array_box, dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
         const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector());
         b_array.push_back(box);
