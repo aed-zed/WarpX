@@ -122,11 +122,6 @@ std::tuple<amrex::Real, int> computePhi (
 {
     using namespace amrex::literals;
 
-
-    std::cout << "Inside computePhi in ablastr::fields" << std::endl;
-    std::cout << "poisson_skipped has value: " << poisson_skipped << std::endl;
-
-
     amrex::Real composite_norminf = 0.0_rt;
     int poisson_iter = 0;
 
@@ -264,24 +259,19 @@ std::tuple<amrex::Real, int> computePhi (
         linop.setRZ(true);
 #endif
 
-        if ((mlmg_ptr == nullptr) || (!poisson_skipped) || (number_iterations < 3))  {
-            std::cout << "resetting value of mlmg" << std::endl;
+        if ((mlmg_ptr == nullptr) || (!poisson_skipped) || (number_iterations < 2))  {
             mlmg_ptr = std::make_unique<amrex::MLMG>(linop);
             mlmg_ptr->setVerbose(verbosity);
             mlmg_ptr->setMaxIter(max_iters);
             mlmg_ptr->setAlwaysUseBNorm(always_use_bnorm);
         }
 
-        std::cout << "Right before poisson solve conditional" << std::endl;
-
         // Solve Poisson equation at lev, get the residual and iteration values
         // set defaults to -1
-        if ((!poisson_skipped) || (number_iterations < 3)) {
-            std::cout << "Doing poisson solve" << std::endl;
+        if ((!poisson_skipped) || (number_iterations < 2)) {
             composite_norminf = mlmg_ptr->solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
             poisson_iter = mlmg_ptr->getPoissonIters();
         }
-        std::cout << "poisson solve conditional over" << std::endl;
 
 
         // needed for solving the levels by levels:
@@ -290,9 +280,6 @@ std::tuple<amrex::Real, int> computePhi (
         // Interpolation from phi[lev] to phi[lev+1]
         // (This provides both the boundary conditions and initial guess for phi[lev+1])
         if (lev < finest_level) {
-
-            std::cout << "Inside loop for phi[lev] to phi[lev+1] interpolation" << std::endl;
-
 
             // Allocate phi_cp for lev+1
             amrex::BoxArray ba = phi[lev+1]->boxArray();
@@ -333,26 +320,16 @@ std::tuple<amrex::Real, int> computePhi (
 
         }
 
-        std::cout << "post phi calculations being done here" << std::endl;
-
         // Run additional operations, such as calculation of the E field for embedded boundaries
         if constexpr (!std::is_same<T_PostPhiCalculationFunctor, std::nullopt_t>::value) {
-            std::cout << "post phi calculation pre conditional" << std::endl;
             if (post_phi_calculation.has_value()) {
-                std::cout << "setting post_phi_calculation value" << std::endl;
-                if (mlmg_ptr == nullptr) {
-                    std::cout << "mlmg is a null pointer" << std::endl;
-                }
                 post_phi_calculation.value()(*mlmg_ptr, lev);
             }
         }
 
-        std::cout << "end of iterating through lev loop iteration" << std::endl;
-
     } // loop over lev(elcomps)
 
 
-    std::cout << "returning value in poissonsolver" << std::endl;
     number_iterations += 1;
 
     return std::make_tuple(composite_norminf, poisson_iter);

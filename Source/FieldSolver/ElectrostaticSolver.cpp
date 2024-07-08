@@ -359,9 +359,6 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
         poisson_counter = 0;
     }
 
-    std::cout << "Inside compute phi in ElectrostaticSolver.cpp" << std::endl;
-
-
     // create duplicate computePhi skip --> do computePhi but get rid of solve step 
     std::tuple<amrex::Real, int> resid_n_iters = ablastr::fields::computePhi(
         poisson_skipped,
@@ -390,20 +387,13 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
 
         if ((poisson_iters <= self_fields_poisson_iters) || (poisson_residual < self_fields_resid_val)) {
             if (poisson_skips < self_fields_max_skips) {
-                poisson_counter = 0;
                 poisson_skips *= 2;
             }
         }
         else if (poisson_skips > 1) {
-            poisson_counter = 0;
             poisson_skips /= 2;
         }
     }
-
-    std::cout << "Exiting computephi in Electrostatic Solver" << std::endl;
-    std::cout << "Poisson skips recomputed to value: " << poisson_skips << std::endl;
-
-
 
 }
 
