@@ -433,7 +433,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
         normal_arrays.push_back(eb_bnd_normal_arr);
     }
 
-    amrex::AsyncArray<amrex::Box> async_barray(b_array.data(), b_array.size()); 
+    amrex::AsyncArray<amrex::Box> async_barray(b_array.data(), b_array.size());
     amrex::AsyncArray<amrex::Box> async_narray(normal_arrays.data(), normal_arrays.size());
 
     h_flux_pos = std::make_unique<InjectorPosition> (

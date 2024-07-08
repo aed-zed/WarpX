@@ -192,7 +192,7 @@ struct InjectorMomentumSTLGaussianFlux
                                      amrex::AsyncArray<amrex::Box>& a_ba,
                                      amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays) noexcept
         : u_m(a_un_m), u_th(a_un_th), ba(a_ba), arrays(a_arrays)
-    {   
+    {
     }
 
     [[nodiscard]]
@@ -208,10 +208,10 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-        ba.copyToHost(); 
-        arrays.copyToHost(); 
+        ba.copyToHost();
+        arrays.copyToHost();
         auto const& boxes = ba.data();
-        auto const& array = arrays.data(); 
+        auto const& array = arrays.data();
         for (int i = 0; i < ba->size(); ++i) {
 
             if (boxes[i].contains(int_x, int_y, int_z)) {
@@ -246,11 +246,11 @@ struct InjectorMomentumSTLGaussianFlux
 
 
         amrex::XDim3 answer{0.0_rt, 0.0_rt, 0.0_rt};
-        ba.copyToDevice(); 
-        arrays.copyToDevice(); 
+        ba.copyToDevice();
+        arrays.copyToDevice();
         auto const& boxes = ba.data();
-        auto const& array = arrays.data(); 
-        int n = array.size(); 
+        auto const& array = arrays.data();
+        int n = array.size();
         amrex::ParallelFor(n, [=] AMREX_GPU_DEVICE (int i) {
                 if boxes[i].contains(int_x, int_y, int_z) {
                     amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
@@ -264,15 +264,15 @@ struct InjectorMomentumSTLGaussianFlux
                     amrex::Real const uy = m_j * momentum;
                     amrex::Real const uz = m_k * momentum;
 
-                    amrex::Gpu::atomicAdd(&answer.x, ux); 
-                    amrex::Gpu::atomicAdd(&answer.y, uy); 
-                    amrex::Gpu::atomicAdd(&answer.z, uz); 
+                    amrex::Gpu::atomicAdd(&answer.x, ux);
+                    amrex::Gpu::atomicAdd(&answer.y, uy);
+                    amrex::Gpu::atomicAdd(&answer.z, uz);
 
                 }
         })
 
-        amrex::GPU::Device::synchronize(); 
-        return answer; 
+        amrex::GPU::Device::synchronize();
+        return answer;
     }
 
     [[nodiscard]]
@@ -304,7 +304,7 @@ struct InjectorMomentumSTLGaussianFlux
 private:
     amrex::Real u_m, u_th;
     amrex::AsyncArray<amrex::Box>& a_ba;
-    amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays; 
+    amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays;
 };
 
 #endif
