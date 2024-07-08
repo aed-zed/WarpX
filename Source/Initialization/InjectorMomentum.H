@@ -256,7 +256,7 @@ private:
     const std::vector<amrex::Box>* ba;
     std::vector<amrex::Array4<const amrex::Real>>* arrays;
 #ifdef AMREX_USE_GPU
-    std::vector<amrex::Array4<const amrex::Real>>* arrays_gpu
+    std::vector<amrex::Array4<const amrex::Real>>* arrays_gpu;
 #endif
 };
 
