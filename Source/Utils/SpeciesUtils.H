@@ -65,7 +65,8 @@ namespace SpeciesUtils {
     void parseMomentum (std::string const& species_name, std::string const& source_name, const std::string& style,
         std::unique_ptr<InjectorMomentum,InjectorMomentumDeleter>& h_inj_mom,
         amrex::AsyncArray<amrex::Box>& ba,
-        amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays);
+        amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays,
+        int size);
 #endif
 
 

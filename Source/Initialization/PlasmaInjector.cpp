@@ -424,6 +424,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
     std::vector<amrex::Box> b_array;
     std::vector<amrex::Array4<const amrex::Real>> normal_arrays;
+    int size = 0; 
     for (amrex::MFIter mfi(array_box, dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
         const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector());
         b_array.push_back(box);
@@ -431,6 +432,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
         const amrex::Array4<const amrex::Real> & const_eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
         amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_normal_arr);
         normal_arrays.push_back(eb_bnd_normal_arr);
+        size += 1; 
     }
 
     amrex::AsyncArray<amrex::Box> async_barray(b_array.data(), b_array.size());
@@ -451,7 +453,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
 #ifdef AMREX_USE_EB
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
-                                h_inj_mom, async_barray, async_narray);
+                                h_inj_mom, async_barray, async_narray, size);
 #endif
 
 }

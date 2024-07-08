@@ -192,8 +192,9 @@ struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
                                      amrex::AsyncArray<amrex::Box>& a_ba,
-                                     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays) noexcept
-        : u_m(a_un_m), u_th(a_un_th), ba(a_ba), arrays(a_arrays)
+                                     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                                     int a_size) noexcept
+        : u_m(a_un_m), u_th(a_un_th), ba(a_ba), arrays(a_arrays), size(a_size)
     {
     }
 
@@ -212,8 +213,7 @@ struct InjectorMomentumSTLGaussianFlux
 
         amrex::Box* boxes = ba.data();
         amrex::Array4<const amrex::Real>* array = arrays.data();
-        int n = arrays.size();
-        for (size_t i = 0; i < n; ++i) {
+        for (size_t i = 0; i < size; ++i) {
             if (boxes[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
 
@@ -247,8 +247,7 @@ struct InjectorMomentumSTLGaussianFlux
         amrex::XDim3 answer_ptr = amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
         amrex::Box* boxes = ba.data();
         amrex::Array4<const amrex::Real>* array = arrays.data();
-        int n = arrays.size();
-        amrex::ParallelFor(n, [=] AMREX_GPU_DEVICE (int i) {
+        amrex::ParallelFor(size, [=] AMREX_GPU_DEVICE (int i) {
             if (boxes[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = array[i];
 
@@ -301,6 +300,7 @@ private:
     amrex::Real u_m, u_th;
     amrex::AsyncArray<amrex::Box>& ba;
     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays;
+    int size; 
 };
 
 #endif
@@ -694,9 +694,10 @@ struct InjectorMomentum
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
                       amrex::AsyncArray<amrex::Box>& a_ba,
-                      amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays)
+                      amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                      int a_size)
         : type(Type::stlgaussianflux),
-          object(t, a_un_m, a_un_th, a_ba, a_arrays)
+          object(t, a_un_m, a_un_th, a_ba, a_arrays, a_size)
     { }
 #endif
 
@@ -908,8 +909,9 @@ private:
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
                 amrex::AsyncArray<amrex::Box>& a_ba,
-                amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays) noexcept
-            : stlgaussianflux(a_un_m, a_un_th, a_ba, a_arrays) {}
+                amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                int a_size) noexcept
+            : stlgaussianflux(a_un_m, a_un_th, a_ba, a_arrays, a_size) {}
 #endif
         Object (InjectorMomentumUniform*,
                 amrex::Real a_ux_min, amrex::Real a_uy_min,
