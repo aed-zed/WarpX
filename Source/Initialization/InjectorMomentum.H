@@ -193,9 +193,16 @@ struct InjectorMomentumSTLGaussianFlux
                                     std::vector<amrex::Array4<const amrex::Real>>* a_arrays) noexcept
         : u_m(a_un_m), u_th(a_un_th), ba(a_ba), arrays(a_arrays)
     {
+#ifdef AMREX_USE_GPU
+    arrays_gpu = static_cast<std::vector<amrex::Array4<const amrex::Real>>*>(
+        amrex::The_Arena()->alloc(sizeof(std::vector<amrex::Array4<const amrex::Real>>)));
+    amrex::Gpu::htod_memcpy_async(arrays_gpu, a_arrays, sizeof(std::vector<amrex::Array4<const amrex::Real>>));
+    arrays = arrays_gpu;
+#endif
     }
 
     [[nodiscard]]
+        AMREX_GPU_HOST_DEVICE
         amrex::XDim3
         calcMomentum (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
     {
@@ -227,6 +234,7 @@ struct InjectorMomentumSTLGaussianFlux
     }
 
     [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
                  amrex::RandomEngine const& engine) const noexcept
@@ -236,6 +244,7 @@ struct InjectorMomentumSTLGaussianFlux
     }
 
     [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
@@ -246,6 +255,9 @@ private:
     amrex::Real u_m, u_th;
     const std::vector<amrex::Box>* ba;
     std::vector<amrex::Array4<const amrex::Real>>* arrays;
+#ifdef AMREX_USE_GPU
+    std::vector<amrex::Array4<const amrex::Real>>* arrays_gpu
+#endif
 };
 
 #endif
@@ -697,6 +709,7 @@ struct InjectorMomentum
     // call getMomentum from the object stored in the union
     // (the union is called Object, and the instance is called object).
     [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
                  amrex::RandomEngine const& engine) const noexcept
@@ -756,6 +769,7 @@ struct InjectorMomentum
     // call getBulkMomentum from the object stored in the union
     // (the union is called Object, and the instance is called object).
     [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
