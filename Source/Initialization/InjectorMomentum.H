@@ -196,7 +196,6 @@ struct InjectorMomentumSTLGaussianFlux
     }
 
     [[nodiscard]]
-        AMREX_GPU_HOST_DEVICE
         amrex::XDim3
         calcMomentum (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
     {
@@ -228,7 +227,6 @@ struct InjectorMomentumSTLGaussianFlux
     }
 
     [[nodiscard]]
-    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
                  amrex::RandomEngine const& engine) const noexcept
@@ -238,7 +236,6 @@ struct InjectorMomentumSTLGaussianFlux
     }
 
     [[nodiscard]]
-    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
@@ -700,7 +697,6 @@ struct InjectorMomentum
     // call getMomentum from the object stored in the union
     // (the union is called Object, and the instance is called object).
     [[nodiscard]]
-    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
                  amrex::RandomEngine const& engine) const noexcept
@@ -760,7 +756,6 @@ struct InjectorMomentum
     // call getBulkMomentum from the object stored in the union
     // (the union is called Object, and the instance is called object).
     [[nodiscard]]
-    AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
