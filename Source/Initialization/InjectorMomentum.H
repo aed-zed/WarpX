@@ -27,6 +27,7 @@
 #include <AMReX_EB_utils.H>
 #include <AMReX_FabArray.H>
 #include <AMReX_FabFactory.H>
+#include <AMReX_GpuAsyncArray.H>
 #include <AMReX_GpuControl.H>
 #include <AMReX_GpuDevice.H>
 #include <AMReX_GpuLaunch.H>
@@ -194,7 +195,7 @@ struct InjectorMomentumSTLGaussianFlux
                                      amrex::Vector<amrex::Box>& a_ba,
                                      amrex::Vector<amrex::Array4<const amrex::Real>>& a_arrays,
                                      int a_size) noexcept
-        : u_m(a_un_m), u_th(a_un_th), ba(a_size), arrays(a_arrays), size(a_size)
+        : u_m(a_un_m), u_th(a_un_th), ba(a_ba), arrays(a_arrays), size(a_size)
     {
     }
 
@@ -305,8 +306,8 @@ struct InjectorMomentumSTLGaussianFlux
 private:
     amrex::Real u_m, u_th;
     int size;
-    amrex::Vector<amrex::Box>& ba,
-    amrex::Vector<amrex::Array4<const amrex::Real>>& arrays,
+    amrex::Vector<amrex::Box>& ba;
+    amrex::Vector<amrex::Array4<const amrex::Real>>& arrays;
 };
 
 #endif
