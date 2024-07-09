@@ -260,7 +260,7 @@ struct InjectorMomentumSTLGaussianFlux
             return answer_ptr;
         }
 
-        for (int i = 0l i < size; ++i) {
+        for (int i = 0; i < size; ++i) {
             if (b_data[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real> const& eb_bnd_normal_arr = n_data[i];
 
