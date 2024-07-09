@@ -298,8 +298,8 @@ struct InjectorMomentumSTLGaussianFlux
 
 private:
     amrex::Real u_m, u_th;
-    amrex::GpuArray<amrex::Box>& ba; 
-    amrex::GpuArray<amrex::Array4<const amrex::Real>>& arrays; 
+    amrex::GpuArray<amrex::Box>& ba;
+    amrex::GpuArray<amrex::Array4<const amrex::Real>>& arrays;
     int size;
 };
 
