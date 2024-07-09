@@ -211,7 +211,7 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-        for (int i = 0; i < size; ++i) {
+        for (int i = 0; i < ba.size(); ++i) {
             if (ba[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = arrays[i];
 
@@ -298,8 +298,8 @@ struct InjectorMomentumSTLGaussianFlux
 
 private:
     amrex::Real u_m, u_th;
-    amrex::GpuArray<amrex::Box>& ba,
-    amrex::GpuArray<amrex::Array4<const amrex::Real>>& arrays,
+    amrex::GpuArray<amrex::Box>& ba; 
+    amrex::GpuArray<amrex::Array4<const amrex::Real>>& arrays; 
     int size;
 };
 
