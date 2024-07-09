@@ -270,9 +270,9 @@ struct InjectorMomentumSTLGaussianFlux
                 amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
 
                 // add a variable that determines if it should go inwards or outwards (default is inwards)
-                answer_ptr.x = m_i * momentum; 
-                answer_ptr.y = m_j * momentum; 
-                answer_ptr.z = m_k * momentum; 
+                answer_ptr.x = m_i * momentum;
+                answer_ptr.y = m_j * momentum;
+                answer_ptr.z = m_k * momentum;
             }
         });
 
