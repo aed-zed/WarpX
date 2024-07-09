@@ -199,7 +199,7 @@ struct InjectorMomentumSTLGaussianFlux
         for (int i = 0; i < size; i++) {
             barray[i] = b_array[i];
             narray[i] = normal_arrays[i];
-        }    
+        }
     }
 
     [[nodiscard]]
