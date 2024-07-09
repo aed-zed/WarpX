@@ -59,6 +59,9 @@
 
 #include <AMReX_BaseFwd.H>
 
+#include <cuda.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <cmath>
 #include <string>
 #include <memory>
