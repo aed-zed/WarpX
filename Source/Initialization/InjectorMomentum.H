@@ -206,7 +206,7 @@ struct InjectorMomentumSTLGaussianFlux
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
-                 amrex::RandomEngine const& engine) noexcept const
+                 amrex::RandomEngine const& engine) const noexcept
     {
         amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
 #ifdef AMREX_CUDA_ARCH
@@ -219,7 +219,7 @@ struct InjectorMomentumSTLGaussianFlux
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) noexcept const
+    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
 #ifdef AMREX_CUDA_ARCH
         return calcMomentumHost(x, y, z, u_m);
@@ -234,7 +234,7 @@ private:
     [[nodiscard]]
         AMREX_GPU_HOST
         amrex::XDim3
-        calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) noexcept const
+        calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real const noexcept
     {
 
         using namespace amrex::literals;
@@ -268,7 +268,7 @@ private:
     [[nodiscard]]
         AMREX_GPU_DEVICE
         amrex::XDim3
-        calcMomentumDevice (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) noexcept const
+        calcMomentumDevice (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
     {
 
         using namespace amrex::literals;
