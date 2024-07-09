@@ -251,10 +251,6 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-        amrex::Real ux = 0.0_rt;
-        amrex::Real uy = 0.0_rt;
-        amrex::Real uz = 0.0_rt;
-
         amrex::XDim3 answer_ptr = amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
 
         amrex::Box const* b_data = ba.gpuData();
@@ -264,8 +260,8 @@ struct InjectorMomentumSTLGaussianFlux
             return answer_ptr;
         }
 
-        const int n = size;
-        amrex::ParallelFor(n, [=] AMREX_GPU_DEVICE (int i) mutable noexcept {
+        const int N = size;
+        amrex::ParallelFor(N, [=] AMREX_GPU_DEVICE (int i) noexcept {
             if (b_data[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real> const& eb_bnd_normal_arr = n_data[i];
 
@@ -274,13 +270,9 @@ struct InjectorMomentumSTLGaussianFlux
                 amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
 
                 // add a variable that determines if it should go inwards or outwards (default is inwards)
-                ux = m_i * momentum;
-                uy = m_j * momentum;
-                uz = m_k * momentum;
-
-                amrex::Gpu::Atomic::AddNoRet(&answer_ptr.x, ux);
-                amrex::Gpu::Atomic::AddNoRet(&answer_ptr.y, uy);
-                amrex::Gpu::Atomic::AddNoRet(&answer_ptr.z, uz);
+                answer_ptr.x = m_i * momentum; 
+                answer_ptr.y = m_j * momentum; 
+                answer_ptr.z = m_k * momentum; 
             }
         });
 
