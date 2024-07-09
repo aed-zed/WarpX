@@ -435,12 +435,12 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
         size += 1;
     }
 
-    amrex::GpuArray<amrex::Box> barray(size); 
-    amrex::GpuArray<amrex::Array4<const amrex::Real>> narray(size); 
+    amrex::GpuArray<amrex::Box> barray(size);
+    amrex::GpuArray<amrex::Array4<const amrex::Real>> narray(size);
 
     for (int i = 0; i < size; i++) {
-        barray[i] = b_array[i]; 
-        narray[i] = normal_arrays[i]; 
+        barray[i] = b_array[i];
+        narray[i] = normal_arrays[i];
     }
 
     h_flux_pos = std::make_unique<InjectorPosition> (
