@@ -435,8 +435,13 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
         size += 1;
     }
 
-    amrex::AsyncArray<amrex::Box> async_barray(b_array.data(), b_array.size());
-    amrex::AsyncArray<amrex::Box> async_narray(normal_arrays.data(), normal_arrays.size());
+    amrex::GpuArray<amrex::Box> barray(size); 
+    amrex::GpuArray<amrex::Array4<const amrex::Real>> narray(size); 
+
+    for (int i = 0; i < size; i++) {
+        barray[i] = b_array[i]; 
+        narray[i] = normal_arrays[i]; 
+    }
 
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandom*)nullptr,
@@ -453,7 +458,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
 #ifdef AMREX_USE_EB
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
-                                h_inj_mom, async_barray, async_narray, size);
+                                h_inj_mom, barray, narray, size);
 #endif
 
 }
