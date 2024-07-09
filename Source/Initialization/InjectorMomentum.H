@@ -205,6 +205,35 @@ struct InjectorMomentumSTLGaussianFlux
     }
 
     [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
+    amrex::XDim3
+    getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
+                 amrex::RandomEngine const& engine) const noexcept
+    {
+        amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
+#ifdef __CUDA_ARCH__
+        return calcMomentumHost(x, y, z, u);
+#else
+        return calcMomentumDevice(x, y, z, u);
+#endif
+    }
+
+    [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
+    amrex::XDim3
+    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
+    {
+#ifdef __CUDA_ARCH__
+        return calcMomentumHost(x, y, z, u_m);
+#else
+        return calcMomentumDevice(x, y, z, u_m);
+#endif
+    }
+
+
+private:
+
+    [[nodiscard]]
         AMREX_GPU_HOST
         amrex::XDim3
         calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
@@ -279,33 +308,7 @@ struct InjectorMomentumSTLGaussianFlux
         return answer_ptr;
     }
 
-    [[nodiscard]]
-    AMREX_GPU_HOST_DEVICE
-    amrex::XDim3
-    getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
-                 amrex::RandomEngine const& engine) const noexcept
-    {
-        amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
-#ifdef __CUDA_ARCH__
-        return calcMomentumHost(x, y, z, u);
-#else
-        return calcMomentumDevice(x, y, z, u);
-#endif
-    }
 
-    [[nodiscard]]
-    AMREX_GPU_HOST_DEVICE
-    amrex::XDim3
-    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
-    {
-#ifdef __CUDA_ARCH__
-        return calcMomentumHost(x, y, z, u_m);
-#else
-        return calcMomentumDevice(x, y, z, u_m);
-#endif
-    }
-
-private:
     amrex::Real u_m, u_th;
     amrex::AsyncArray<amrex::Box>& ba;
     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays;
