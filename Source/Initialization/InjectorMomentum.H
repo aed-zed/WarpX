@@ -221,10 +221,10 @@ struct InjectorMomentumSTLGaussianFlux
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
-#ifdef __CUDAACC__
-        return calcMomentumHost(x, y, z, u_m);
-#else
+#ifdef __CUDA_ARCH__
         return calcMomentumDevice(x, y, z, u_m);
+#else
+        return calcMomentumHost(x, y, z, u_m);
 #endif
     }
 
