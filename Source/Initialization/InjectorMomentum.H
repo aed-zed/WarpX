@@ -260,8 +260,7 @@ struct InjectorMomentumSTLGaussianFlux
             return answer_ptr;
         }
 
-        const int N = size;
-        amrex::ParallelFor(N, [=] AMREX_GPU_DEVICE (int i) noexcept {
+        for (int i = 0l i < size; ++i) {
             if (b_data[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real> const& eb_bnd_normal_arr = n_data[i];
 
@@ -273,8 +272,9 @@ struct InjectorMomentumSTLGaussianFlux
                 answer_ptr.x = m_i * momentum;
                 answer_ptr.y = m_j * momentum;
                 answer_ptr.z = m_k * momentum;
+                return answer_ptr;
             }
-        });
+        }
 
         return answer_ptr;
     }
