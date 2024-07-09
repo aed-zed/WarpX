@@ -191,11 +191,15 @@ private:
 struct InjectorMomentumSTLGaussianFlux
 {
     InjectorMomentumSTLGaussianFlux (amrex::Real a_un_m, amrex::Real a_un_th,
-                                     amrex::GpuArray<amrex::Box>& a_ba,
-                                     amrex::GpuArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                                     std::vector<amrex::Box> a_ba,
+                                     std::vector<amrex::Array4<const amrex::Real>> a_arrays,
                                      int a_size) noexcept
-        : u_m(a_un_m), u_th(a_un_th), ba(a_ba), arrays(a_arrays), size(a_size)
+        : u_m(a_un_m), u_th(a_un_th), ba(a_size), arrays(a_size), size(a_size)
     {
+        for (int i = 0; i < size; i++) {
+            barray[i] = b_array[i];
+            narray[i] = normal_arrays[i];
+        }    
     }
 
     [[nodiscard]]
@@ -248,7 +252,7 @@ struct InjectorMomentumSTLGaussianFlux
 
         amrex::XDim3 answer_ptr = amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
 
-        amrex::ParallelFor(size, [=, this, &answer_ptr] AMREX_GPU_DEVICE (int i) {
+        amrex::ParallelFor(size, [=, this, &answer_ptr] AMREX_GPU_DEVICE (int i) mutable {
             if (ba[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = arrays[i];
 
@@ -693,8 +697,8 @@ struct InjectorMomentum
     // This constructor stores a InjectorMomentumSTLGaussianFlux in union object.
     InjectorMomentum (InjectorMomentumSTLGaussianFlux* t,
                       amrex::Real a_un_m, amrex::Real a_un_th,
-                      amrex::GpuArray<amrex::Box>& a_ba,
-                      amrex::GpuArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                      std::vector<amrex::Box> a_ba,
+                      std::vector<amrex::Array4<const amrex::Real>> a_arrays,
                       int a_size)
         : type(Type::stlgaussianflux),
           object(t, a_un_m, a_un_th, a_ba, a_arrays, a_size)
@@ -908,8 +912,8 @@ private:
 #ifdef AMREX_USE_EB
         Object (InjectorMomentumSTLGaussianFlux*,
                 amrex::Real a_un_m, amrex::Real a_un_th,
-                amrex::GpuArray<amrex::Box>& a_ba,
-                amrex::GpuArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                std::vector<amrex::Box> a_ba,
+                std::vector<amrex::Array4<const amrex::Real>> a_arrays,
                 int a_size) noexcept
             : stlgaussianflux(a_un_m, a_un_th, a_ba, a_arrays, a_size) {}
 #endif
