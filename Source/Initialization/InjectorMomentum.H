@@ -213,6 +213,8 @@ struct InjectorMomentumSTLGaussianFlux
         return calcMomentumDevice(x, y, z, u);
 #elif !defined(__CUDA_ARCH__)
         return calcMomentumHost(x, y, z, u);
+#else 
+        return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
 #endif
     }
 
@@ -225,6 +227,8 @@ struct InjectorMomentumSTLGaussianFlux
         return calcMomentumDevice(x, y, z, u_m);
 #elif !defined(__CUDA_ARCH__)
         return calcMomentumHost(x, y, z, u_m);
+#else
+        return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
 #endif
     }
 
