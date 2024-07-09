@@ -234,7 +234,7 @@ private:
     [[nodiscard]]
         AMREX_GPU_HOST
         amrex::XDim3
-        calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real) const noexcept
+        calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
     {
 
         using namespace amrex::literals;
