@@ -261,7 +261,7 @@ struct InjectorMomentumSTLGaussianFlux
         amrex::Array4<const amrex::Real> const* n_data = arrays.gpuData();
 
         if ((b_data == nullptr) || (n_data == nullptr)) {
-            return answer_ptr; 
+            return answer_ptr;
         }
 
         const int n = size;
