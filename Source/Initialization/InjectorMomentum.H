@@ -255,7 +255,7 @@ struct InjectorMomentumSTLGaussianFlux
         amrex::Box const* b_data = ba.gpuData();
         amrex::Array4<const amrex::Real> const* n_data = arrays.gpuData();
 
-        int n = size; 
+        int n = size;
         amrex::ParallelFor(n, [=] AMREX_GPU_DEVICE (int i) mutable {
             if (b_data[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real> const& eb_bnd_normal_arr = n_data[i];
