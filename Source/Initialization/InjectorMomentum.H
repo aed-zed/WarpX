@@ -248,11 +248,11 @@ struct InjectorMomentumSTLGaussianFlux
 
         amrex::XDim3 answer_ptr = amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
 
-        amrex::AsyncArray<amrex::Box> b_array(ba.data(), ba.size()); 
-        amrex::AsyncArray<amrex::Array4<const amrex::Real>> n_array(arrays.data, array.size()); 
-        
-        amrex::Box* b_data = b_array.data(); 
-        amrex::Array4<const amrex::Real>* n_data = n_array.data(); 
+        amrex::AsyncArray<amrex::Box> b_array(ba.data(), ba.size());
+        amrex::AsyncArray<amrex::Array4<const amrex::Real>> n_array(arrays.data, array.size());
+
+        amrex::Box* b_data = b_array.data();
+        amrex::Array4<const amrex::Real>* n_data = n_array.data();
 
         amrex::ParallelFor(size, [=, this, &answer_ptr] AMREX_GPU_DEVICE (int i) mutable {
             if (b_data[i].contains(int_x, int_y, int_z)) {
