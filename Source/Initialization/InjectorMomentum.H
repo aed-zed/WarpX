@@ -242,12 +242,12 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-        amrex::Real ux = 0.0_rt; 
-        amrex::Real uy = 0.0_rt; 
-        amrex::Real uz = 0.0_rt; 
+        amrex::Real ux = 0.0_rt;
+        amrex::Real uy = 0.0_rt;
+        amrex::Real uz = 0.0_rt;
 
         amrex::XDim3 answer_ptr = amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
-        
+
         amrex::ParallelFor(size, [=, this, &answer_ptr] AMREX_GPU_DEVICE (int i) {
             if (ba[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = arrays[i];
