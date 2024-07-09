@@ -47,8 +47,6 @@
 #include <AMReX_Vector.H>
 #endif
 
-
-
 #include <AMReX.H>
 #include <AMReX_Config.H>
 #include <AMReX_Dim3.H>
@@ -59,9 +57,8 @@
 
 #include <AMReX_BaseFwd.H>
 
-#include <cuda.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
 #include <cmath>
 #include <string>
 #include <memory>
@@ -211,7 +208,7 @@ struct InjectorMomentumSTLGaussianFlux
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getMomentum (amrex::Real x, amrex::Real y, amrex::Real z,
-                 amrex::RandomEngine const& engine) const noexcept
+                 amrex::RandomEngine const& engine) noexcept const
     {
         amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
 #ifdef __CUDA_ARCH__
@@ -224,7 +221,7 @@ struct InjectorMomentumSTLGaussianFlux
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
+    getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) noexcept const
     {
 #ifdef __CUDA_ARCH__
         return calcMomentumHost(x, y, z, u_m);
@@ -239,7 +236,7 @@ private:
     [[nodiscard]]
         AMREX_GPU_HOST
         amrex::XDim3
-        calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
+        calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) noexcept const
     {
 
         using namespace amrex::literals;
@@ -273,7 +270,7 @@ private:
     [[nodiscard]]
         AMREX_GPU_DEVICE
         amrex::XDim3
-        calcMomentumDevice (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
+        calcMomentumDevice (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) noexcept const
     {
 
         using namespace amrex::literals;
