@@ -212,12 +212,12 @@ struct InjectorMomentumSTLGaussianFlux
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
 
-        amrex::Box const* b_data = b_array.data();
-        amrex::Array4<const amrex::Real> const* n_data = n_array.data();
+        amrex::Box const* b_data = ba.data();
+        amrex::Array4<const amrex::Real> const* n_data = arrays.data();
 
-        for (int i = 0; i < ba.size(); ++i) {
+        for (int i = 0; i < size; ++i) {
             if (b_data[i].contains(int_x, int_y, int_z)) {
-                amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = n_data[i];
+                amrex::Array4<const amrex::Real> const& eb_bnd_normal_arr = n_data[i];
 
                 amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
                 amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
@@ -252,12 +252,12 @@ struct InjectorMomentumSTLGaussianFlux
 
         amrex::XDim3 answer_ptr = amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
 
-        amrex::Box const* b_data = b_array.gpuData();
-        amrex::Array4<const amrex::Real> const* n_data = n_array.gpuData();
+        amrex::Box const* b_data = ba.gpuData();
+        amrex::Array4<const amrex::Real> const* n_data = arrays.gpuData();
 
         amrex::ParallelFor(size, [=, this, &answer_ptr] AMREX_GPU_DEVICE (int i) mutable {
             if (b_data[i].contains(int_x, int_y, int_z)) {
-                amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = n_data[i];
+                amrex::Array4<const amrex::Real> const& eb_bnd_normal_arr = n_data[i];
 
                 amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
                 amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
@@ -268,9 +268,9 @@ struct InjectorMomentumSTLGaussianFlux
                 uy = m_j * momentum;
                 uz = m_k * momentum;
 
-                amrex::Gpu::Atomic::AddNoRet(*answer_ptr.x, ux);
-                amrex::Gpu::Atomic::AddNoRet(*answer_ptr.y, uy);
-                amrex::Gpu::Atomic::AddNoRet(*answer_ptr.z, uz);
+                amrex::Gpu::Atomic::AddNoRet(&answer_ptr.x, ux);
+                amrex::Gpu::Atomic::AddNoRet(&answer_ptr.y, uy);
+                amrex::Gpu::Atomic::AddNoRet(&answer_ptr.z, uz);
             }
         });
 
