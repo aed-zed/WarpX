@@ -57,8 +57,6 @@
 
 #include <AMReX_BaseFwd.H>
 
-#include <cuda_runtime.h>
-#include <device_launch_parameters.h>
 #include <cmath>
 #include <string>
 #include <memory>
