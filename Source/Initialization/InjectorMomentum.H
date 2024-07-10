@@ -209,7 +209,7 @@ struct InjectorMomentumSTLGaussianFlux
                  amrex::RandomEngine const& engine) const noexcept
     {
         amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
-#ifdef __CUDA_ARCH__ || __HIP_DEVICE_COMPILE__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return calcMomentumDevice(x, y, z, u);
 #else
         return calcMomentumHost(x, y, z, u);
@@ -221,7 +221,7 @@ struct InjectorMomentumSTLGaussianFlux
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
-#ifdef __CUDA_ARCH__ || __HIP_DEVICE_COMPILE__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         return calcMomentumDevice(x, y, z, u_m);
 #else
         return calcMomentumHost(x, y, z, u_m);
