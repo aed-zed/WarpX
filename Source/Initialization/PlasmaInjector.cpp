@@ -398,7 +398,7 @@ void PlasmaInjector::setupNuniformPerCell (amrex::ParmParse const& pp_species)
         "n_rz_azimuthal_modes (Please visit PR#765 for more information.)");
     }
 #endif
-    // Construct  InjectorPosition from InjectorPositionRegular.
+    // Construct InjectorPosition from InjectorPositionRegular.
     h_inj_pos = std::make_unique<InjectorPosition>(
         (InjectorPositionRegular*)nullptr,
         xmin, xmax, ymin, ymax, zmin, zmax,
