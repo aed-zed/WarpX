@@ -226,7 +226,8 @@ private:
     [[nodiscard]]
         AMREX_GPU_HOST_DEVICE
         amrex::XDim3
-        calcMomentum (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept {
+        calcMomentum (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept 
+    {
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         amrex::Box const* b_data = ba.gpuData();
         amrex::Array4<const amrex::Real> const* n_data = arrays.gpuData();
@@ -236,7 +237,7 @@ private:
         amrex::Array4<const amrex::Real> const* n_data = arrays.data();
         return calcMomentumHelper(x, y, z, momentum, b_data, n_data);
 #endif
-        }
+    }
 
 
     [[nodiscard]]
