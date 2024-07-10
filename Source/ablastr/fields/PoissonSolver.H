@@ -57,10 +57,6 @@
 
 
 namespace ablastr::fields {
-
-    std::unique_ptr<amrex::MLMG> mlmg_ptr = nullptr;
-    int number_iterations = 0;
-
 // all side effects other than rho should happen
 
 /** Compute the potential `phi` by solving the Poisson equation
@@ -259,20 +255,15 @@ std::tuple<amrex::Real, int> computePhi (
         linop.setRZ(true);
 #endif
 
-        if ((mlmg_ptr == nullptr) || (!poisson_skipped) || (number_iterations < 2))  {
-            mlmg_ptr = std::make_unique<amrex::MLMG>(linop);
-            mlmg_ptr->setVerbose(verbosity);
-            mlmg_ptr->setMaxIter(max_iters);
-            mlmg_ptr->setAlwaysUseBNorm(always_use_bnorm);
-        }
+        amrex::MLMG mlmg(linop);
+        mlmg.setVerbose(verbosity);
+        mlmg.setMaxIter(max_iters);
+        mlmg.setAlwaysUseBNorm(always_use_bnorm);
 
         // Solve Poisson equation at lev, get the residual and iteration values
         // set defaults to -1
-        if ((!poisson_skipped) || (number_iterations < 2)) {
-            composite_norminf = mlmg_ptr->solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance );
-            poisson_iter = mlmg_ptr->getPoissonIters();
-        }
-
+        composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance, poisson_skipped);
+        poisson_iter = mlmg.getPoissonIters();
 
         // needed for solving the levels by levels:
         // - coarser level is initial guess for finer level
@@ -323,14 +314,11 @@ std::tuple<amrex::Real, int> computePhi (
         // Run additional operations, such as calculation of the E field for embedded boundaries
         if constexpr (!std::is_same<T_PostPhiCalculationFunctor, std::nullopt_t>::value) {
             if (post_phi_calculation.has_value()) {
-                post_phi_calculation.value()(*mlmg_ptr, lev);
+                post_phi_calculation.value()(mlmg, lev);
             }
         }
 
     } // loop over lev(elcomps)
-
-
-    number_iterations += 1;
 
     return std::make_tuple(composite_norminf, poisson_iter);
 }
