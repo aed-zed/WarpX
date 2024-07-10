@@ -414,7 +414,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     auto & warpx = WarpX::GetInstance();
     int const lev = 0;
     std::string const& input_string = source_name + ".";
-    amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20, input_string);
+    amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20, 4, input_string);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
     const amrex::Geometry& geom = indexSpace.getGeometry(lev);
     const amrex::Box& domain_box = geom.Domain();
