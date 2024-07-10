@@ -209,11 +209,7 @@ struct InjectorMomentumSTLGaussianFlux
                  amrex::RandomEngine const& engine) const noexcept
     {
         amrex::Real u = generateGaussianFluxDist(u_m, u_th, engine);
-#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
-        return calcMomentumDevice(x, y, z, u);
-#else
-        return calcMomentumHost(x, y, z, u);
-#endif
+        return calcMomentum(x, y, z, u);
     }
 
     [[nodiscard]]
@@ -221,31 +217,44 @@ struct InjectorMomentumSTLGaussianFlux
     amrex::XDim3
     getBulkMomentum (amrex::Real x, amrex::Real y, amrex::Real z) const noexcept
     {
-#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
-        return calcMomentumDevice(x, y, z, u_m);
-#else
-        return calcMomentumHost(x, y, z, u_m);
-#endif
+        return calcMomentum(x, y, z, u_m); 
     }
 
 
 private:
 
     [[nodiscard]]
-        AMREX_GPU_HOST
+        AMREX_GPU_HOST_DEVICE
         amrex::XDim3
-        calcMomentumHost (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
+        calcMomentum (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept {
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+        amrex::Box const* b_data = ba.gpuData();
+        amrex::Array4<const amrex::Real> const* n_data = arrays.gpuData();
+        return calcMomentumHelper(x, y, z, momentum, b_data, n_data);
+#else
+        amrex::Box const* b_data = ba.data();
+        amrex::Array4<const amrex::Real> const* n_data = arrays.data();
+        return calcMomentumHelper(x, y, z, momentum, b_data, n_data);
+#endif
+        }
+
+
+    [[nodiscard]]
+        AMREX_GPU_HOST_DEVICE
+        amrex::XDim3
+        calcMomentumHelper (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum, amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* n_data) const noexcept
     {
 
         using namespace amrex::literals;
+
+        if ((b_data == nullptr) || (n_data == nullptr)) {
+            return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
+        }
 
         // how can i use x y z given that ba and array:4 have to take in integers
         int int_x = amrex::Math::round(x);
         int int_y = amrex::Math::round(y);
         int int_z = amrex::Math::round(z);
-
-        amrex::Box const* b_data = ba.data();
-        amrex::Array4<const amrex::Real> const* n_data = arrays.data();
 
         for (int i = 0; i < size; ++i) {
             if (b_data[i].contains(int_x, int_y, int_z)) {
@@ -264,48 +273,6 @@ private:
         }
         return amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
     }
-
-    [[nodiscard]]
-        AMREX_GPU_DEVICE
-        amrex::XDim3
-        calcMomentumDevice (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum) const noexcept
-    {
-
-        using namespace amrex::literals;
-
-        // how can i use x y z given that ba and array:4 have to take in integers
-        int int_x = amrex::Math::round(x);
-        int int_y = amrex::Math::round(y);
-        int int_z = amrex::Math::round(z);
-
-        amrex::XDim3 answer_ptr = amrex::XDim3{0.0_rt, 0.0_rt, 0.0_rt};
-
-        amrex::Box const* b_data = ba.gpuData();
-        amrex::Array4<const amrex::Real> const* n_data = arrays.gpuData();
-
-        if ((b_data == nullptr) || (n_data == nullptr)) {
-            return answer_ptr;
-        }
-
-        for (int i = 0; i < size; ++i) {
-            if (b_data[i].contains(int_x, int_y, int_z)) {
-                amrex::Array4<const amrex::Real> const& eb_bnd_normal_arr = n_data[i];
-
-                amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
-                amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
-                amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
-
-                // add a variable that determines if it should go inwards or outwards (default is inwards)
-                answer_ptr.x = m_i * momentum;
-                answer_ptr.y = m_j * momentum;
-                answer_ptr.z = m_k * momentum;
-                return answer_ptr;
-            }
-        }
-
-        return answer_ptr;
-    }
-
 
     amrex::Real u_m, u_th;
     amrex::AsyncArray<amrex::Box>& ba;
