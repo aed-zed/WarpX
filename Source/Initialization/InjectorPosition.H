@@ -63,6 +63,48 @@ private:
 };
 
 // struct whose getPositionUnitBox returns x, y and z for a particle with
+// random distribution on a plane inside a unit cell.
+struct InjectorPositionRandomSTLPlane
+{
+    InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays, int a_size) noexcept 
+        : arrays(a_arrays), size(a_size) {}
+
+    [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
+    amrex::XDim3
+    getPositionUnitBox (int /*i_part*/, amrex::IntVect const /*ref_fac*/,
+                        amrex::RandomEngine const& engine) const noexcept
+    {
+        using namespace amrex::literals;
+
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> distr(0, size); // Change 1 and 100 to your desired range
+        int i = distr(gen);
+
+        amrex::Array4<const amrex::Real> const& eb_cent = a_arrays[i]; 
+
+        amrex::Array4
+        
+#if ((defined WARPX_DIM_3D) || (defined WARPX_DIM_RZ))
+        // In RZ, the 3 components of the `XDim3` vector below correspond to r, theta, z respectively
+        if (dir == 0)  { return amrex::XDim3{0._rt, amrex::Random(engine), amrex::Random(engine)}; }
+        if (dir == 1)  { return amrex::XDim3{amrex::Random(engine), 0._rt, amrex::Random(engine)}; }
+        else           { return amrex::XDim3{amrex::Random(engine), amrex::Random(engine), 0._rt}; }
+#elif (defined(WARPX_DIM_XZ))
+       return amrex::XDim3{amrex::Random(engine), 0._rt, 0._rt }; 
+#elif (defined(WARPX_DIM_1D_Z))
+        return amrex::XDim3{0._rt, 0._rt, 0._rt};
+#endif
+    }
+private:
+   amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays;
+};
+
+
+
+
+// struct whose getPositionUnitBox returns x, y and z for a particle with
 // regular distribution inside a unit cell.
 struct InjectorPositionRegular
 {
