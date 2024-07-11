@@ -67,7 +67,7 @@ private:
 // random distribution on a plane inside a unit cell.
 struct InjectorPositionRandomSTLPlane
 {
-    InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box> a_ba,
+    InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
                                     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
                                     int a_size) noexcept
         : ba(a_ba), arrays(a_arrays), size(a_size) {}
@@ -128,7 +128,7 @@ private:
 
     }
 
-    amrex::AsyncArray<amrex::Box> ba;
+    amrex::AsyncArray<amrex::Box>& ba;
     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays;
     int size;
 };
