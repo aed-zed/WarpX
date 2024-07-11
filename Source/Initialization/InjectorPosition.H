@@ -66,8 +66,10 @@ private:
 // random distribution on a plane inside a unit cell.
 struct InjectorPositionRandomSTLPlane
 {
-    InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays, int a_size) noexcept 
-        : arrays(a_arrays), size(a_size) {}
+    InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box> a_ba, 
+                                    amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                                    int a_size) noexcept 
+        : ba(a_ba), arrays(a_arrays), size(a_size) {}
 
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
@@ -75,33 +77,58 @@ struct InjectorPositionRandomSTLPlane
     getPositionUnitBox (int /*i_part*/, amrex::IntVect const /*ref_fac*/,
                         amrex::RandomEngine const& engine) const noexcept
     {
-        using namespace amrex::literals;
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+        amrex::Box const* b_data = ba.gpuData();
+        amrex::Array4<const amrex::Real> const* c_data = arrays.gpuData();
+        return getPositionHelper(b_data, c_data);
+#else
+        amrex::Box const* b_data = ba.data();
+        amrex::Array4<const amrex::Real> const* c_data = arrays.data();
+        return getPositionHelper(b_data, c_data);
+#endif        
+    }
 
+private:
+
+    [[nodiscard]]
+    AMREX_GPU_HOST_DEVICE
+    amrex::XDim3
+    getPositionHelper (amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* c_data) {
+        
+        using namespace amrex::literals;
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> distr(0, size); // Change 1 and 100 to your desired range
         int i = distr(gen);
 
-        amrex::Array4<const amrex::Real> const& eb_cent = a_arrays[i]; 
+        amrex::Box const& box = b_data[i]; 
+        amrex::Array4<const amrex::Real> const& eb_cent = arrays[i]; 
 
-        amrex::Array4
-        
-#if ((defined WARPX_DIM_3D) || (defined WARPX_DIM_RZ))
-        // In RZ, the 3 components of the `XDim3` vector below correspond to r, theta, z respectively
-        if (dir == 0)  { return amrex::XDim3{0._rt, amrex::Random(engine), amrex::Random(engine)}; }
-        if (dir == 1)  { return amrex::XDim3{amrex::Random(engine), 0._rt, amrex::Random(engine)}; }
-        else           { return amrex::XDim3{amrex::Random(engine), amrex::Random(engine), 0._rt}; }
-#elif (defined(WARPX_DIM_XZ))
-       return amrex::XDim3{amrex::Random(engine), 0._rt, 0._rt }; 
-#elif (defined(WARPX_DIM_1D_Z))
-        return amrex::XDim3{0._rt, 0._rt, 0._rt};
-#endif
+        // get mins and maxs of the x, y, z values of the randomly selected cell given 
+        const auto lo = amrex::lbound(box); 
+        const auto hi = amrex::lbound(box); 
+
+        // gen random x, y, z coor given min and max alues
+        std::uniform_int_distribution<> distr_x(lo.x, hi.x); 
+        std::uniform_int_distribution<> distr_y(lo.y, hi.y); 
+        std::uniform_int_distribution<> distr_z(lo.z, hi.z); 
+
+        int index_x = distr_x(gen); 
+        int index_y = distr_y(gen); 
+        int index_z = distr_z(gen); 
+
+        amrex::Real x = eb_cent(index_x, index_y, index_z, 0); 
+        amrex::Real y = eb_cent(index_x, index_y, index_z, 1); 
+        amrex::Real z = eb_cent(index_x, index_y, index_z, 2); 
+
+        return amrex::XDim3{x, y, z}; 
+
     }
-private:
-   amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays;
+
+    amrex::AsyncArray<amrex::Box> ba; 
+    amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays;
+    int size; 
 };
-
-
 
 
 // struct whose getPositionUnitBox returns x, y and z for a particle with
@@ -187,6 +214,21 @@ struct InjectorPosition
           zmin(a_zmin), zmax(a_zmax)
     { }
 
+    // This constructor stores a InjectorPositionRandomSTLPlane in union object.
+    InjectorPosition (InjectorPositionRandomSTLPlane* t,
+                      amrex::Real a_xmin, amrex::Real a_xmax,
+                      amrex::Real a_ymin, amrex::Real a_ymax,
+                      amrex::Real a_zmin, amrex::Real a_zmax,
+                      amrex::AsyncArray<amrex::Box>& a_ba,
+                      amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                      int size)
+        : type(Type::randomstlplane),
+          object(t, a_ba, a_arrays, size),
+          xmin(a_xmin), xmax(a_xmax),
+          ymin(a_ymin), ymax(a_ymax),
+          zmin(a_zmin), zmax(a_zmax)
+    { }
+
     // This constructor stores a InjectorPositionRegular in union object.
     InjectorPosition (InjectorPositionRegular* t,
                       amrex::Real a_xmin, amrex::Real a_xmax,
@@ -226,6 +268,10 @@ struct InjectorPosition
         case Type::randomplane:
         {
             return object.randomplane.getPositionUnitBox(i_part, ref_fac, engine);
+        }
+        case Type::randomstlplane:
+        {
+            return object.randomstlplane.getPositionUnitBox(i_part, ref_fac, engine); 
         }
         default:
         {
@@ -276,7 +322,7 @@ struct InjectorPosition
     }
 
 private:
-    enum struct Type { random, randomplane, regular};
+    enum struct Type { random, randomplane, randomstlplane, regular};
     Type type;
 
     // An instance of union Object constructs and stores any one of
@@ -285,10 +331,13 @@ private:
         Object (InjectorPositionRandom*) noexcept : random() {}
         Object (InjectorPositionRandomPlane*, int const& a_dir) noexcept
             : randomplane(a_dir) {}
+        Object (InjectorPositionRandomSTLPlane*, int const& a_dir) noexcept
+            : randomstlplane(a_dir) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}
         InjectorPositionRandom random;
         InjectorPositionRandomPlane randomplane;
+        InjectorPositionRandomSTLPlane randomstlplane;
         InjectorPositionRegular regular;
     };
     Object object;
