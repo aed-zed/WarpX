@@ -10,6 +10,7 @@
 
 #include "InjectorPosition_fwd.H"
 
+#include <random>
 #include <AMReX_Dim3.H>
 #include <AMReX_Gpu.H>
 #include <AMReX_Utility.H>
@@ -75,7 +76,7 @@ struct InjectorPositionRandomSTLPlane
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getPositionUnitBox (int /*i_part*/, amrex::IntVect const /*ref_fac*/,
-                        amrex::RandomEngine const& engine) const noexcept
+                        amrex::RandomEngine const& /*engine*/) const noexcept
     {
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         amrex::Box const* b_data = ba.gpuData();
@@ -93,7 +94,9 @@ private:
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getPositionHelper (amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* c_data) {
+    getPositionHelper (amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* c_data)
+    const noexcept
+    {
 
         using namespace amrex::literals;
         std::random_device rd;
