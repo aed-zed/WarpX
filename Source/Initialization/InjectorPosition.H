@@ -66,9 +66,9 @@ private:
 // random distribution on a plane inside a unit cell.
 struct InjectorPositionRandomSTLPlane
 {
-    InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box> a_ba, 
+    InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box> a_ba,
                                     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
-                                    int a_size) noexcept 
+                                    int a_size) noexcept
         : ba(a_ba), arrays(a_arrays), size(a_size) {}
 
     [[nodiscard]]
@@ -85,7 +85,7 @@ struct InjectorPositionRandomSTLPlane
         amrex::Box const* b_data = ba.data();
         amrex::Array4<const amrex::Real> const* c_data = arrays.data();
         return getPositionHelper(b_data, c_data);
-#endif        
+#endif
     }
 
 private:
@@ -94,40 +94,40 @@ private:
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getPositionHelper (amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* c_data) {
-        
+
         using namespace amrex::literals;
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> distr(0, size); // Change 1 and 100 to your desired range
         int i = distr(gen);
 
-        amrex::Box const& box = b_data[i]; 
-        amrex::Array4<const amrex::Real> const& eb_cent = arrays[i]; 
+        amrex::Box const& box = b_data[i];
+        amrex::Array4<const amrex::Real> const& eb_cent = arrays[i];
 
-        // get mins and maxs of the x, y, z values of the randomly selected cell given 
-        const auto lo = amrex::lbound(box); 
-        const auto hi = amrex::lbound(box); 
+        // get mins and maxs of the x, y, z values of the randomly selected cell given
+        const auto lo = amrex::lbound(box);
+        const auto hi = amrex::lbound(box);
 
         // gen random x, y, z coor given min and max alues
-        std::uniform_int_distribution<> distr_x(lo.x, hi.x); 
-        std::uniform_int_distribution<> distr_y(lo.y, hi.y); 
-        std::uniform_int_distribution<> distr_z(lo.z, hi.z); 
+        std::uniform_int_distribution<> distr_x(lo.x, hi.x);
+        std::uniform_int_distribution<> distr_y(lo.y, hi.y);
+        std::uniform_int_distribution<> distr_z(lo.z, hi.z);
 
-        int index_x = distr_x(gen); 
-        int index_y = distr_y(gen); 
-        int index_z = distr_z(gen); 
+        int index_x = distr_x(gen);
+        int index_y = distr_y(gen);
+        int index_z = distr_z(gen);
 
-        amrex::Real x = eb_cent(index_x, index_y, index_z, 0); 
-        amrex::Real y = eb_cent(index_x, index_y, index_z, 1); 
-        amrex::Real z = eb_cent(index_x, index_y, index_z, 2); 
+        amrex::Real x = eb_cent(index_x, index_y, index_z, 0);
+        amrex::Real y = eb_cent(index_x, index_y, index_z, 1);
+        amrex::Real z = eb_cent(index_x, index_y, index_z, 2);
 
-        return amrex::XDim3{x, y, z}; 
+        return amrex::XDim3{x, y, z};
 
     }
 
-    amrex::AsyncArray<amrex::Box> ba; 
+    amrex::AsyncArray<amrex::Box> ba;
     amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays;
-    int size; 
+    int size;
 };
 
 
@@ -271,7 +271,7 @@ struct InjectorPosition
         }
         case Type::randomstlplane:
         {
-            return object.randomstlplane.getPositionUnitBox(i_part, ref_fac, engine); 
+            return object.randomstlplane.getPositionUnitBox(i_part, ref_fac, engine);
         }
         default:
         {

@@ -421,14 +421,14 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     const amrex::BoxArray array_box(domain_box);
     const amrex::DistributionMapping dm(array_box);
     std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
-   
-    // since multicutfab, by default only contians cut cells 
+
+    // since multicutfab, by default only contians cut cells
     amrex::MultiCutFab const& eb_bnd_normal = field_factory_ptr->getBndryNormal();
-    amrex::MultiCutFab const& eb_bnd_cent = field_factory_ptr->getBndryCent(); 
+    amrex::MultiCutFab const& eb_bnd_cent = field_factory_ptr->getBndryCent();
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
-    amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays; 
+    amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
     for (amrex::MFIter mfi(array_box, dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
         const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector());
@@ -447,7 +447,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
-    amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size()); 
+    amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
 
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandomSTLPlane*)nullptr,
