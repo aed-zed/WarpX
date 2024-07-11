@@ -334,8 +334,11 @@ private:
         Object (InjectorPositionRandom*) noexcept : random() {}
         Object (InjectorPositionRandomPlane*, int const& a_dir) noexcept
             : randomplane(a_dir) {}
-        Object (InjectorPositionRandomSTLPlane*, int const& a_dir) noexcept
-            : randomstlplane(a_dir) {}
+        Object (InjectorPositionRandomSTLPlane*,
+                amrex::AsyncArray<amrex::Box>& a_ba,
+                amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                int size) noexcept
+            : randomstlplane(a_ba, a_arrays, size) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}
         InjectorPositionRandom random;
