@@ -105,7 +105,7 @@ private:
         int i = distr(gen);
 
         amrex::Box const& box = b_data[i];
-        amrex::Array4<const amrex::Real> const& eb_cent = arrays[i];
+        amrex::Array4<const amrex::Real> const& eb_cent = c_data[i];
 
         // get mins and maxs of the x, y, z values of the randomly selected cell given
         const auto lo = amrex::lbound(box);
