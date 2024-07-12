@@ -76,16 +76,16 @@ struct InjectorPositionRandomSTLPlane
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getPositionUnitBox (int /*i_part*/, amrex::IntVect const /*ref_fac*/,
-                        amrex::RandomEngine const& /*engine*/) const noexcept
+                        amrex::RandomEngine const& engine) const noexcept
     {
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         amrex::Box const* b_data = ba.gpuData();
         amrex::Array4<const amrex::Real> const* c_data = arrays.gpuData();
-        return getPositionHelper(b_data, c_data);
+        return getPositionHelper(b_data, c_data, engine);
 #else
         amrex::Box const* b_data = ba.data();
         amrex::Array4<const amrex::Real> const* c_data = arrays.data();
-        return getPositionHelper(b_data, c_data);
+        return getPositionHelper(b_data, c_data, engine);
 #endif
     }
 
@@ -94,15 +94,13 @@ private:
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getPositionHelper (amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* c_data)
-    const noexcept
+    getPositionHelper (amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* c_data, 
+                       amrex::RandomEngine const& engine) const noexcept
     {
 
         using namespace amrex::literals;
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> distr(0, size); // Change 1 and 100 to your desired range
-        int i = distr(gen);
+        
+        int i = amrex::Random_int(size, engine); 
 
         amrex::Box const& box = b_data[i];
         amrex::Array4<const amrex::Real> const& eb_cent = c_data[i];
@@ -111,14 +109,13 @@ private:
         const auto lo = amrex::lbound(box);
         const auto hi = amrex::lbound(box);
 
-        // gen random x, y, z coor given min and max alues
-        std::uniform_int_distribution<> distr_x(lo.x, hi.x);
-        std::uniform_int_distribution<> distr_y(lo.y, hi.y);
-        std::uniform_int_distribution<> distr_z(lo.z, hi.z);
+        int x_size = hi.x - lo.x; 
+        int y_size = hi.y - lo.y; 
+        int z_size = hi.z - lo.z; 
 
-        int index_x = distr_x(gen);
-        int index_y = distr_y(gen);
-        int index_z = distr_z(gen);
+        int index_x = amrex::Random_int(x_size, engine); 
+        int index_y = amrex::Random_int(y_size, engine); 
+        int index_z = amrex::Random_int(z_size, engine); 
 
         amrex::Real x = eb_cent(index_x, index_y, index_z, 0);
         amrex::Real y = eb_cent(index_x, index_y, index_z, 1);
