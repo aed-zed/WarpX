@@ -94,13 +94,13 @@ private:
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getPositionHelper (amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* c_data, 
+    getPositionHelper (amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* c_data,
                        amrex::RandomEngine const& engine) const noexcept
     {
 
         using namespace amrex::literals;
-        
-        int i = amrex::Random_int(size, engine); 
+
+        int i = amrex::Random_int(size, engine);
 
         amrex::Box const& box = b_data[i];
         amrex::Array4<const amrex::Real> const& eb_cent = c_data[i];
@@ -109,13 +109,13 @@ private:
         const auto lo = amrex::lbound(box);
         const auto hi = amrex::lbound(box);
 
-        int x_size = hi.x - lo.x; 
-        int y_size = hi.y - lo.y; 
-        int z_size = hi.z - lo.z; 
+        int x_size = hi.x - lo.x;
+        int y_size = hi.y - lo.y;
+        int z_size = hi.z - lo.z;
 
-        int index_x = amrex::Random_int(x_size, engine); 
-        int index_y = amrex::Random_int(y_size, engine); 
-        int index_z = amrex::Random_int(z_size, engine); 
+        int index_x = amrex::Random_int(x_size, engine);
+        int index_y = amrex::Random_int(y_size, engine);
+        int index_z = amrex::Random_int(z_size, engine);
 
         amrex::Real x = eb_cent(index_x, index_y, index_z, 0);
         amrex::Real y = eb_cent(index_x, index_y, index_z, 1);

@@ -243,7 +243,7 @@ private:
     [[nodiscard]]
         AMREX_GPU_HOST_DEVICE
         amrex::XDim3
-        calcMomentumHelper (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum, 
+        calcMomentumHelper (amrex::Real x, amrex::Real y, amrex::Real z, amrex::Real momentum,
                             amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* n_data) const noexcept
     {
 
