@@ -413,7 +413,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     // when getting EB charge, default was lev 0 so we're just gonna do that here too and hope for the best.
     auto & warpx = WarpX::GetInstance();
     int const lev = 0;
-    std::string const& input_string = source_name + ".";
+    std::string const& input_string = pp_species + source_name + ".";
     amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20, 4, input_string);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
     const amrex::Geometry& geom = indexSpace.getGeometry(lev);
