@@ -58,7 +58,7 @@
 
 namespace ablastr::fields {
 
-    std::unique_ptr<amrex::Vector<amrex::MultiFab*>> old_phi = nullptr; 
+    std::unique_ptr<amrex::Vector<amrex::MultiFab*>> old_phi = nullptr;
 
 // all side effects other than rho should happen
 
@@ -268,10 +268,10 @@ std::tuple<amrex::Real, int> computePhi (
         composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance, poisson_skipped);
         poisson_iter = mlmg.getPoissonIters();
         if ((!poisson_skipped) & old_phi) {
-            phi = *old_phi; 
+            phi = *old_phi;
         }
         else {
-            old_phi = &phi; 
+            old_phi = &phi;
         }
 
         // needed for solving the levels by levels:
