@@ -271,7 +271,7 @@ std::tuple<amrex::Real, int> computePhi (
             phi = *old_phi;
         }
         else {
-            old_phi.reset(&phi); 
+            old_phi.reset(&phi);
         }
 
         // needed for solving the levels by levels:
