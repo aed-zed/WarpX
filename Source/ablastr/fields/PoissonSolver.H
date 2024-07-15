@@ -58,7 +58,7 @@
 
 namespace ablastr::fields {
 
-    std::unique_ptr<amrex::Vector<amrex::MultiFab*>> old_phi = nullptr;
+    std::shared_ptr<amrex::Vector<amrex::MultiFab*>> old_phi = nullptr;
 
 // all side effects other than rho should happen
 
@@ -271,7 +271,7 @@ std::tuple<amrex::Real, int> computePhi (
             phi = *old_phi;
         }
         else {
-            old_phi = &phi;
+            old_phi.reset(&phi); 
         }
 
         // needed for solving the levels by levels:
