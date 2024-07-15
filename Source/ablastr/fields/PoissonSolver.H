@@ -57,6 +57,9 @@
 
 
 namespace ablastr::fields {
+
+    std::unique_ptr<amrex::Vector<amrex::MultiFab*>> old_phi = nullptr; 
+
 // all side effects other than rho should happen
 
 /** Compute the potential `phi` by solving the Poisson equation
@@ -264,6 +267,12 @@ std::tuple<amrex::Real, int> computePhi (
         // set defaults to -1
         composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance, poisson_skipped);
         poisson_iter = mlmg.getPoissonIters();
+        if ((!poisson_skipped) & old_phi) {
+            phi = *old_phi; 
+        }
+        else {
+            old_phi = &phi; 
+        }
 
         // needed for solving the levels by levels:
         // - coarser level is initial guess for finer level
