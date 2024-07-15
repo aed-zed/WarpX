@@ -397,17 +397,6 @@ void PlasmaInjector::setupNFluxPerCell (amrex::ParmParse const& pp_species)
 void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 {
 #ifdef AMREX_USE_EB
-    utils::parser::getWithParser(pp_species, source_name, "num_particles_per_cell", num_particles_per_cell_real);
-#ifdef WARPX_DIM_RZ
-    if (WarpX::n_rz_azimuthal_modes > 1) {
-    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
-        num_particles_per_cell_real>=2*WarpX::n_rz_azimuthal_modes,
-        "Error: For accurate use of WarpX cylindrical geometry the number "
-        "of particles should be at least two times n_rz_azimuthal_modes "
-        "(Please visit PR#765 for more information.)");
-    }
-#endif
-
     // Get the file
 
     // when getting EB charge, default was lev 0 so we're just gonna do that here too and hope for the best.
