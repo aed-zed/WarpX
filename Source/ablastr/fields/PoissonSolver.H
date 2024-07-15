@@ -267,7 +267,7 @@ std::tuple<amrex::Real, int> computePhi (
         // set defaults to -1
         composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance, poisson_skipped);
         poisson_iter = mlmg.getPoissonIters();
-        if ((!poisson_skipped) & old_phi) {
+        if ((!poisson_skipped) && (old_phi != nullptr)) {
             phi = *old_phi;
         }
         else {
