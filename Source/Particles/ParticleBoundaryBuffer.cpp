@@ -533,10 +533,14 @@ void ParticleBoundaryBuffer::gatherParticles (MultiParticleContainer& mypc,
 int ParticleBoundaryBuffer::getNumParticlesInContainer(
         const std::string& species_name, int boundary, bool local) {
 
+    std::cout << "about to get buffer" << std::endl; 
     auto& buffer = m_particle_containers[boundary];
+    std::cout << "about to get index" << std::endl; 
     auto index = WarpX::GetInstance().GetPartContainer().getSpeciesID(species_name);
 
+    std::cout << "checking if buffer[index] is defined" <<std::endl; 
     if (buffer[index].isDefined()){
+        std::cout << "returning total particle number" << std::endl; 
         return static_cast<int>(buffer[index].TotalNumberOfParticles(false, local));
     }
     else{
