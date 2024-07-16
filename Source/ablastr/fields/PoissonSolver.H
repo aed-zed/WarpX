@@ -123,7 +123,7 @@ std::tuple<amrex::Real, int> computePhi (
 
     amrex::Real composite_norminf = 0.0_rt;
     int poisson_iter = 0;
-    if (number_iter < 2) {
+    if (number_iter < 3) {
         poisson_skipped = true;
     }
 
