@@ -267,9 +267,9 @@ private:
                 amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
 
                 // add a variable that determines if it should go inwards or outwards (default is inwards)
-                amrex::Real const ux = m_i * momentum;
-                amrex::Real const uy = m_j * momentum;
-                amrex::Real const uz = m_k * momentum;
+                amrex::Real const ux = m_i * momentum * -1;
+                amrex::Real const uy = m_j * momentum * -1;
+                amrex::Real const uz = m_k * momentum * -1;
                 return amrex::XDim3{ux, uy, uz};
             }
         }
