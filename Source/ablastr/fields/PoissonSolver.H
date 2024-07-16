@@ -267,11 +267,21 @@ std::tuple<amrex::Real, int> computePhi (
         // set defaults to -1
         composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance, poisson_skipped);
         poisson_iter = mlmg.getPoissonIters();
+
+        // this is probs hella costly but let's see if it works first before freaking out 
         if ((!poisson_skipped) && (old_phi.size() != 0)) {
-            phi = old_phi;
+            phi.clear(); 
+            for (amrex::MultiFab* mf_ptr : old_phi) {
+                amrex::MultiFab* new_mf = new amrex::MultiFab(*mf_ptr); 
+                phi.push_back(new_mf_ptr); 
+            } 
         }
         else {
-            old_phi = phi;
+            old_phi.clear(); 
+            for (amrex::MultiFab* mf_ptr : phi) {
+                amrex::MultiFab* new_mf = new amrex::MultiFab(*mf_ptr); 
+                old_phi.push_back(new_mf_ptr); 
+            } 
         }
 
         // needed for solving the levels by levels:
