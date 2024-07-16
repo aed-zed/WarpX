@@ -71,6 +71,7 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
 
     if (electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrame ||
         electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrameElectroMagnetostatic) {
+        std::cout << "adding lab frame" << std::endl; 
         AddSpaceChargeFieldLabFrame();
     }
     else {
@@ -81,6 +82,7 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
             WarpXParticleContainer& species = mypc->GetParticleContainer(ispecies);
             if (species.initialize_self_fields ||
                 (electrostatic_solver_id == ElectrostaticSolverAlgo::Relativistic)) {
+                std::cout << "adding space charge field" << std::endl; 
                 AddSpaceChargeField(species);
             }
         }
@@ -88,6 +90,7 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
         // Add the field due to the boundary potentials
         if (m_boundary_potential_specified ||
                 (electrostatic_solver_id == ElectrostaticSolverAlgo::Relativistic)){
+            std::cout << "adding boundary field" << std::endl; 
             AddBoundaryField();
         }
     }
@@ -155,7 +158,7 @@ WarpX::AddSpaceChargeField (WarpXParticleContainer& pc)
     const int num_levels = max_level + 1;
     Vector<std::unique_ptr<MultiFab> > rho(num_levels);
     Vector<std::unique_ptr<MultiFab> > rho_coarse(num_levels); // Used in order to interpolate between levels
-    Vector<std::unique_ptr<MultiFab> > phi(num_levels);
+    Vector<std::unique_ptr<MultiFab> > phi(num_levels);      
     // Use number of guard cells used for local deposition of rho
     const amrex::IntVect ng = guard_cells.ng_depos_rho;
     for (int lev = 0; lev <= max_level; lev++) {

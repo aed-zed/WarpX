@@ -1051,6 +1051,8 @@ WarpX::SyncRho (
     if (!charge_fp[0]) { return; }
     const int ncomp = charge_fp[0]->nComp();
 
+    std::cout << "syncing rho" << std::endl; 
+    
     // See comments in WarpX::SyncCurrent for an explanation of the algorithm.
 
     std::unique_ptr<MultiFab> mf_comm; // for communication between levels
