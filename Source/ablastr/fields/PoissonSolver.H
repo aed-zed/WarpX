@@ -58,7 +58,7 @@
 
 namespace ablastr::fields {
 
-    int number_iter = 0; 
+    int number_iter = 0;
 
 // all side effects other than rho should happen
 
@@ -124,7 +124,7 @@ std::tuple<amrex::Real, int> computePhi (
     amrex::Real composite_norminf = 0.0_rt;
     int poisson_iter = 0;
     if (number_iter < 2) {
-        poisson_skipped = true; 
+        poisson_skipped = true;
     }
 
     ABLASTR_PROFILE("computePhi", false);
@@ -326,7 +326,7 @@ std::tuple<amrex::Real, int> computePhi (
 
     } // loop over lev(elcomps)
 
-    number_iter += 1; 
+    number_iter += 1;
     return std::make_tuple(composite_norminf, poisson_iter);
 }
 
