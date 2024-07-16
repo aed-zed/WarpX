@@ -58,7 +58,7 @@
 
 namespace ablastr::fields {
 
-    amrex::Vector<amrex::MultiFab*> old_phi;
+    int number_iter = 0; 
 
 // all side effects other than rho should happen
 
@@ -123,6 +123,9 @@ std::tuple<amrex::Real, int> computePhi (
 
     amrex::Real composite_norminf = 0.0_rt;
     int poisson_iter = 0;
+    if (number_iter < 2) {
+        poisson_skipped = true; 
+    }
 
     ABLASTR_PROFILE("computePhi", false);
 
@@ -268,22 +271,6 @@ std::tuple<amrex::Real, int> computePhi (
         composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance, poisson_skipped);
         poisson_iter = mlmg.getPoissonIters();
 
-        // this is probs hella costly but let's see if it works first before freaking out
-        if ((!poisson_skipped) && (old_phi.size() != 0)) {
-            phi.clear();
-            for (amrex::MultiFab* mf_ptr : old_phi) {
-                amrex::MultiFab* new_mf = new amrex::MultiFab(std::move(*mf_ptr));
-                phi.push_back(new_mf);
-            }
-        }
-        else {
-            old_phi.clear();
-            for (amrex::MultiFab* mf_ptr : phi) {
-                amrex::MultiFab* new_mf = new amrex::MultiFab(std::move(*mf_ptr));
-                old_phi.push_back(new_mf);
-            }
-        }
-
         // needed for solving the levels by levels:
         // - coarser level is initial guess for finer level
         // - coarser level provides boundary values for finer level patch
@@ -339,6 +326,7 @@ std::tuple<amrex::Real, int> computePhi (
 
     } // loop over lev(elcomps)
 
+    number_iter += 1; 
     return std::make_tuple(composite_norminf, poisson_iter);
 }
 
