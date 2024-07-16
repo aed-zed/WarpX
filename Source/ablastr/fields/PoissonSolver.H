@@ -273,14 +273,14 @@ std::tuple<amrex::Real, int> computePhi (
             phi.clear();
             for (amrex::MultiFab* mf_ptr : old_phi) {
                 amrex::MultiFab* new_mf = new amrex::MultiFab(*mf_ptr);
-                phi.push_back(new_mf_ptr);
+                phi.push_back(new_mf);
             }
         }
         else {
             old_phi.clear();
             for (amrex::MultiFab* mf_ptr : phi) {
                 amrex::MultiFab* new_mf = new amrex::MultiFab(*mf_ptr);
-                old_phi.push_back(new_mf_ptr);
+                old_phi.push_back(new_mf);
             }
         }
 
