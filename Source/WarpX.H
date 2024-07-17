@@ -1512,7 +1512,7 @@ private:
     amrex::Vector<std::array< std::unique_ptr<amrex::MultiFab>, 3 > > Bfield_aux;
 
     // old rho and phi 
-    amrex::Vector<std::unique_ptr<amrex::MultiFab> >& old_phi;
+    amrex::Vector<amrex::MultiFab*>& old_phi;
 
     // Fine patch
     amrex::Vector<            std::unique_ptr<amrex::MultiFab>      > F_fp;
