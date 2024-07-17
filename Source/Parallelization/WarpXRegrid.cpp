@@ -232,8 +232,9 @@ WarpX::RemakeLevel (int lev, Real /*time*/, const BoxArray& ba, const Distributi
         RemakeMultiFab(rho_fp[lev], dm, false ,lev);
         // phi_fp should be redistributed since we use the solution from
         // the last step as the initial guess for the next solve
-        RemakeMultiFab(phi_fp[lev], dm, true ,lev);
-
+        if (!poisson_skipped) {
+            RemakeMultiFab(phi_fp[lev], dm, true ,lev);
+        }
         if (WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::HybridPIC) {
             RemakeMultiFab(m_hybrid_pic_model->rho_fp_temp[lev], dm, true, lev);
             RemakeMultiFab(m_hybrid_pic_model->electron_pressure_fp[lev], dm, false, lev);

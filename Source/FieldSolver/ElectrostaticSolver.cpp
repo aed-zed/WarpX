@@ -69,6 +69,15 @@ WarpX::ComputeSpaceChargeField (bool const reset_fields)
         }
     }
 
+    poisson_counter += 1;
+    if ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) {
+        poisson_skipped = true;
+    }
+    else {
+        poisson_skipped = false;
+        poisson_counter = 0;
+    }
+
     if (electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrame ||
         electrostatic_solver_id == ElectrostaticSolverAlgo::LabFrameElectroMagnetostatic) {
         std::cout << "adding lab frame" << std::endl; 
@@ -124,17 +133,32 @@ WarpX::AddBoundaryField ()
         phi[lev] = std::make_unique<MultiFab>(nba, DistributionMap(lev), 1, 1);
         phi[lev]->setVal(0.);
     }
-    // Set the boundary potentials appropriately
-    setPhiBC(phi);
-    // beta is zero for boundaries
-    const std::array<Real, 3> beta = {0._rt};
-    // Compute the potential phi, by solving the Poisson equation
-    computePhi( rho, phi, beta, self_fields_required_precision,
-                self_fields_absolute_tolerance, self_fields_max_iters,
-                self_fields_verbosity );
-    // Compute the corresponding electric and magnetic field, from the potential phi.
-    computeE( Efield_fp, phi, beta );
-    computeB( Bfield_fp, phi, beta );
+
+    if (!poisson_skipped) {
+        // Set the boundary potentials appropriately
+        setPhiBC(phi);
+        // beta is zero for boundaries
+        const std::array<Real, 3> beta = {0._rt};
+        // Compute the potential phi, by solving the Poisson equation
+        computePhi( rho, phi, beta, self_fields_required_precision,
+                    self_fields_absolute_tolerance, self_fields_max_iters,
+                    self_fields_verbosity );
+        // Compute the corresponding electric and magnetic field, from the potential phi.
+        computeE( Efield_fp, phi, beta );
+        computeB( Bfield_fp, phi, beta );
+        old_phi = std::move(phi); 
+    }
+    else {
+        // beta is zero for boundaries
+        const std::array<Real, 3> beta = {0._rt};
+        // Compute the potential phi, by solving the Poisson equation
+        computePhi( rho, old_phi, beta, self_fields_required_precision,
+                    self_fields_absolute_tolerance, self_fields_max_iters,
+                    self_fields_verbosity );
+        // Compute the corresponding electric and magnetic field, from the potential phi.
+        computeE( Efield_fp, old_phi, beta );
+        computeB( Bfield_fp, old_phi, beta );
+    }
 }
 void
 WarpX::AddSpaceChargeField (WarpXParticleContainer& pc)
@@ -195,14 +219,25 @@ WarpX::AddSpaceChargeField (WarpXParticleContainer& pc)
     for (int i=0 ; i < static_cast<int>(beta.size()) ; i++) {
         beta[i] = beta_pr[i]/PhysConst::c; // Normalize
     }
-
-    // Compute the potential phi, by solving the Poisson equation
-    computePhi( rho, phi, beta, pc.self_fields_required_precision,
-                pc.self_fields_absolute_tolerance, pc.self_fields_max_iters,
-                pc.self_fields_verbosity );
-    // Compute the corresponding electric and magnetic field, from the potential phi
-    computeE( Efield_fp, phi, beta );
-    computeB( Bfield_fp, phi, beta );
+    if (!poisson_skipped) {
+        // Compute the potential phi, by solving the Poisson equation
+        computePhi( rho, phi, beta, pc.self_fields_required_precision,
+                    pc.self_fields_absolute_tolerance, pc.self_fields_max_iters,
+                    pc.self_fields_verbosity );
+        // Compute the corresponding electric and magnetic field, from the potential phi
+        computeE( Efield_fp, phi, beta );
+        computeB( Bfield_fp, phi, beta );
+        old_phi = std::move(phi); 
+    }
+    else {
+        // Compute the potential phi, by solving the Poisson equation
+        computePhi( rho, old_phi, beta, pc.self_fields_required_precision,
+                    pc.self_fields_absolute_tolerance, pc.self_fields_max_iters,
+                    pc.self_fields_verbosity );
+        // Compute the corresponding electric and magnetic field, from the potential phi
+        computeE( Efield_fp, old_phi, beta );
+        computeB( Bfield_fp, old_phi, beta );
+    }
 
 }
 
@@ -238,36 +273,70 @@ WarpX::AddSpaceChargeFieldLabFrame ()
     // Todo: use simpler finite difference form with beta=0
     const std::array<Real, 3> beta = {0._rt};
 
-    // set the boundary potentials appropriately
-    setPhiBC(phi_fp);
-    // Compute the potential phi, by solving the Poisson equation
-    if (IsPythonCallbackInstalled("poissonsolver")) {
-        // Use the Python level solver (user specified)
-        ExecutePythonCallback("poissonsolver");
-    } else {
+    if (!poisson_skipped) {
+        // set the boundary potentials appropriately
+        setPhiBC(phi_fp);
+        // Compute the potential phi, by solving the Poisson equation
+        if (IsPythonCallbackInstalled("poissonsolver")) {
+            // Use the Python level solver (user specified)
+            ExecutePythonCallback("poissonsolver");
+        } else {
 
 #if defined(WARPX_DIM_1D_Z)
-        // Use the tridiag solver with 1D
-        computePhiTriDiagonal(rho_fp, phi_fp);
+            // Use the tridiag solver with 1D
+            computePhiTriDiagonal(rho_fp, phi_fp);
 #else
-        // Use the AMREX MLMG or the FFT (IGF) solver otherwise
-        computePhi(rho_fp, phi_fp, beta, self_fields_required_precision,
-                   self_fields_absolute_tolerance, self_fields_max_iters,
-                   self_fields_verbosity);
+            // Use the AMREX MLMG or the FFT (IGF) solver otherwise
+            computePhi(rho_fp, phi_fp, beta, self_fields_required_precision,
+                    self_fields_absolute_tolerance, self_fields_max_iters,
+                    self_fields_verbosity);
 #endif
 
-    }
+        }
 
-    // Compute the electric field. Note that if an EB is used the electric
-    // field will be calculated in the computePhi call.
+        // Compute the electric field. Note that if an EB is used the electric
+        // field will be calculated in the computePhi call.
 #ifndef AMREX_USE_EB
-    computeE( Efield_fp, phi_fp, beta );
+        computeE( Efield_fp, phi_fp, beta );
 #else
-    if ( IsPythonCallbackInstalled("poissonsolver") ) computeE( Efield_fp, phi_fp, beta );
+        if ( IsPythonCallbackInstalled("poissonsolver") ) computeE( Efield_fp, phi_fp, beta );
 #endif
 
-    // Compute the magnetic field
-    computeB( Bfield_fp, phi_fp, beta );
+        // Compute the magnetic field
+        computeB( Bfield_fp, phi_fp, beta );
+        old_phi = phi; 
+    }
+    else {
+
+        // Compute the potential phi, by solving the Poisson equation
+        if (IsPythonCallbackInstalled("poissonsolver")) {
+            // Use the Python level solver (user specified)
+            ExecutePythonCallback("poissonsolver");
+        } else {
+
+#if defined(WARPX_DIM_1D_Z)
+            // Use the tridiag solver with 1D
+            computePhiTriDiagonal(rho_fp, old_phi);
+#else
+            // Use the AMREX MLMG or the FFT (IGF) solver otherwise
+            computePhi(rho_fp, old_phi, beta, self_fields_required_precision,
+                       self_fields_absolute_tolerance, self_fields_max_iters,
+                       self_fields_verbosity);
+#endif
+
+        }
+
+        // Compute the electric field. Note that if an EB is used the electric
+        // field will be calculated in the computePhi call.
+#ifndef AMREX_USE_EB
+        computeE( Efield_fp, old_phi, beta );
+#else
+        if ( IsPythonCallbackInstalled("poissonsolver") ) computeE( Efield_fp, old_phi, beta );
+#endif
+
+        // Compute the magnetic field
+        computeB( Bfield_fp, old_phi, beta );
+    }
 }
 
 /* Compute the potential `phi` by solving the Poisson equation with `rho` as
@@ -352,15 +421,6 @@ WarpX::computePhi (const amrex::Vector<std::unique_ptr<amrex::MultiFab> >& rho,
 #endif
     bool const is_solver_multigrid =
         WarpX::poisson_solver_id != PoissonSolverAlgo::IntegratedGreenFunction;
-
-    poisson_counter += 1;
-    if ((poisson_counter % self_fields_max_skips != 0) && (poisson_counter % poisson_skips != 0)) {
-        poisson_skipped = true;
-    }
-    else {
-        poisson_skipped = false;
-        poisson_counter = 0;
-    }
 
     // create duplicate computePhi skip --> do computePhi but get rid of solve step 
     std::tuple<amrex::Real, int> resid_n_iters = ablastr::fields::computePhi(

@@ -173,7 +173,7 @@ std::tuple<amrex::Real, int> computePhi (
 
 #if (defined(WARPX_USE_PSATD)  && defined(WARPX_DIM_3D))
         // Use the Integrated Green Function solver (FFT) on the coarsest level if it was selected
-        if(!is_solver_multigrid && lev==0){
+        if(!is_solver_multigrid && lev==0 && !poisson_skipped) {
             amrex::Array<amrex::Real,AMREX_SPACEDIM> const dx_igf
                     {AMREX_D_DECL(geom[lev].CellSize(0)/std::sqrt(1._rt-beta_solver[0]*beta_solver[0]),
                                 geom[lev].CellSize(1)/std::sqrt(1._rt-beta_solver[1]*beta_solver[1]),
@@ -268,8 +268,10 @@ std::tuple<amrex::Real, int> computePhi (
 
         // Solve Poisson equation at lev, get the residual and iteration values
         // set defaults to -1
-        composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance, poisson_skipped);
-        poisson_iter = mlmg.getPoissonIters();
+        if (!poisson_skipped) {
+            composite_norminf = mlmg.solve( {phi[lev]}, {rho[lev]}, relative_tolerance, absolute_tolerance, poisson_skipped);
+            poisson_iter = mlmg.getPoissonIters();
+        }
 
         // needed for solving the levels by levels:
         // - coarser level is initial guess for finer level
