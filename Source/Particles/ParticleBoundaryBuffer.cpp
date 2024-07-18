@@ -534,6 +534,8 @@ int ParticleBoundaryBuffer::getNumParticlesInContainer(
         const std::string& species_name, int boundary, bool local) {
 
     std::cout << "about to get buffer" << std::endl;
+    std::cout << "size of m_particle_containers: " << m_particle_containers.size() << std::endl; 
+    std::cout << "size of each element in m_particle_containers: " << m_particle_containers[0].size() << std::endl; 
     auto& buffer = m_particle_containers[boundary];
     std::cout << "about to get index" << std::endl;
     auto index = WarpX::GetInstance().GetPartContainer().getSpeciesID(species_name);
