@@ -335,7 +335,9 @@ const std::vector<std::string>& ParticleBoundaryBuffer::getSpeciesNames() const
         const amrex::ParmParse pp_particles("particles");
         pp_particles.queryarr("species_names", m_species_names);
         initialized = true;
-        std::cout << "species names: " << m_species_names << std::endl;
+        for (i = 0; i < m_species_names.size(); i++) {
+            std::cout << "speciesnames[" << i << "] : " m_species_names[i] << std::endl;
+        }
     }
     return m_species_names;
 }
