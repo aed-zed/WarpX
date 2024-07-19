@@ -406,9 +406,9 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     amrex::EBFArrayBoxFactory const& field_factory = warpx.fieldEBFactory(lev);
 
     // since multicutfab, by default only contians cut cells
-    amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = eb_box_factory.getMultiEBCellFlagFab();
-    amrex::MultiCutFab const& eb_bnd_normal = field_factory_ptr.getBndryNormal();
-    amrex::MultiCutFab const& eb_bnd_cent = field_factory_ptr.getBndryCent();
+    amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = field_factory.getMultiEBCellFlagFab();
+    amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
+    amrex::MultiCutFab const& eb_bnd_cent = field_factory.getBndryCent();
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
