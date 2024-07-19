@@ -205,11 +205,13 @@ ParticleBoundaryBuffer::ParticleBoundaryBuffer ()
 {
     m_particle_containers.resize(numBoundaries());
     m_do_boundary_buffer.resize(numBoundaries());
+    std::cout << "numBoundaries : " << numBoundaries() << std::endl;
     m_do_any_boundary.resize(numBoundaries(), 0);
     m_boundary_names.resize(numBoundaries());
 
     for (int i = 0; i < numBoundaries(); ++i)
     {
+        std::cout << "numSpecies : " << numSpecies() << std::endl;
         m_particle_containers[i].resize(numSpecies());
         m_do_boundary_buffer[i].resize(numSpecies(), 0);
     }
@@ -547,6 +549,12 @@ int ParticleBoundaryBuffer::getNumParticlesInContainer(
     auto index = WarpX::GetInstance().GetPartContainer().getSpeciesID(species_name);
 
     std::cout << "checking if buffer[index] is defined" <<std::endl;
+    if ((m_particle_containers[boundary].size() - 1) < index) {
+        std::cout << "DEF SHOULD REMOVE" << std::endl;
+        std::cout << "size of buffer: " << m_particle_containers[boundary].size() << std::endl;
+        std::cout << "index trying to get: " << index << std::endl;
+        return 0;
+    }
     if (buffer[index].isDefined()){
         std::cout << "returning total particle number" << std::endl;
         return static_cast<int>(buffer[index].TotalNumberOfParticles(false, local));
