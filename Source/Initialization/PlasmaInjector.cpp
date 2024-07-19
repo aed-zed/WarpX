@@ -414,7 +414,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
     amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
-    for (amrex::MFIter mfi(array_box, dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
+    for (amrex::MFIter mfi(eb_flag); mfi.isValid(); ++mfi) {
         const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector());
 
         // skip boxes that do not intersect with the EB (fully covered or fully regular)
