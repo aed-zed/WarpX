@@ -549,7 +549,7 @@ int ParticleBoundaryBuffer::getNumParticlesInContainer(
     auto index = WarpX::GetInstance().GetPartContainer().getSpeciesID(species_name);
 
     std::cout << "checking if buffer[index] is defined" <<std::endl;
-    if ((m_particle_containers[boundary].size() - 1) < index) {
+    if ((static_cast<int>(m_particle_containers[boundary].size()) - 1) < index) {
         std::cout << "DEF SHOULD REMOVE" << std::endl;
         std::cout << "size of buffer: " << m_particle_containers[boundary].size() << std::endl;
         std::cout << "index trying to get: " << index << std::endl;
