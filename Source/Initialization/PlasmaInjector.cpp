@@ -403,7 +403,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     // when getting EB charge, default was lev 0 so we're just gonna do that here too and hope for the best.
     auto & warpx = WarpX::GetInstance();
     int const lev = 0;
-    amrex::EBFArrayBoxFactory const& field_factory = warpx.fieldEBFactory(lev); 
+    amrex::EBFArrayBoxFactory const& field_factory = warpx.fieldEBFactory(lev);
 
     // since multicutfab, by default only contians cut cells
     amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = eb_box_factory.getMultiEBCellFlagFab();
