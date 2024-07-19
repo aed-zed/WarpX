@@ -400,7 +400,6 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     // Get the file
 
     std::cout << "settig up with stl flux injection" << std::endl;
-    // when getting EB charge, default was lev 0 so we're just gonna do that here too and hope for the best.
     auto & warpx = WarpX::GetInstance();
     int const lev = 0;
     amrex::EBFArrayBoxFactory const& field_factory = warpx.fieldEBFactory(lev);
