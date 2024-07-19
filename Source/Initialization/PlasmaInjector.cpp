@@ -403,18 +403,12 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     // when getting EB charge, default was lev 0 so we're just gonna do that here too and hope for the best.
     auto & warpx = WarpX::GetInstance();
     int const lev = 0;
-    std::string const& input_string = species_name + source_name + ".";
-    amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20, 4, input_string);
-    const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
-    const amrex::Geometry& geom = indexSpace.getGeometry(lev);
-    const amrex::Box& domain_box = geom.Domain();
-    const amrex::BoxArray array_box(domain_box);
-    const amrex::DistributionMapping dm(array_box);
-    std::unique_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
+    amrex::EBFArrayBoxFactory const& field_factory = warpx.fieldEBFactory(lev); 
 
     // since multicutfab, by default only contians cut cells
-    amrex::MultiCutFab const& eb_bnd_normal = field_factory_ptr->getBndryNormal();
-    amrex::MultiCutFab const& eb_bnd_cent = field_factory_ptr->getBndryCent();
+    amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = eb_box_factory.getMultiEBCellFlagFab();
+    amrex::MultiCutFab const& eb_bnd_normal = field_factory_ptr.getBndryNormal();
+    amrex::MultiCutFab const& eb_bnd_cent = field_factory_ptr.getBndryCent();
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
@@ -422,6 +416,12 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     int size = 0;
     for (amrex::MFIter mfi(array_box, dm, &amrex::TilingIfNotGPU); mfi.isValid(); ++mfi) {
         const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector());
+
+        // skip boxes that do not intersect with the EB (fully covered or fully regular)
+        amrex::FabType fab_type = eb_flag[mfi].getType(box);
+        if (fab_type == amrex::FabType::regular) continue;
+        if (fab_type == amrex::FabType::covered) continue;
+
         b_array.push_back(box);
 
         const amrex::Array4<const amrex::Real> & const_eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
