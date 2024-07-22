@@ -330,7 +330,6 @@ void ParticleBoundaryBuffer::redistribute () {
 
 const std::vector<std::string>& ParticleBoundaryBuffer::getSpeciesNames() const
 {
-    std::cout << "getting species names" << std::endl;
     static bool initialized = false;
     if (!initialized)
     {
