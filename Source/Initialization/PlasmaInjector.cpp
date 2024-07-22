@@ -400,15 +400,19 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     // Get the file
 
     std::cout << "settig up with stl flux injection" << std::endl;
-    auto & warpx = WarpX::GetInstance();
+    const amrex::EB2::IndexSpace& eb_is = amrex::EB2::IndexSpace::top();
     int const lev = 0;
-    amrex::EBFArrayBoxFactory const& field_factory = warpx.fieldEBFactory(lev);
+    const amrex::Geometry& geom = indexSpace.getGeometry(lev);
+    const amrex::Box& domain_box = geom.Domain();
+    const amrex::BoxArray array_box(domain_box);
+    const amrex::DistributionMapping dm(array_box);
+    std::shared_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
 
     // since multicutfab, by default only contians cut cells
     std::cout << "getting field factory info" << std::endl;
-    amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = field_factory.getMultiEBCellFlagFab();
-    amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
-    amrex::MultiCutFab const& eb_bnd_cent = field_factory.getBndryCent();
+    amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = field_factory->getMultiEBCellFlagFab();
+    amrex::MultiCutFab const& eb_bnd_normal = field_factory->getBndryNormal();
+    amrex::MultiCutFab const& eb_bnd_cent = field_factory->getBndryCent();
 
     std::cout << "creating baseline objects" << std::endl;
     amrex::Vector<amrex::Box> b_array;
