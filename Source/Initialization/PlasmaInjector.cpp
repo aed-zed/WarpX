@@ -403,11 +403,11 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
     //const amrex::EB2::IndexSpace* indexSpace = amrex::EB2::TopIndexSpace();
     int const lev = 0;
-    const amrex::Geometry& geom = indexSpace.getGeometry(lev);
-    const amrex::Box& domain_box = geom.Domain();
+    const amrex::Geometry& created_geom = indexSpace.getGeometry(lev);
+    const amrex::Box& domain_box = created_geom.Domain();
     const amrex::BoxArray array_box(domain_box);
     const amrex::DistributionMapping dm(array_box);
-    std::shared_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
+    std::shared_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(created_geom, array_box, dm, {0, 0, 0}, amrex::EBSupport::full);
 
     // since multicutfab, by default only contians cut cells
     std::cout << "getting field factory info" << std::endl;
