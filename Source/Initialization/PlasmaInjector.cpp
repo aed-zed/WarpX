@@ -400,7 +400,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     // Get the file
 
     std::cout << "settig up with stl flux injection" << std::endl;
-    amrex::EB2::Build(amrex::Geom(0), 0, 20);
+    amrex::EB2::Build(amrex::AmrMesh::Geom(0), 0, 20);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
     //const amrex::EB2::IndexSpace* indexSpace = amrex::EB2::TopIndexSpace();
     int const lev = 0;
