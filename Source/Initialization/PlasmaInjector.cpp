@@ -405,14 +405,18 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     amrex::EBFArrayBoxFactory const& field_factory = warpx.fieldEBFactory(lev);
 
     // since multicutfab, by default only contians cut cells
+    std::cout << "getting field factory info" << std::endl;
     amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = field_factory.getMultiEBCellFlagFab();
     amrex::MultiCutFab const& eb_bnd_normal = field_factory.getBndryNormal();
     amrex::MultiCutFab const& eb_bnd_cent = field_factory.getBndryCent();
 
+    std::cout << "creating baseline objects" << std::endl;
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
     amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
+
+    std::cout << "about to iterate over mfiter" << std::endl;
     for (amrex::MFIter mfi(eb_flag); mfi.isValid(); ++mfi) {
         const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector());
 
@@ -423,10 +427,12 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
         b_array.push_back(box);
 
+        std::cout << "adding normal vector" << std::endl;
         const amrex::Array4<const amrex::Real> & const_eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
         amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_normal_arr);
         normal_arrays.push_back(eb_bnd_normal_arr);
 
+        std::cout << "adding boundary centroid vector" << std::endl;
         const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = eb_bnd_cent.array(mfi);
         amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
         cent_arrays.push_back(eb_bnd_cent_arr);
@@ -434,10 +440,12 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
         size += 1;
     }
 
+    std::cout << "making vectors async arrays" << std::endl;
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
 
+    std::cout << "creating injector position" << std::endl;
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandomSTLPlane*)nullptr,
         xmin, xmax, ymin, ymax, zmin, zmax, barray, carray, size);
@@ -452,6 +460,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     parseFlux(pp_species);
 
 #ifdef AMREX_USE_EB
+    std::cout << "parsing momentum" << std::endl;
     SpeciesUtils::parseMomentum(species_name, source_name, "stlfluxpercell",
                                 h_inj_mom, barray, narray, size);
 #endif
