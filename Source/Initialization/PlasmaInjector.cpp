@@ -398,7 +398,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 {
 
     // just added so theres not the unused parameter error
-    if (geom.isPreiodic(0)) {
+    if (geom.isPeriodic(0)) {
         std::cout << "" << std::endl;
     }
 #ifdef AMREX_USE_EB
