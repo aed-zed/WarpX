@@ -437,6 +437,7 @@ WarpX::InitData ()
     Print() << utils::logo::get_logo();
 
     // Diagnostics
+    std::cout << "initializing multi diagnostics" << std::endl;
     multi_diags = std::make_unique<MultiDiagnostics>();
 
     /** create object for reduced diagnostics */
