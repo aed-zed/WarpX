@@ -401,7 +401,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
     std::cout << "settig up with stl flux injection" << std::endl;
     auto & warpx = WarpX::GetInstance();
-    std::cout << "WarpX max level: " << warpx.maxLevel() << std::endl; 
+    std::cout << "WarpX max level: " << warpx.maxLevel() << std::endl;
     amrex::EB2::Build(warpx.Geom(warpx.maxLevel()), warpx.maxLevel(), warpx.maxLevel()+20);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
     //const amrex::EB2::IndexSpace* indexSpace = amrex::EB2::TopIndexSpace();
