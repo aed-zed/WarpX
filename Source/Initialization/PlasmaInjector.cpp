@@ -410,9 +410,9 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
 
     // since multicutfab, by default only contians cut cells
     std::cout << "getting field factory info" << std::endl;
-    amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = field_factory->getMultiEBCellFlagFab();
-    amrex::MultiCutFab const& eb_bnd_normal = field_factory->getBndryNormal();
-    amrex::MultiCutFab const& eb_bnd_cent = field_factory->getBndryCent();
+    amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = field_factory_ptr->getMultiEBCellFlagFab();
+    amrex::MultiCutFab const& eb_bnd_normal = field_factory_ptr->getBndryNormal();
+    amrex::MultiCutFab const& eb_bnd_cent = field_factory_ptr->getBndryCent();
 
     std::cout << "creating baseline objects" << std::endl;
     amrex::Vector<amrex::Box> b_array;
