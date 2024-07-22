@@ -396,6 +396,11 @@ void PlasmaInjector::setupNFluxPerCell (amrex::ParmParse const& pp_species)
 
 void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, const amrex::Geometry& geom)
 {
+
+    // just added so theres not the unused parameter error
+    if (geom.isPreiodic(0)) {
+        std::cout << "" << std::endl;
+    }
 #ifdef AMREX_USE_EB
 
     std::cout << "settig up with stl flux injection" << std::endl;
