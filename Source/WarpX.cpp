@@ -265,11 +265,13 @@ WarpX::Finalize()
 
 WarpX::WarpX ()
 {
+
+    // init eb first? could be a reallyyy bad move but let's try it out 
+    InitEB();
+
     ReadParameters();
 
     BackwardCompatibility();
-
-    InitEB();
 
     ablastr::utils::SignalHandling::InitSignalHandling();
 
