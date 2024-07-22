@@ -400,9 +400,9 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
     // Get the file
 
     std::cout << "settig up with stl flux injection" << std::endl;
-    const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
+    const amrex::EB2::IndexSpace* indexSpace = amrex::EB2::TopIndexSpace();
     int const lev = 0;
-    const amrex::Geometry& geom = indexSpace.getGeometry(lev);
+    const amrex::Geometry& geom = indexSpace->getGeometry(lev);
     const amrex::Box& domain_box = geom.Domain();
     const amrex::BoxArray array_box(domain_box);
     const amrex::DistributionMapping dm(array_box);
