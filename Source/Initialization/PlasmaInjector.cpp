@@ -157,7 +157,7 @@ PlasmaInjector::PlasmaInjector (int ispecies, const std::string& name,
     } else if (injection_style == "nrandompercell") {
         setupNRandomPerCell(pp_species);
     } else if (injection_style == "nfluxpercell") {
-        setupNFluxPerCell(pp_species);
+        setupNFluxPerCell(pp_species, geom);
     } else if (injection_style == "stlfluxpercell") {
         setupSTLFluxInjection(pp_species);
     } else if (injection_style == "nuniformpercell") {
@@ -394,13 +394,11 @@ void PlasmaInjector::setupNFluxPerCell (amrex::ParmParse const& pp_species)
                                 flux_normal_axis, flux_direction);
 }
 
-void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species)
+void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, const amrex::Geometry& geom)
 {
 #ifdef AMREX_USE_EB
-    // Get the file
 
     std::cout << "settig up with stl flux injection" << std::endl;
-    const amrex::Geometry& geom = amrex::AmrMesh::Geom(0);
     amrex::EB2::Build(geom, 0, 20);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
     //const amrex::EB2::IndexSpace* indexSpace = amrex::EB2::TopIndexSpace();
