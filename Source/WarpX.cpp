@@ -1356,6 +1356,10 @@ WarpX::ReadParameters ()
         const ParmParse pp_particles("particles");
         std::vector<std::string> species_names;
         pp_particles.queryarr("species_names", species_names);
+        std::cout << "species names in warpx::readparam: " << std::endl; 
+        for (const auto& word : species_names) {
+            std::cout << word << std::endl; 
+        }
 
         const ParmParse pp_lasers("lasers");
         std::vector<std::string> lasers_names;
