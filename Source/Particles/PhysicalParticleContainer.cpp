@@ -1277,6 +1277,10 @@ PhysicalParticleContainer::AddPlasma (PlasmaInjector const& plasma_injector, int
                   inj_pos->getPositionUnitBox(i_part, lrrfac, engine) :
                   // Otherwise: use 1 as the refinement ratio
                   inj_pos->getPositionUnitBox(i_part, amrex::IntVect::TheUnitVector(), engine);
+
+                std::cout << "position of particle is: (" << static_cast<double>(r.x) << ", "
+                          << static_cast<double>(r.y) << ", " << static_cast<double>(r.z) << ")" << std::endl;
+        
                 auto pos = getCellCoords(overlap_corner, dx, r, iv);
 
 #if defined(WARPX_DIM_3D)
