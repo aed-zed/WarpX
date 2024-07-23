@@ -410,11 +410,14 @@ MultiParticleContainer::AllocData ()
 void
 MultiParticleContainer::InitData ()
 {
+    std::cout << "init multi physics modules" << std::endl; 
     InitMultiPhysicsModules();
 
     for (auto& pc : allcontainers) {
+        std::cout << "pc init data" << std::endl; 
         pc->InitData();
     }
+    std::cout << "pc tmp init data" << std::endl; 
     pc_tmp->InitData();
 
 }
@@ -436,11 +439,14 @@ MultiParticleContainer::InitMultiPhysicsModules ()
     // Init ionization module here instead of in the MultiParticleContainer
     // constructor because dt is required to compute ionization rate pre-factors
     for (auto& pc : allcontainers) {
+        std::cout << "init ion modules" << std::endl; 
         pc->InitIonizationModule();
     }
     // For each species, get the ID of its product species.
     // This is used for ionization and pair creation processes.
+    std::cout << "map species product" << std::endl; 
     mapSpeciesProduct();
+    std::cout << "check ion product species" << std::endl; 
     CheckIonizationProductSpecies();
 #ifdef WARPX_QED
     CheckQEDProductSpecies();
