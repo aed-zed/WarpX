@@ -293,6 +293,7 @@ WarpX::WarpX ()
     t_old.resize(nlevs_max, std::numeric_limits<Real>::lowest());
     dt.resize(nlevs_max, std::numeric_limits<Real>::max());
 
+    std::cout << "creating multiparticle container in warpx create" << std::endl; 
     mypc = std::make_unique<MultiParticleContainer>(this);
 
     // Loop over species (particles and lasers)
