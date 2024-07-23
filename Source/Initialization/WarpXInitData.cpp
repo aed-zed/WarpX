@@ -914,6 +914,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
 
 #ifdef AMREX_USE_EB
         // We initialize ECTRhofield consistently with the Efield
+        std::cout << "init rho field" << std::endl;
         if (WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::ECT) {
             m_fdtd_solver_fp[lev]->EvolveECTRho(
                 Efield_fp[lev], m_edge_lengths[lev],
@@ -946,6 +947,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
                 'E',
                 lev, PatchType::coarse);
 #ifdef AMREX_USE_EB
+            std::cout << "init ectrhofield" << std::endl;
             if (WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::ECT) {
                 // We initialize ECTRhofield consistently with the Efield
                 m_fdtd_solver_cp[lev]->EvolveECTRho(Efield_cp[lev], m_edge_lengths[lev],
@@ -956,6 +958,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
        }
     }
 
+    std::cout << "load external fields from file" << std::endl;
     LoadExternalFieldsFromFile(lev);
 
     if (costs[lev]) {
