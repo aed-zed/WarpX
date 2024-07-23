@@ -93,6 +93,7 @@ namespace
 MultiParticleContainer::MultiParticleContainer (AmrCore* amr_core)
 {
 
+    std::cout << "about to read param for multiparticlecontainer" << std::endl; 
     ReadParameters();
 
     auto const nspecies = static_cast<int>(species_names.size());
@@ -260,6 +261,10 @@ MultiParticleContainer::ReadParameters ()
 
         // particle species
         pp_particles.queryarr("species_names", species_names);
+        std::cout << "species names in mpc read param: " << std::endl; 
+        for(const auto& word : species_names) {
+            std::cout << word << std::endl;
+        }   
         auto const nspecies = species_names.size();
 
         if (nspecies > 0) {
