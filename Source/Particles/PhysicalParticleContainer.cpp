@@ -484,7 +484,9 @@ PhysicalParticleContainer::BackwardCompatibility ()
 
 void PhysicalParticleContainer::InitData ()
 {
+    std::cout << "add particles for level 0" << std::endl; 
     AddParticles(0); // Note - add on level 0
+    std::cout << "redistribute" << std::endl; 
     Redistribute();  // We then redistribute
 }
 
