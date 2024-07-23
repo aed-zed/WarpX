@@ -768,6 +768,7 @@ MultiParticleContainer::ContinuousFluxInjection (amrex::Real t, amrex::Real dt) 
 void
 MultiParticleContainer::mapSpeciesProduct ()
 {
+    std::cout << "mapping species products" << std::endl;
     for (int i=0; i < static_cast<int>(species_names.size()); i++){
         auto& pc = allcontainers[i];
         // If species pc has ionization on, find species with name

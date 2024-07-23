@@ -71,6 +71,7 @@ FullDiagnostics::InitializeParticleBuffer ()
     // Initialize one ParticleDiag per species requested
     for (int i_buffer = 0; i_buffer < m_num_buffers; ++i_buffer) {
         for (auto const& species : m_output_species_names){
+            std::cout << "getting species id in full diag" << std::endl;
             const int idx = mpc.getSpeciesID(species);
             m_output_species[i_buffer].push_back(ParticleDiag(m_diag_name, species, mpc.GetParticleContainerPtr(idx)));
         }
