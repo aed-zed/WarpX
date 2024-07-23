@@ -287,9 +287,9 @@ public:
 
     [[nodiscard]] std::vector<std::string> GetSpeciesAndLasersNames() const
     {
-        std::cout << "species_names: " << std::endl; 
+        std::cout << "species_names: " << std::endl;
         for (const auto& word : species_names) {
-            std::cout << word << std::endl; 
+            std::cout << word << std::endl;
         }
         std::vector<std::string> tmp = species_names;
         tmp.insert(tmp.end(), lasers_names.begin(), lasers_names.end());
