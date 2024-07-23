@@ -559,6 +559,7 @@ WarpX::InitFromScratch ()
 
     AmrCore::InitFromScratch(time);  // This will call MakeNewLevelFromScratch
 
+    std::cout << "making multiparticle container" << std::endl; 
     mypc = std::make_unique<MultiParticleContainer>(this);
 
     // Loop over species (particles and lasers)
@@ -585,7 +586,9 @@ WarpX::InitFromScratch ()
         }
     }
 
+    std::cout << "allocing mpc data" << std::endl;
     mypc->AllocData();
+    std::cout << "init mpc data" << std::endl;
     mypc->InitData();
 
     InitPML();
