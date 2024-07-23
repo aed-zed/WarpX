@@ -83,8 +83,6 @@ WarpX::InitEB ()
 #ifdef AMREX_USE_EB
     BL_PROFILE("InitEB");
 
-    std::cout << "initializing EB" << std::endl;
-
     const amrex::ParmParse pp_warpx("warpx");
     std::string impf;
     pp_warpx.query("eb_implicit_function", impf);
@@ -108,8 +106,6 @@ WarpX::InitEB ()
         // See the comment above on amrex::EB2::Build for the hard-wired number 20.
         amrex::EB2::Build(Geom(maxLevel()), maxLevel(), maxLevel()+20);
     }
-    std::cout << "EB built" << std::endl;
-
 
 #endif
 }

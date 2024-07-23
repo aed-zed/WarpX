@@ -205,13 +205,11 @@ ParticleBoundaryBuffer::ParticleBoundaryBuffer ()
 {
     m_particle_containers.resize(numBoundaries());
     m_do_boundary_buffer.resize(numBoundaries());
-    std::cout << "numBoundaries : " << numBoundaries() << std::endl;
     m_do_any_boundary.resize(numBoundaries(), 0);
     m_boundary_names.resize(numBoundaries());
 
     for (int i = 0; i < numBoundaries(); ++i)
     {
-        std::cout << "numSpecies : " << numSpecies() << std::endl;
         m_particle_containers[i].resize(numSpecies());
         m_do_boundary_buffer[i].resize(numSpecies(), 0);
     }
@@ -336,9 +334,6 @@ const std::vector<std::string>& ParticleBoundaryBuffer::getSpeciesNames() const
         const amrex::ParmParse pp_particles("particles");
         pp_particles.queryarr("species_names", m_species_names);
         initialized = true;
-        for (size_t i = 0; i < m_species_names.size(); i++) {
-            std::cout << "speciesnames[" << i << "] : " << m_species_names[i] << std::endl;
-        }
     }
     return m_species_names;
 }
@@ -538,24 +533,13 @@ void ParticleBoundaryBuffer::gatherParticles (MultiParticleContainer& mypc,
 int ParticleBoundaryBuffer::getNumParticlesInContainer(
         const std::string& species_name, int boundary, bool local) {
 
-    std::cout << "about to get buffer" << std::endl;
-    std::cout << "size of m_particle_containers: " << m_particle_containers.size() << std::endl;
-    std::cout << "size of each element in m_particle_containers: " << m_particle_containers[0].size() << std::endl;
     auto& buffer = m_particle_containers[boundary];
-    std::cout << "about to get index" << std::endl;
-    std::cout << "species name: " << species_name << std::endl;
-    std::cout << "boundary value: " << boundary << std::endl;
     auto index = WarpX::GetInstance().GetPartContainer().getSpeciesID(species_name);
 
-    std::cout << "checking if buffer[index] is defined" <<std::endl;
     if ((static_cast<int>(m_particle_containers[boundary].size()) - 1) < index) {
-        std::cout << "DEF SHOULD REMOVE" << std::endl;
-        std::cout << "size of buffer: " << m_particle_containers[boundary].size() << std::endl;
-        std::cout << "index trying to get: " << index << std::endl;
         return 0;
     }
     if (buffer[index].isDefined()){
-        std::cout << "returning total particle number" << std::endl;
         return static_cast<int>(buffer[index].TotalNumberOfParticles(false, local));
     }
     else{

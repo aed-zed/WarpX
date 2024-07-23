@@ -153,9 +153,7 @@ WarpXParticleContainer::AllocData ()
 {
     // have to resize here, not in the constructor because grids have not
     // been built when constructor was called.
-    std::cout << "reserving pc data" << std::endl;
     reserveData();
-    std::cout << "resizing pc data" << std::endl;
     resizeData();
 }
 

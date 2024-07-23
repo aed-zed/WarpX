@@ -420,13 +420,11 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::MultiCutFab const& eb_bnd_normal = field_factory_ptr->getBndryNormal();
     amrex::MultiCutFab const& eb_bnd_cent = field_factory_ptr->getBndryCent();
 
-    std::cout << "creating baseline objects" << std::endl;
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
     amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
 
-    std::cout << "about to iterate over mfiter" << std::endl;
     for (amrex::MFIter mfi(eb_flag); mfi.isValid(); ++mfi) {
         const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector());
 
@@ -437,12 +435,10 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 
         b_array.push_back(box);
 
-        std::cout << "adding normal vector" << std::endl;
         const amrex::Array4<const amrex::Real> & const_eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
         amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_normal_arr);
         normal_arrays.push_back(eb_bnd_normal_arr);
 
-        std::cout << "adding boundary centroid vector" << std::endl;
         const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = eb_bnd_cent.array(mfi);
         amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
         cent_arrays.push_back(eb_bnd_cent_arr);

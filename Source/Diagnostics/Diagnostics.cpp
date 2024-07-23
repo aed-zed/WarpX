@@ -411,7 +411,6 @@ Diagnostics::InitData ()
     if (write_species == 1) {
         // When particle buffers, m_particle_boundary_buffer are included,
         // they will be initialized here
-        std::cout << "init particle buffer" << std::endl;
         InitializeParticleBuffer();
         InitializeParticleFunctors();
     }

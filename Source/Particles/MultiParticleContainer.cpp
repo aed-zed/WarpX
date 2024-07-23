@@ -93,7 +93,6 @@ namespace
 MultiParticleContainer::MultiParticleContainer (AmrCore* amr_core)
 {
 
-    std::cout << "about to read param for multiparticlecontainer" << std::endl;
     ReadParameters();
 
     auto const nspecies = static_cast<int>(species_names.size());
@@ -261,10 +260,6 @@ MultiParticleContainer::ReadParameters ()
 
         // particle species
         pp_particles.queryarr("species_names", species_names);
-        std::cout << "species names in mpc read param: " << std::endl;
-        for(const auto& word : species_names) {
-            std::cout << word << std::endl;
-        }
         auto const nspecies = species_names.size();
 
         if (nspecies > 0) {
@@ -405,24 +400,19 @@ void
 MultiParticleContainer::AllocData ()
 {
     for (auto& pc : allcontainers) {
-        std::cout << "allocing pc data" << std::endl;
         pc->AllocData();
     }
-    std::cout << "allocing pc tmp data" << std::endl;
     pc_tmp->AllocData();
 }
 
 void
 MultiParticleContainer::InitData ()
 {
-    std::cout << "init multi physics modules" << std::endl;
     InitMultiPhysicsModules();
 
     for (auto& pc : allcontainers) {
-        std::cout << "pc init data" << std::endl;
         pc->InitData();
     }
-    std::cout << "pc tmp init data" << std::endl;
     pc_tmp->InitData();
 
 }
@@ -444,14 +434,11 @@ MultiParticleContainer::InitMultiPhysicsModules ()
     // Init ionization module here instead of in the MultiParticleContainer
     // constructor because dt is required to compute ionization rate pre-factors
     for (auto& pc : allcontainers) {
-        std::cout << "init ion modules" << std::endl;
         pc->InitIonizationModule();
     }
     // For each species, get the ID of its product species.
     // This is used for ionization and pair creation processes.
-    std::cout << "map species product" << std::endl;
     mapSpeciesProduct();
-    std::cout << "check ion product species" << std::endl;
     CheckIonizationProductSpecies();
 #ifdef WARPX_QED
     CheckQEDProductSpecies();
@@ -773,7 +760,6 @@ MultiParticleContainer::ContinuousFluxInjection (amrex::Real t, amrex::Real dt) 
 void
 MultiParticleContainer::mapSpeciesProduct ()
 {
-    std::cout << "mapping species products" << std::endl;
     for (int i=0; i < static_cast<int>(species_names.size()); i++){
         auto& pc = allcontainers[i];
         // If species pc has ionization on, find species with name
@@ -819,16 +805,13 @@ MultiParticleContainer::mapSpeciesProduct ()
 int
 MultiParticleContainer::getSpeciesID (const std::string& product_str) const
 {
-    std::cout << "getting species id" << std::endl;
     auto species_and_lasers_names = GetSpeciesAndLasersNames();
     int i_product = 0;
     bool found = false;
-    std::cout << "species names size: " << static_cast<int>(species_and_lasers_names.size()) << std::endl;
     // Loop over species
     for (int i=0; i < static_cast<int>(species_and_lasers_names.size()); i++){
         // If species name matches, store its ID
         // into i_product
-        std::cout << "name found in getSpeciesID: " << species_and_lasers_names[i] << std::endl;
         if (species_and_lasers_names[i] == product_str){
             found = true;
             i_product = i;
