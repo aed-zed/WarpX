@@ -2037,9 +2037,7 @@ void
 WarpX::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& new_grids,
                                 const DistributionMapping& new_dmap)
 {
-    std::cout << "making new level from scratch" << std::endl; 
     AllocLevelData(lev, new_grids, new_dmap);
-    std::cout << "initializing level data" << std::endl; 
     InitLevelData(lev, time);
 }
 
@@ -2167,9 +2165,7 @@ WarpX::AllocLevelData (int lev, const BoxArray& ba, const DistributionMapping& d
 
 #ifdef AMREX_USE_EB
 
-        std::cout << "making EB field factory" << std::endl;
         int max_guard = guard_cells.ng_FieldSolver.max();
-        std::cout << "about to set the m_field_Factory" << std::endl;
         m_field_factory[lev] = amrex::makeEBFabFactory(Geom(lev), ba, dm,
                                                        {max_guard, max_guard, max_guard},
                                                        amrex::EBSupport::full);
@@ -2177,7 +2173,6 @@ WarpX::AllocLevelData (int lev, const BoxArray& ba, const DistributionMapping& d
         m_field_factory[lev] = std::make_unique<FArrayBoxFactory>();
 #endif
 
-    std::cout << "nSpeciesDepositOnMainGrid command about to be done" << std::endl;
     if (mypc->nSpeciesDepositOnMainGrid() && n_current_deposition_buffer == 0) {
         n_current_deposition_buffer = 1;
         // This forces the allocation of buffers and allows the code associated
@@ -2186,7 +2181,6 @@ WarpX::AllocLevelData (int lev, const BoxArray& ba, const DistributionMapping& d
         // are in buffers) to deposition on the main grid.
     }
 
-    std::cout << "checking n_current_deposition" << std::endl;
     if (n_current_deposition_buffer < 0) {
         n_current_deposition_buffer = guard_cells.ng_alloc_J.max();
     }
@@ -2195,19 +2189,15 @@ WarpX::AllocLevelData (int lev, const BoxArray& ba, const DistributionMapping& d
         n_field_gather_buffer = n_current_deposition_buffer + 1;
     }
 
-    std::cout << "making space for Level MFs" << std::endl;
     AllocLevelMFs(lev, ba, dm, guard_cells.ng_alloc_EB, guard_cells.ng_alloc_J,
                   guard_cells.ng_alloc_Rho, guard_cells.ng_alloc_F, guard_cells.ng_alloc_G, aux_is_nodal);
 
-    std::cout << "checking if evolving scheme" << std::endl;
     if (evolve_scheme == EvolveScheme::ImplicitPicard ||
         evolve_scheme == EvolveScheme::SemiImplicitPicard) {
         EvolveImplicitPicardInit(lev);
     }
 
-    std::cout << "m_accelerator_lattice changing lev" << std::endl;
     m_accelerator_lattice[lev] = std::make_unique<AcceleratorLattice>();
-    std::cout << "m_accelerator_lattice changing lev 2" << std::endl;
     m_accelerator_lattice[lev]->InitElementFinder(lev, ba, dm);
 
 }

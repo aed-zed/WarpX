@@ -453,9 +453,7 @@ WarpX::InitData ()
     {
         ComputeDt();
         WarpX::PrintDtDxDyDz();
-        std::cout << "calling init from scratch" << std::endl;
         InitFromScratch();
-        std::cout << "calling init diagnostics" << std::endl;
         InitDiagnostics();
     }
     else
@@ -562,10 +560,8 @@ WarpX::InitFromScratch ()
 {
     const Real time = 0.0;
 
-    std::cout << "init from scratch amrcore" << std::endl;
     AmrCore::InitFromScratch(time);  // This will call MakeNewLevelFromScratch
 
-    std::cout << "making multiparticle container" << std::endl;
     mypc = std::make_unique<MultiParticleContainer>(this);
 
     // Loop over species (particles and lasers)
@@ -592,12 +588,9 @@ WarpX::InitFromScratch ()
         }
     }
 
-    std::cout << "allocing mpc data" << std::endl;
     mypc->AllocData();
-    std::cout << "init mpc data" << std::endl;
     mypc->InitData();
 
-    std::cout << "init pml" << std::endl;
     InitPML();
 }
 
