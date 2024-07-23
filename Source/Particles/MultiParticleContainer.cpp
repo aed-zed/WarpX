@@ -821,6 +821,7 @@ MultiParticleContainer::getSpeciesID (const std::string& product_str) const
     for (int i=0; i < static_cast<int>(species_and_lasers_names.size()); i++){
         // If species name matches, store its ID
         // into i_product
+        std::cout << "name found in getSpeciesID: " << species_and_lasers_names[i] << std::endl;
         if (species_and_lasers_names[i] == product_str){
             found = true;
             i_product = i;
