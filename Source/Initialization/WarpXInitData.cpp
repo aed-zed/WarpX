@@ -437,7 +437,7 @@ WarpX::InitData ()
     Print() << utils::logo::get_logo();
 
     // Diagnostics
-    std::cout << "initializing multi diagnostics" << std::endl;
+    std::cout << "initializing multi diagnostics in initdata" << std::endl;
     multi_diags = std::make_unique<MultiDiagnostics>();
 
     /** create object for reduced diagnostics */
@@ -563,8 +563,9 @@ WarpX::InitFromScratch ()
     AmrCore::InitFromScratch(time);  // This will call MakeNewLevelFromScratch
 
     std::cout << "making new multiparticle container in init from scratch" << std::endl;
-    mypc = std::make_unique<MultiParticleContainer>(this);
-
+    if (mypc == nullptr) {
+        mypc = std::make_unique<MultiParticleContainer>(this);
+    }
     // Loop over species (particles and lasers)
     // and set current injection position per species
      if (do_moving_window){
