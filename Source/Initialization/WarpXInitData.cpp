@@ -839,6 +839,7 @@ WarpX::InitLevelData (int lev, Real /*time*/)
     }
 
 #ifdef AMREX_USE_EB
+    std::cout << "init eb grid data" << std::endl;
     InitializeEBGridData(lev);
 #endif
 
