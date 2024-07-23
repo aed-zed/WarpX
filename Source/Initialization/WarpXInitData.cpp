@@ -453,7 +453,9 @@ WarpX::InitData ()
     {
         ComputeDt();
         WarpX::PrintDtDxDyDz();
+        std::cout << "calling init from scratch" << std::endl;
         InitFromScratch();
+        std::cout << "calling init diagnostics" << std::endl;
         InitDiagnostics();
     }
     else
@@ -464,6 +466,7 @@ WarpX::InitData ()
         reduced_diags->InitData();
     }
 
+    std::cout << "compute max step" << std::endl;
     ComputeMaxStep();
 
     ComputePMLFactors();
@@ -557,6 +560,7 @@ WarpX::InitFromScratch ()
 {
     const Real time = 0.0;
 
+    std::cout << "init from scratch amrcore" << std::endl;
     AmrCore::InitFromScratch(time);  // This will call MakeNewLevelFromScratch
 
     std::cout << "making multiparticle container" << std::endl;
@@ -591,6 +595,7 @@ WarpX::InitFromScratch ()
     std::cout << "init mpc data" << std::endl;
     mypc->InitData();
 
+    std::cout << "init pml" << std::endl;
     InitPML();
 }
 
