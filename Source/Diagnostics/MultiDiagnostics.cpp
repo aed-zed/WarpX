@@ -37,6 +37,7 @@ void
 MultiDiagnostics::InitData ()
 {
     for( auto& diag : alldiags ){
+        std::cout << "init multi diag" << std::endl;
         diag->InitData();
     }
 }

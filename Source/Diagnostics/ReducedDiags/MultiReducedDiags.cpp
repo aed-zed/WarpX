@@ -93,6 +93,7 @@ void MultiReducedDiags::InitData ()
     // loop over all reduced diags
     for (int i_rd = 0; i_rd < static_cast<int>(m_rd_names.size()); ++i_rd)
     {
+        std::cout << "init data for multi reduced diags" << std::endl;
         m_multi_rd[i_rd] -> InitData();
     }
 }

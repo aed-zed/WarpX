@@ -551,7 +551,9 @@ WarpX::AddExternalFields () {
 
 void
 WarpX::InitDiagnostics () {
+    std::cout << "init multi diags" << std::endl;
     multi_diags->InitData();
+    std::cout << "init reduced diags" << std::endl;
     reduced_diags->InitData();
 }
 
