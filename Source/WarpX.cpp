@@ -2033,7 +2033,9 @@ void
 WarpX::MakeNewLevelFromScratch (int lev, Real time, const BoxArray& new_grids,
                                 const DistributionMapping& new_dmap)
 {
+    std::cout << "making new level from scratch" << std::endl; 
     AllocLevelData(lev, new_grids, new_dmap);
+    std::cout << "initializing level data" << std::endl; 
     InitLevelData(lev, time);
 }
 
