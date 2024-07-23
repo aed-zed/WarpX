@@ -400,8 +400,10 @@ void
 MultiParticleContainer::AllocData ()
 {
     for (auto& pc : allcontainers) {
+        std::cout << "allocing pc data" << std::endl;
         pc->AllocData();
     }
+    std::cout << "allocing pc tmp data" << std::endl;
     pc_tmp->AllocData();
 }
 
