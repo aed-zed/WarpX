@@ -120,7 +120,7 @@ private:
         amrex::Real x = eb_cent(index_x, index_y, index_z, 0);
         amrex::Real y = eb_cent(index_x, index_y, index_z, 1);
         amrex::Real z = eb_cent(index_x, index_y, index_z, 2);
-        
+
         return amrex::XDim3{x, y, z};
 
     }
