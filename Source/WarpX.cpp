@@ -2201,6 +2201,7 @@ WarpX::AllocLevelData (int lev, const BoxArray& ba, const DistributionMapping& d
 
     std::cout << "m_accelerator_lattice changing lev" << std::endl;
     m_accelerator_lattice[lev] = std::make_unique<AcceleratorLattice>();
+    std::cout << "m_accelerator_lattice changing lev 2" << std::endl;
     m_accelerator_lattice[lev]->InitElementFinder(lev, ba, dm);
 
 }
