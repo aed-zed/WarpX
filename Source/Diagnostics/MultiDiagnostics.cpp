@@ -40,6 +40,7 @@ MultiDiagnostics::InitData ()
         std::cout << "init multi diag" << std::endl;
         diag->InitData();
     }
+    std::cout << "dont with initializing multidiagnostics" << std::endl; 
 }
 
 void
