@@ -376,15 +376,19 @@ Diagnostics::InitDataAfterRestart ()
 void
 Diagnostics::InitData ()
 {
+    std::cout << "getting instance of warpx" << std::endl;
     auto& warpx = WarpX::GetInstance();
 
     // Get current finest level available
+    std::cout << "get finest level" << std::endl;
     const int finest_level = warpx.finestLevel();
 
     // initialize member variables and arrays in base class::Diagnostics
+    std::cout << "init base data" << std::endl;
     InitBaseData();
     // initialize member variables and arrays specific to each derived class
     // (FullDiagnostics, BTDiagnostics, etc.)
+    std::cout << "init derived data" << std::endl;
     DerivedInitData();
     for (int i_buffer = 0; i_buffer < m_num_buffers; ++i_buffer) {
         // loop over all levels
@@ -393,6 +397,7 @@ Diagnostics::InitData ()
         // the corresponding functor is also initialized for all the levels
         for (int lev = 0; lev <= finest_level; ++lev) {
             // allocate and initialize m_all_field_functors depending on diag type
+            std::cout << "init field functors" << std::endl;
             InitializeFieldFunctors(lev);
         }
         // loop over the levels selected for output
@@ -400,6 +405,7 @@ Diagnostics::InitData ()
         // and only the coarse level (mother grid) for BTD
         for (int lev = 0; lev < nlev_output; ++lev) {
             // Initialize buffer data required for particle and/or fields
+            std::cout << "init buffer data " << std::endl;
             InitializeBufferData(i_buffer, lev);
         }
     }
@@ -411,6 +417,7 @@ Diagnostics::InitData ()
     if (write_species == 1) {
         // When particle buffers, m_particle_boundary_buffer are included,
         // they will be initialized here
+        std::cout << "init particle buffer" << std::endl;
         InitializeParticleBuffer();
         InitializeParticleFunctors();
     }
