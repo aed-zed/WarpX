@@ -814,9 +814,11 @@ MultiParticleContainer::mapSpeciesProduct ()
 int
 MultiParticleContainer::getSpeciesID (const std::string& product_str) const
 {
+    std::cout << "getting species id" << std::endl;
     auto species_and_lasers_names = GetSpeciesAndLasersNames();
     int i_product = 0;
     bool found = false;
+    std::cout << "species names size: " << static_cast<int>(species_and_lasers_names.size()) << endl; 
     // Loop over species
     for (int i=0; i < static_cast<int>(species_and_lasers_names.size()); i++){
         // If species name matches, store its ID
