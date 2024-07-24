@@ -413,6 +413,9 @@ WarpX::ComputeDistanceToEB () {
 amrex::Real
 WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas) {
     amrex::Real total_area = 0;
+    if (face_areas.size() < 0) {
+        std::cout << "if statement to avoid a weird error" << std::endl; 
+    }
 #ifdef AMREX_USE_EB
     for (amrex::MFIter mfi(*face_areas[0]); mfi.isValid(); ++mfi) {
 #if defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
