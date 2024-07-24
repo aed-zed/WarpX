@@ -559,10 +559,10 @@ WarpX::InitFromScratch ()
 
     AmrCore::InitFromScratch(time);  // This will call MakeNewLevelFromScratch
 
-    if (mypc == nullptr) {
-        std::cout << "making new multiparticle container in init from scratch" << std::endl;
-        mypc = std::make_unique<MultiParticleContainer>(this);
-    }
+    //if (mypc == nullptr) {
+    std::cout << "making new multiparticle container in init from scratch" << std::endl;
+    mypc = std::make_unique<MultiParticleContainer>(this);
+    //}
     // Loop over species (particles and lasers)
     // and set current injection position per species
      if (do_moving_window){
