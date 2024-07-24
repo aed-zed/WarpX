@@ -1277,10 +1277,12 @@ PhysicalParticleContainer::AddPlasma (PlasmaInjector const& plasma_injector, int
                   inj_pos->getPositionUnitBox(i_part, lrrfac, engine) :
                   // Otherwise: use 1 as the refinement ratio
                   inj_pos->getPositionUnitBox(i_part, amrex::IntVect::TheUnitVector(), engine);
-
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+                printf("position of particle is: (%f, %f, %f)\n", r.x, r.y, r.z);
+#else
                 std::cout << "position of particle is: (" << static_cast<double>(r.x) << ", "
                           << static_cast<double>(r.y) << ", " << static_cast<double>(r.z) << ")" << std::endl;
-        
+#endif
                 auto pos = getCellCoords(overlap_corner, dx, r, iv);
 
 #if defined(WARPX_DIM_3D)
