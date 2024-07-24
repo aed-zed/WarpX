@@ -326,11 +326,12 @@ namespace SpeciesUtils {
                        mom_dist_s.begin(),
                        ::tolower);
         if (mom_dist_s == "gaussian_flux") {
+            std::cout << "setting momentum using gaussian flux" << std::endl; 
             amrex::Real un_m;
             amrex::Real un_th;
             utils::parser::queryWithParser(pp_species, source_name, "un_m",  un_m);
             utils::parser::queryWithParser(pp_species, source_name, "un_th", un_th);
-             h_inj_mom.reset(new InjectorMomentum((InjectorMomentumSTLGaussianFlux*)nullptr,
+            h_inj_mom.reset(new InjectorMomentum((InjectorMomentumSTLGaussianFlux*)nullptr,
                                                 un_m, un_th, ba, arrays, size));
         }
         else {
