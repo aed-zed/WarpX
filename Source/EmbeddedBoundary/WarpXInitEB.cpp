@@ -412,8 +412,8 @@ WarpX::ComputeDistanceToEB () {
 
 amrex::Real
 WarpX::ComputeTotalArea () {
-#ifdef AMREX_USE_EB
     amrex::Real total_area = 0;
+#ifdef AMREX_USE_EB
     for (amrex::MFIter mfi(*m_face_areas[0]); mfi.isValdi(); ++mfi) {
 #if defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
         // In 2D we change the extrema of the for loop so that we only have the case idim=1
@@ -449,6 +449,6 @@ WarpX::ComputeTotalArea () {
     }
 
     }
-    return total_area;
 #endif
+    return total_area;
 }

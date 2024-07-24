@@ -1164,7 +1164,7 @@ public:
     /**
     * \brief Compute the total area of the embedded boundary
     */
-    void ComputeTotalArea ();
+    amrex::Real ComputeTotalArea ();
     /**
     * \brief Auxiliary function to count the amount of faces which still need to be extended
     */
