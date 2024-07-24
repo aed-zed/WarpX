@@ -670,7 +670,7 @@ amrex::XDim3 PlasmaInjector::getMomentum (amrex::Real x,
                                           amrex::Real y,
                                           amrex::Real z) const noexcept
 {
-    std::cout << "getting momentum from plasma inj" << std::endl; 
+    std::cout << "getting momentum from plasma inj" << std::endl;
     return h_inj_mom->getMomentum(x, y, z, amrex::RandomEngine{}); // gamma*beta
 }
 
