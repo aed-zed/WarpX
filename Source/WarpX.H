@@ -1162,6 +1162,10 @@ public:
     */
     void ComputeDistanceToEB ();
     /**
+    * \brief Compute the total area of the embedded boundary
+    */
+    void ComputeTotalArea ();
+    /**
     * \brief Auxiliary function to count the amount of faces which still need to be extended
     */
     amrex::Array1D<int, 0, 2> CountExtFaces();

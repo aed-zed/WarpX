@@ -306,7 +306,7 @@ WarpX::ScaleAreas(std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas,
         }
     }
 }
-
+}
 
 void
 WarpX::MarkCells(){
@@ -395,6 +395,7 @@ WarpX::MarkCells(){
 #endif
 }
 #endif
+}
 
 void
 WarpX::ComputeDistanceToEB () {
@@ -406,5 +407,48 @@ WarpX::ComputeDistanceToEB () {
         auto const eb_fact = fieldEBFactory(lev);
         amrex::FillSignedDistance(*m_distance_to_eb[lev], eb_level, eb_fact, 1);
     }
+#endif
+}
+
+amrex::Real
+WarpX::ComputeTotalArea () {
+#ifdef AMREX_USE_EB
+    amrex::Real total_area = 0; 
+    for (amrex::MFIter mfi(*m_face_areas[0]); mfi.isValdi(); ++mfi) {
+#if defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
+        // In 2D we change the extrema of the for loop so that we only have the case idim=1
+        for (int idim = 1; idim < AMREX_SPACEDIM; ++idim) {
+#elif defined(WARPX_DIM_3D)
+        for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
+#else
+        WARPX_ABORT_WITH_MESSAGE(
+            "ScaleAreas: Only implemented in 2D3V and 3D3V");
+#endif
+            const amrex::Box& box = mfi.tilebox(face_areas[idim]->ixType().toIntVect(),
+                                                face_areas[idim]->nGrowVect() );
+#if defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
+            full_area = cell_size[0]*cell_size[2];
+#elif defined(WARPX_DIM_3D)
+            if (idim == 0) {
+                full_area = cell_size[1]*cell_size[2];
+            } else if (idim == 1) {
+                full_area = cell_size[0]*cell_size[2];
+            } else {
+                full_area = cell_size[0]*cell_size[1];
+            }
+#else
+            WARPX_ABORT_WITH_MESSAGE(
+                "ScaleAreas: Only implemented in 2D3V and 3D3V");
+#endif
+            auto const &face_areas_dim = face_areas[idim]->array(mfi);
+
+            amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+                total_area += face_areas_dim(i, j, k); 
+            });
+        }
+    }
+
+    }
+    return total_area;  
 #endif
 }

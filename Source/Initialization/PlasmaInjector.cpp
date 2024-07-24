@@ -396,12 +396,23 @@ void PlasmaInjector::setupNFluxPerCell (amrex::ParmParse const& pp_species)
 
 void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, const amrex::Geometry& geom)
 {
-
     // just added so theres not the unused parameter error
     if (geom.isPeriodic(0)) {
         std::cout << "" << std::endl;
     }
 #ifdef AMREX_USE_EB
+
+    utils::parser::getWithParser(pp_species, source_name, "num_particles_per_cell", num_particles_per_cell_real);
+#ifdef WARPX_DIM_RZ
+    if (WarpX::n_rz_azimuthal_modes > 1) {
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        num_particles_per_cell_real>=2*WarpX::n_rz_azimuthal_modes,
+        "Error: For accurate use of WarpX cylindrical geometry the number "
+        "of particles should be at least two times n_rz_azimuthal_modes "
+        "(Please visit PR#765 for more information.)");
+    }
+#endif
+    flux_normal_axis = -1;
 
     std::cout << "settig up with stl flux injection" << std::endl;
     amrex::EB2::Build(geom, 0, 20);
