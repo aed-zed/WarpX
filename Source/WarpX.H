@@ -1156,16 +1156,17 @@ public:
     *        Here we cannot know if a cell is intruded or not so we initialize all stable cells with 1
     */
     void MarkCells();
+
+    /**
+    * \brief Compute the total area of the embedded boundary
+    */
+    amrex::Real ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas);
 #endif
 
     /**
     * \brief Compute the level set function used for particle-boundary interaction.
     */
     void ComputeDistanceToEB ();
-    /**
-    * \brief Compute the total area of the embedded boundary
-    */
-    amrex::Real ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas);
     /**
     * \brief Auxiliary function to count the amount of faces which still need to be extended
     */
