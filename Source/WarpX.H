@@ -108,6 +108,7 @@ class WARPX_EXPORT WarpX
 public:
 
     friend class PML;
+    friend class PhysicalParticleContainer; 
 
     static WarpX& GetInstance ();
 
