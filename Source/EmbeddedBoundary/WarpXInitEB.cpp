@@ -306,7 +306,7 @@ WarpX::ScaleAreas(std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas,
         }
     }
 }
-}
+
 
 void
 WarpX::MarkCells(){
@@ -395,7 +395,7 @@ WarpX::MarkCells(){
 #endif
 }
 #endif
-}
+
 
 void
 WarpX::ComputeDistanceToEB () {
@@ -414,7 +414,7 @@ amrex::Real
 WarpX::ComputeTotalArea () {
     amrex::Real total_area = 0;
 #ifdef AMREX_USE_EB
-    for (amrex::MFIter mfi(*m_face_areas[0]); mfi.isValdi(); ++mfi) {
+    for (amrex::MFIter mfi(*face_areas[0]); mfi.isValid(); ++mfi) {
 #if defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
         // In 2D we change the extrema of the for loop so that we only have the case idim=1
         for (int idim = 1; idim < AMREX_SPACEDIM; ++idim) {
