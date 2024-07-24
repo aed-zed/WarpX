@@ -429,22 +429,7 @@ WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face
 #endif
             const amrex::Box& box = mfi.tilebox(face_areas[idim]->ixType().toIntVect(),
                                                 face_areas[idim]->nGrowVect() );
-#if defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
-            full_area = cell_size[0]*cell_size[2];
-#elif defined(WARPX_DIM_3D)
-            if (idim == 0) {
-                full_area = cell_size[1]*cell_size[2];
-            } else if (idim == 1) {
-                full_area = cell_size[0]*cell_size[2];
-            } else {
-                full_area = cell_size[0]*cell_size[1];
-            }
-#else
-            WARPX_ABORT_WITH_MESSAGE(
-                "ScaleAreas: Only implemented in 2D3V and 3D3V");
-#endif
             auto const &face_areas_dim = face_areas[idim]->array(mfi);
-
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
                 total_area += face_areas_dim(i, j, k);
             });
