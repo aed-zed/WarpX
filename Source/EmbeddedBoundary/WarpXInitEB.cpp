@@ -413,7 +413,7 @@ WarpX::ComputeDistanceToEB () {
 amrex::Real
 WarpX::ComputeTotalArea () {
 #ifdef AMREX_USE_EB
-    amrex::Real total_area = 0; 
+    amrex::Real total_area = 0;
     for (amrex::MFIter mfi(*m_face_areas[0]); mfi.isValdi(); ++mfi) {
 #if defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
         // In 2D we change the extrema of the for loop so that we only have the case idim=1
@@ -443,12 +443,12 @@ WarpX::ComputeTotalArea () {
             auto const &face_areas_dim = face_areas[idim]->array(mfi);
 
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
-                total_area += face_areas_dim(i, j, k); 
+                total_area += face_areas_dim(i, j, k);
             });
         }
     }
 
     }
-    return total_area;  
+    return total_area;
 #endif
 }
