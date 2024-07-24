@@ -1491,7 +1491,7 @@ void
 PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector, amrex::Real dt)
 {
     WARPX_PROFILE("PhysicalParticleContainer::AddPlasmaFlux()");
-
+    std::cout << "adding plasma flux" << std::endl; 
     const Geometry& geom = Geom(0);
     const amrex::RealBox& part_realbox = geom.ProbDomain();
 
@@ -1820,6 +1820,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                   flux_pos->getPositionUnitBox(i_part, lrrfac, engine) :
                   // Otherwise: use 1 as the refinement ratio
                   flux_pos->getPositionUnitBox(i_part, amrex::IntVect::TheUnitVector(), engine);
+                printf("Running on device. Position of flux: (%f, %f, %f)\n", r.x, r.y, r.z);
                 auto pos = getCellCoords(overlap_corner, dx, r, iv);
                 auto ppos = PDim3(pos);
 
