@@ -411,7 +411,7 @@ WarpX::ComputeDistanceToEB () {
 }
 
 amrex::Real
-WarpX::ComputeTotalArea () {
+WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas) {
     amrex::Real total_area = 0;
 #ifdef AMREX_USE_EB
     for (amrex::MFIter mfi(*face_areas[0]); mfi.isValid(); ++mfi) {

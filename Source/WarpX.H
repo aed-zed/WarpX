@@ -1164,7 +1164,7 @@ public:
     /**
     * \brief Compute the total area of the embedded boundary
     */
-    amrex::Real ComputeTotalArea ();
+    amrex::Real ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas);
     /**
     * \brief Auxiliary function to count the amount of faces which still need to be extended
     */

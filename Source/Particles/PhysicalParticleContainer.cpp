@@ -1506,7 +1506,8 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
     Real scale_fac = 0._rt;
     // Scale particle weight by the area of the emitting surface, within one cell
     if (plasma_injector.flux_normal_axis == -1) {
-        amrex::Real total_area = Warpx::GetInstance().ComputeTotalArea(); 
+        auto& warpx = WarpX::GetInstance();
+        amrex::Real total_area = warpx.ComputeTotalArea(warpx.m_field_areas[0]); 
 #if defined(WARPX_DIM_3D)
         scale_fac = dx[0]*dx[1]*dx[2]/total_area/num_ppc_real;
 #elif defined(WARPX_DIM_RZ) || defined(WARPX_DIM_XZ)
