@@ -435,7 +435,6 @@ WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face
             });
         }
     }
-
-    }
     return total_area;
+    }
 #endif
