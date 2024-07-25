@@ -422,7 +422,6 @@ amrex::Real
 WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas) {
     amrex::Real area = 0.0;
     std::cout << "computing total area" << std::endl;
-    amrex::Real* area_pointer = &area;
     if (face_areas.size() < 0) {
         std::cout << "if statement to avoid a weird error" << std::endl;
     }
@@ -442,15 +441,12 @@ WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face
             auto const &face_areas_dim = face_areas[idim]->array(mfi);
             std::cout << "gen face areas dim" << std::endl;
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
-                printf("inside parallel for");
                 amrex::Real part_area = face_areas_dim(i, j, k);
-                printf("got face areas dim");
-                amrex::HostDevice::Atomic::Add(area_pointer, part_area);
-                printf("added to area pointer");
+                amrex::HostDevice::Atomic::Add(&area, part_area);
             });
         }
     }
     std::cout << "returning value" << std::endl;
-    return *area_pointer;
+    return area;
     }
 #endif
