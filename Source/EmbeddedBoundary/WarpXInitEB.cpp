@@ -421,6 +421,7 @@ WarpX::ComputeDistanceToEB () {
 amrex::Real
 WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas) {
     amrex::Real area = 0.0;
+    amrex::Real* area_pointer = &area; 
     if (face_areas.size() < 0) {
         std::cout << "if statement to avoid a weird error" << std::endl;
     }
@@ -439,7 +440,7 @@ WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face
             auto const &face_areas_dim = face_areas[idim]->array(mfi);
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
                 amrex::Real part_area = face_areas_dim(i, j, k);
-                amrex::Gpu::Atomic::AddNoRet(&area, part_area);
+                amrex::HostDevice::Atomic::Add(area_pointer, part_area);
             });
         }
     }
