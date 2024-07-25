@@ -420,7 +420,7 @@ WarpX::ComputeDistanceToEB () {
 #ifdef AMREX_USE_EB
 amrex::Real
 WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas) {
-    amrex::Real* area = &(0.0_rt);
+    amrex::Real* area = &(0.0);
     std::cout << "computing total area" << std::endl;
     if (face_areas.size() < 0) {
         std::cout << "if statement to avoid a weird error" << std::endl;
