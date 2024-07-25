@@ -430,11 +430,10 @@ WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face
             const amrex::Box& box = mfi.tilebox(face_areas[idim]->ixType().toIntVect(),
                                                 face_areas[idim]->nGrowVect() );
             auto const &face_areas_dim = face_areas[idim]->array(mfi);
-            amrex::Real some_area = 0;
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
-                amrex::HostDevice::Atomic::Add(some_area, face_areas_dim(i, j, k));
+                amrex::Real part_area = face_areas_dim(i, j, k); 
+                amrex::Gpu::Atomic::Add(area, part_area);
             });
-            area += some_area;
         }
     }
     return area;
