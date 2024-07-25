@@ -44,6 +44,10 @@
 #  include <AMReX_SPACE.H>
 #  include <AMReX_Vector.H>
 
+
+#  include <AMReX_Geometry.H>
+#  include <AMReX_ParallelDescriptor.H>
+
 #  include <cstdlib>
 #  include <string>
 
