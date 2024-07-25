@@ -450,14 +450,14 @@ WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face
                 amrex::Real part_area = face_areas_dim(i, j, k);
                 amrex::HostDevice::Atomic::Add(area_pointer, part_area);
             });
-            std::cout << "finished iteration over mfi" << std::endl; 
+            std::cout << "finished iteration over mfi" << std::endl;
         }
     }
-    std::cout << "copying to host" << std::endl; 
+    std::cout << "copying to host" << std::endl;
     area.copyToHost();
-    std::cout << "getting pointer to host data" << std::endl; 
+    std::cout << "getting pointer to host data" << std::endl;
     amrex::Real total_area = *(area.hostData());
-    std::cout << "aout to return some stuff" << std::endl; 
+    std::cout << "aout to return some stuff" << std::endl;
     return total_area;
     }
 #endif
