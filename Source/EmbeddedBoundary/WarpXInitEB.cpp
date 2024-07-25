@@ -420,12 +420,13 @@ WarpX::ComputeDistanceToEB () {
 #ifdef AMREX_USE_EB
 amrex::Real
 WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas) {
-    amrex::Real* area = &(0.0);
+    amrex::Real area = 0.0;
     std::cout << "computing total area" << std::endl;
     if (face_areas.size() < 0) {
         std::cout << "if statement to avoid a weird error" << std::endl;
     }
     for (amrex::MFIter mfi(*face_areas[0]); mfi.isValid(); ++mfi) {
+        amrex::Real partial_area = 0.0; 
         std::cout << "iterating through mfi" << std::endl;
 #if defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
         // In 2D we change the extrema of the for loop so that we only have the case idim=1
@@ -442,8 +443,9 @@ WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face
             std::cout << "gen face areas dim" << std::endl;
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
                 amrex::Real part_area = face_areas_dim(i, j, k);
-                amrex::HostDevice::Atomic::Add(area, part_area);
+                amrex::HostDevice::Atomic::Add(&partial_area, part_area);
             });
+            area += partial_area; 
         }
     }
     std::cout << "returning value" << std::endl;
