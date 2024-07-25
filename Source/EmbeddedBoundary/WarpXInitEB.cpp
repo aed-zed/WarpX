@@ -14,7 +14,6 @@
 #  include <AMReX.H>
 #  include <AMReX_Array.H>
 #  include <AMReX_Array4.H>
-#  include <AMReX_BLassert.H>
 #  include <AMReX_BLProfiler.H>
 #  include <AMReX_Box.H>
 #  include <AMReX_BoxArray.H>
@@ -24,8 +23,15 @@
 #  include <AMReX_EB_utils.H>
 #  include <AMReX_FabArray.H>
 #  include <AMReX_FabFactory.H>
+
+#  include <AMReX_GpuAtomic.H>
+#  include <AMReX_GpuContainers.H>
+
 #  include <AMReX_GpuControl.H>
 #  include <AMReX_GpuDevice.H>
+
+#  include <AMReX_GpuLaunch.H>
+
 #  include <AMReX_GpuQualifiers.H>
 #  include <AMReX_IntVect.H>
 #  include <AMReX_Loop.H>
