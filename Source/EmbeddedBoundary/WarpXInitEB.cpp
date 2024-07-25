@@ -14,6 +14,7 @@
 #  include <AMReX.H>
 #  include <AMReX_Array.H>
 #  include <AMReX_Array4.H>
+#  include <AMReX_BLassert.H>
 #  include <AMReX_BLProfiler.H>
 #  include <AMReX_Box.H>
 #  include <AMReX_BoxArray.H>
