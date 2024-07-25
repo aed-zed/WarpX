@@ -434,8 +434,8 @@ WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE (int i, int j, int k) {
                 some_area += face_areas_dim(i, j, k);
             });
+            area += some_area;
         }
-        area += some_area;
     }
     return area;
     }
