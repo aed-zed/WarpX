@@ -1277,7 +1277,6 @@ PhysicalParticleContainer::AddPlasma (PlasmaInjector const& plasma_injector, int
                   inj_pos->getPositionUnitBox(i_part, lrrfac, engine) :
                   // Otherwise: use 1 as the refinement ratio
                   inj_pos->getPositionUnitBox(i_part, amrex::IntVect::TheUnitVector(), engine);
-                printf("position of particle is: (%f, %f, %f)\n", r.x, r.y, r.z);
                 auto pos = getCellCoords(overlap_corner, dx, r, iv);
 
 #if defined(WARPX_DIM_3D)
@@ -1508,7 +1507,9 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
 #ifdef AMREX_USE_EB
     if (plasma_injector.flux_normal_axis == -1) {
         auto& warpx = WarpX::GetInstance();
+        std::cout << "about to compute total area" << std::endl; 
         amrex::Real total_area = warpx.ComputeTotalArea(warpx.m_face_areas[0]); 
+        std::cout << "computed total area" << std::endl; 
 #if defined(WARPX_DIM_3D)
         scale_fac = dx[0]*dx[1]*dx[2]/total_area/num_ppc_real;
 #elif defined(WARPX_DIM_RZ) || defined(WARPX_DIM_XZ)
@@ -1833,7 +1834,6 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                   flux_pos->getPositionUnitBox(i_part, lrrfac, engine) :
                   // Otherwise: use 1 as the refinement ratio
                   flux_pos->getPositionUnitBox(i_part, amrex::IntVect::TheUnitVector(), engine);
-                printf("Running on device. Position of flux: (%f, %f, %f)\n", r.x, r.y, r.z);
                 auto pos = getCellCoords(overlap_corner, dx, r, iv);
                 auto ppos = PDim3(pos);
 
