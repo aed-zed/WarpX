@@ -425,7 +425,7 @@ WarpX::ComputeDistanceToEB () {
 amrex::Real
 WarpX::ComputeTotalArea (std::array< std::unique_ptr<amrex::MultiFab>, 3 >& face_areas) {
 
-    amrex::Gpu::Buffer<amrex::Real> area({0.0_rt});
+    amrex::Gpu::Buffer<amrex::Real> area({0.0});
     amrex::Real* area_pointer = area.data();
     std::cout << "computing total area" << std::endl;
     if (face_areas.size() < 0) {
