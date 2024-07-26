@@ -1834,6 +1834,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
         // particles, in particular does not consider xmin, xmax etc.).
         // The invalid ones are given negative ID and are deleted during the
         // next redistribute.
+        std::cout << "about to run ParallelForRNG" << std::endl; 
         auto *const poffset = offset.data();
         amrex::ParallelForRNG(overlap_box,
         [=] AMREX_GPU_DEVICE (int i, int j, int k, amrex::RandomEngine const& engine) noexcept
@@ -1846,6 +1847,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 pa_idcpu[ip] = amrex::SetParticleIDandCPU(pid+ip, cpuid);
 
                 // This assumes the flux_pos is of type InjectorPositionRandomPlane
+                std::cout << "getting position unit box" << std::endl; 
                 const XDim3 r = (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) ?
                   // In the refined injection region: use refinement ratio `lrrfac`
                   flux_pos->getPositionUnitBox(i_part, lrrfac, engine) :
@@ -1855,13 +1857,16 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 auto ppos = PDim3(pos);
 
                 // inj_mom would typically be InjectorMomentumGaussianFlux
+                std::cout << "Getting momentum" << std::endl;
                 XDim3 u;
                 u = inj_mom->getMomentum(pos.x, pos.y, pos.z, engine);
                 auto pu = PDim3(u);
 
+                std::cout << "setting x, y, z pos" << std::endl;
                 pu.x *= PhysConst::c;
                 pu.y *= PhysConst::c;
                 pu.z *= PhysConst::c;
+
 
                 // The containsInclusive is used to allow the case of the flux surface
                 // being on the boundary of the domain. After the UpdatePosition below,
@@ -1884,6 +1889,8 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                     continue;
                 }
 #endif
+
+                std::cout << "getting lab-frame sim" << std::endl;
                 // Lab-frame simulation
                 // If the particle's initial position is not within or on the species's
                 // xmin, xmax, ymin, ymax, zmin, zmax, go to the next generated particle.
@@ -1919,6 +1926,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                     pu.y = sin_theta*ur + cos_theta*ut;
                 }
 #endif
+                std::cout << "getting flux" << std::endl;
                 const Real flux = inj_flux->getFlux(ppos.x, ppos.y, ppos.z, t);
                 // Remove particle if flux is negative or 0
                 if (flux <= 0) {
@@ -1975,6 +1983,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 pa[PIdx::uy][ip] = pu.y;
                 pa[PIdx::uz][ip] = pu.z;
 
+                std::cout << "updating position" << std::endl;
                 // Update particle position by a random `t_fract`
                 // so as to produce a continuous-looking flow of particles
                 const amrex::Real t_fract = amrex::Random(engine)*dt;
@@ -1997,6 +2006,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
             }
         });
 
+        std::cout << "synchronizing gpu" << std::endl;
         amrex::Gpu::synchronize();
 
         if (cost && WarpX::load_balance_costs_update_algo == LoadBalanceCostsUpdateAlgo::Timers)
@@ -2008,6 +2018,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
 
     // Remove particles that are inside the embedded boundaries
 #ifdef AMREX_USE_EB
+    std::cout << "scraping particles" << std::endl;
     auto & distance_to_eb = WarpX::GetInstance().GetDistanceToEB();
     scrapeParticles(tmp_pc, amrex::GetVecOfConstPtrs(distance_to_eb), ParticleBoundaryProcess::Absorb());
 #endif
