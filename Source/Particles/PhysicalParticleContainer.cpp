@@ -1861,7 +1861,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                   flux_pos->getPositionUnitBox(i_part, amrex::IntVect::TheUnitVector(), engine);
                 printf("about to get cell coords");
                 auto pos = getCellCoords(overlap_corner, dx, r, iv);
-                printf("creating a position")
+                printf("creating a position");
                 auto ppos = PDim3(pos);
 
                 // inj_mom would typically be InjectorMomentumGaussianFlux
