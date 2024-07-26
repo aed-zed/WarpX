@@ -1848,7 +1848,11 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 pa_idcpu[ip] = amrex::SetParticleIDandCPU(pid+ip, cpuid);
 
                 // This assumes the flux_pos is of type InjectorPositionRandomPlane
-                printf("getting position unit box"); 
+                printf("checking if box okay"); 
+                bool box_ok = fine_overlap_box.ok(); 
+                printf("checking if box contains some kind of value"); 
+                bool box_ok2 = fine_overlap_box.contains(iv);
+                printf("doing big if then statement")
                 const XDim3 r = (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) ?
                   // In the refined injection region: use refinement ratio `lrrfac`
                   flux_pos->getPositionUnitBox(i_part, lrrfac, engine) :
