@@ -1854,6 +1854,10 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 bool box_ok2 = fine_overlap_box.contains(iv);
                 printf("doing big if then statement\n");
                 printf("i_part: %d\n", i_part);
+                printf("checking if flux pos is null\n");
+                if (flux_pos == nullptr) {
+                    printf("flux pos is null\n"); 
+                }
                 //const XDim3 r = (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) ?
                 const XDim3 r = (box_ok && box_ok2) ?
                   // In the refined injection region: use refinement ratio `lrrfac`
