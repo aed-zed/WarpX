@@ -1509,15 +1509,17 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
         auto& warpx = WarpX::GetInstance();
         std::cout << "about to compute total area" << std::endl; 
         amrex::Real total_area = warpx.ComputeTotalArea(warpx.m_face_areas[0]); 
-        std::cout << "computed total area" << std::endl; 
+        std::cout << "computed total area: " << static_cast<float>(total_area) << std::endl; 
 #if defined(WARPX_DIM_3D)
+        std::cout << "calculating scale_fac" << std::endl; 
         scale_fac = dx[0]*dx[1]*dx[2]/total_area/num_ppc_real;
 #elif defined(WARPX_DIM_RZ) || defined(WARPX_DIM_XZ)
+        std::cout << "calculating scale_fac" << std::endl; 
         scale_fac = dx[0]*dx[1]/num_ppc_real/total_area;
 #endif
     }
 #endif
-    if (plasma_injector.flux_normal_axis != 1) {
+    if (plasma_injector.flux_normal_axis != -1) {
 #if defined(WARPX_DIM_3D)
     scale_fac = dx[0]*dx[1]*dx[2]/dx[plasma_injector.flux_normal_axis]/num_ppc_real;
 #elif defined(WARPX_DIM_RZ) || defined(WARPX_DIM_XZ)
@@ -1536,16 +1538,20 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
 #endif
     }
 
+    std::cout << "finished scale_fac cost" << std::endl; 
     amrex::LayoutData<amrex::Real>* cost = WarpX::getCosts(0);
 
     // Create temporary particle container to which particles will be added;
     // we will then call Redistribute on this new container and finally
     // add the new particles to the original container.
     PhysicalParticleContainer tmp_pc(&WarpX::GetInstance());
+    
+    std::cout << "now i'm here" << std::endl; 
     for (int ic = 0; ic < NumRuntimeRealComps(); ++ic) { tmp_pc.AddRealComp(false); }
     for (int ic = 0; ic < NumRuntimeIntComps(); ++ic) { tmp_pc.AddIntComp(false); }
     tmp_pc.defineAllParticleTiles();
 
+    std::cout << "and now i'm hereeeee" << std::endl; 
     const int nlevs = numLevels();
     static bool refine_injection = false;
     static Box fine_injection_box;
@@ -1560,10 +1566,14 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
         fine_injection_box.coarsen(rrfac);
     }
 
+    std::cout << "getting flux position" << std::endl; 
     InjectorPosition* flux_pos = plasma_injector.getInjectorFluxPosition();
+    std::cout << "getting injector flux" << std::endl; 
     InjectorFlux*  inj_flux = plasma_injector.getInjectorFlux();
+    std::cout << "getting momentum device" << std::endl; 
     InjectorMomentum* inj_mom = plasma_injector.getInjectorMomentumDevice();
     constexpr int level_zero = 0;
+    std::cout << "getting something in warpx" << std::endl; 
     const amrex::Real t = WarpX::GetInstance().gett_new(level_zero);
 
 #ifdef WARPX_DIM_RZ
@@ -1655,6 +1665,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
             continue; // Go to the next tile
         }
 
+        std::cout << "we made it here" << std::endl; 
         const int grid_id = mfi.index();
         const int tile_id = mfi.LocalTileIndex();
 
