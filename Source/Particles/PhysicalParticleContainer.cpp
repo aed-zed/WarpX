@@ -1822,11 +1822,12 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 m_shr_p_bw_engine->build_optical_depth_functor();
         }
 #endif
-        std::cout << "or here? " << std::endl; 
-
+        std::cout << "getting do_field_ionization " << std::endl; 
         const bool loc_do_field_ionization = do_field_ionization;
+        std::cout << "getting ionization initial level" << std::endl;
         const int loc_ionization_initial_level = ionization_initial_level;
 #ifdef WARPX_DIM_RZ
+        std::cout << "getting flux normal axis" << std::endl;
         int const loc_flux_normal_axis = plasma_injector.flux_normal_axis;
 #endif
 
