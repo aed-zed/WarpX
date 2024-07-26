@@ -1708,6 +1708,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
             amrex::ignore_unused(j,k);
 #endif
         });
+        std::cout << "now we're here" << std::endl; 
 
         // Max number of new particles. All of them are created,
         // and invalid ones are then discarded
@@ -1741,6 +1742,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
         }
         uint64_t * AMREX_RESTRICT pa_idcpu = soa.GetIdCPUData().data() + old_size;
 
+        std::cout << "we're making our way downtown" << std::endl; 
         // user-defined integer and real attributes
         const auto n_user_int_attribs = static_cast<int>(m_user_int_attribs.size());
         const auto n_user_real_attribs = static_cast<int>(m_user_real_attribs.size());
@@ -1757,6 +1759,8 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
             user_real_attrib_parserexec_pinned[ia] = m_user_real_attrib_parser[ia]->compile<7>();
         }
 #ifdef AMREX_USE_GPU
+
+        std::cout << "amrex using gpu commands" << std::endl; 
         // To avoid using managed memory, we first define pinned memory vector, initialize on cpu,
         // and them memcpy to device from host
         amrex::Gpu::DeviceVector<int*> d_pa_user_int(n_user_int_attribs);
@@ -1782,6 +1786,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
         amrex::ParserExecutor<7> const* user_real_parserexec_data = user_real_attrib_parserexec_pinned.dataPtr();
 #endif
 
+        std::cout << "maybe it fails after this? " << std::endl; 
         int* p_ion_level = nullptr;
         if (do_field_ionization) {
             p_ion_level = soa.GetIntData(particle_icomps["ionizationLevel"]).data() + old_size;
@@ -1817,6 +1822,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 m_shr_p_bw_engine->build_optical_depth_functor();
         }
 #endif
+        std::cout << "or here? " << std::endl; 
 
         const bool loc_do_field_ionization = do_field_ionization;
         const int loc_ionization_initial_level = ionization_initial_level;
@@ -2006,6 +2012,8 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
     scrapeParticles(tmp_pc, amrex::GetVecOfConstPtrs(distance_to_eb), ParticleBoundaryProcess::Absorb());
 #endif
 
+    std::cout << "lol why is this function so long" << std::endl; 
+
     // Redistribute the new particles that were added to the temporary container.
     // (This eliminates invalid particles, and makes sure that particles
     // are in the right tile.)
@@ -2019,18 +2027,22 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
         for (MFIter mfi = MakeMFIter(lev, info); mfi.isValid(); ++mfi)
         {
             // Extract tiles
+            std::cout << "extracting tiles" << std::endl; 
             const int grid_id = mfi.index();
             const int tile_id = mfi.LocalTileIndex();
             auto& src_tile = tmp_pc.DefineAndReturnParticleTile(lev, grid_id, tile_id);
             auto& dst_tile = DefineAndReturnParticleTile(lev, grid_id, tile_id);
 
             // Resize container and copy particles
+            std::cout << "resizing contianer and copying particles" << std::endl;
             auto old_size = dst_tile.numParticles();
             auto n_new = src_tile.numParticles();
             dst_tile.resize( old_size+n_new );
             amrex::copyParticles(dst_tile, src_tile, 0, old_size, n_new);
+            std::cout << "finished mfiter iteration" << std::endl;
         }
     }
+    std::cout << "plasma flux finished" << std::endl; 
 }
 
 void
@@ -2742,12 +2754,13 @@ PhysicalParticleContainer::ContinuousFluxInjection (amrex::Real t, amrex::Real d
             // Check the optional parameters for start and stop of injection
             if ( ((plasma_injector->flux_tmin<0) || (t>=plasma_injector->flux_tmin)) &&
                  ((plasma_injector->flux_tmax<0) || (t< plasma_injector->flux_tmax)) ){
-
+                
+                std::cout << "adding a plasma flux" << std::endl; 
                 AddPlasmaFlux(*plasma_injector, dt);
-
             }
         }
     }
+    std::cout << "finished adding plasma flux" << std::endl; 
 }
 
 /* \brief Perform the field gather and particle push operations in one fused kernel
