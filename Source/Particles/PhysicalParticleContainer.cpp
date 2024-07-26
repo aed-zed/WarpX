@@ -1847,7 +1847,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 pa_idcpu[ip] = amrex::SetParticleIDandCPU(pid+ip, cpuid);
 
                 // This assumes the flux_pos is of type InjectorPositionRandomPlane
-                std::cout << "getting position unit box" << std::endl; 
+                printf("getting position unit box"); 
                 const XDim3 r = (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) ?
                   // In the refined injection region: use refinement ratio `lrrfac`
                   flux_pos->getPositionUnitBox(i_part, lrrfac, engine) :
@@ -1857,12 +1857,12 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 auto ppos = PDim3(pos);
 
                 // inj_mom would typically be InjectorMomentumGaussianFlux
-                std::cout << "Getting momentum" << std::endl;
+                printf("Getting momentum");
                 XDim3 u;
                 u = inj_mom->getMomentum(pos.x, pos.y, pos.z, engine);
                 auto pu = PDim3(u);
 
-                std::cout << "setting x, y, z pos" << std::endl;
+                printf("setting x, y, z pos");
                 pu.x *= PhysConst::c;
                 pu.y *= PhysConst::c;
                 pu.z *= PhysConst::c;
@@ -1890,7 +1890,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 }
 #endif
 
-                std::cout << "getting lab-frame sim" << std::endl;
+                printf("getting lab-frame sim");
                 // Lab-frame simulation
                 // If the particle's initial position is not within or on the species's
                 // xmin, xmax, ymin, ymax, zmin, zmax, go to the next generated particle.
@@ -1926,7 +1926,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                     pu.y = sin_theta*ur + cos_theta*ut;
                 }
 #endif
-                std::cout << "getting flux" << std::endl;
+                printf("getting flux");
                 const Real flux = inj_flux->getFlux(ppos.x, ppos.y, ppos.z, t);
                 // Remove particle if flux is negative or 0
                 if (flux <= 0) {
@@ -1983,7 +1983,7 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 pa[PIdx::uy][ip] = pu.y;
                 pa[PIdx::uz][ip] = pu.z;
 
-                std::cout << "updating position" << std::endl;
+                printf("updating position");
                 // Update particle position by a random `t_fract`
                 // so as to produce a continuous-looking flow of particles
                 const amrex::Real t_fract = amrex::Random(engine)*dt;
