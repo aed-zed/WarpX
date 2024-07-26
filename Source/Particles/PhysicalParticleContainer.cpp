@@ -1848,20 +1848,21 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 pa_idcpu[ip] = amrex::SetParticleIDandCPU(pid+ip, cpuid);
 
                 // This assumes the flux_pos is of type InjectorPositionRandomPlane
-                printf("checking if box okay"); 
+                printf("checking if box okay\n"); 
                 bool box_ok = fine_overlap_box.ok(); 
-                printf("checking if box contains some kind of value"); 
+                printf("checking if box contains some kind of value\n"); 
                 bool box_ok2 = fine_overlap_box.contains(iv);
-                printf("doing big if then statement");
+                printf("doing big if then statement\n");
+                printf("i_part: %d\n", i_part);
                 //const XDim3 r = (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) ?
                 const XDim3 r = (box_ok && box_ok2) ?
                   // In the refined injection region: use refinement ratio `lrrfac`
                   flux_pos->getPositionUnitBox(i_part, lrrfac, engine) :
                   // Otherwise: use 1 as the refinement ratio
                   flux_pos->getPositionUnitBox(i_part, amrex::IntVect::TheUnitVector(), engine);
-                printf("about to get cell coords");
+                printf("about to get cell coords\n");
                 auto pos = getCellCoords(overlap_corner, dx, r, iv);
-                printf("creating a position");
+                printf("creating a position\n");
                 auto ppos = PDim3(pos);
 
                 // inj_mom would typically be InjectorMomentumGaussianFlux

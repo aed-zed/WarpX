@@ -727,6 +727,10 @@ PlasmaInjector::getInjectorPosition () const
 InjectorPosition*
 PlasmaInjector::getInjectorFluxPosition () const
 {
+    std::cout << "getting d_flux_pos in plasmainjector" << std::endl;
+    if (d_flux_pos == nullptr) {
+        std::cout << "d_flux_pos is null" << std::endl;
+    }
     return d_flux_pos;
 }
 
