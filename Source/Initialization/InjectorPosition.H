@@ -109,7 +109,7 @@ private:
         printf("getting box in InjPosSTLPlane Helper\n");
 #endif
         amrex::Box const& box = b_data[i];
-        
+
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting eb_cent in InjPosSTLPlane Helper\n");
 #endif
