@@ -79,8 +79,9 @@ struct InjectorPositionRandomSTLPlane
                         amrex::RandomEngine const& engine) const noexcept
     {
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
-        printf("getting position in InjPosSTLPlane");
+        printf("getting box in InjPosSTLPlane\n");
         amrex::Box const* b_data = ba.gpuData();
+        printf("getting c_data in InjPosSTLPlane\n");
         amrex::Array4<const amrex::Real> const* c_data = arrays.gpuData();
         return getPositionHelper(b_data, c_data, engine);
 #else
@@ -104,7 +105,14 @@ private:
 
         int i = amrex::Random_int(size, engine);
 
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+        printf("getting box in InjPosSTLPlane Helper\n");
+#endif
         amrex::Box const& box = b_data[i];
+        
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+        printf("getting eb_cent in InjPosSTLPlane Helper\n");
+#endif
         amrex::Array4<const amrex::Real> const& eb_cent = c_data[i];
 
         // get mins and maxs of the x, y, z values of the randomly selected cell given
@@ -115,10 +123,16 @@ private:
         int y_size = hi.y - lo.y;
         int z_size = hi.z - lo.z;
 
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+        printf("getting random indexes in InjPosSTLPlane Helper\n");
+#endif
         int index_x = amrex::Random_int(x_size, engine);
         int index_y = amrex::Random_int(y_size, engine);
         int index_z = amrex::Random_int(z_size, engine);
 
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+        printf("getting amrex Real in InjPosSTLPlane Helper\n");
+#endif
         amrex::Real x = eb_cent(index_x, index_y, index_z, 0);
         amrex::Real y = eb_cent(index_x, index_y, index_z, 1);
         amrex::Real z = eb_cent(index_x, index_y, index_z, 2);
