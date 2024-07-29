@@ -82,7 +82,8 @@ struct InjectorPositionRandomSTLPlane
         printf("getting box in InjPosSTLPlane\n");
         amrex::Box const* b_data = ba.gpuData();
         printf("getting c_data in InjPosSTLPlane\n");
-        amrex::Array4<const amrex::Real> const* c_data = arrays.gpuData();
+        amrex::Array4<const amrex::Real> const* c_data = arrays.data();
+        printf("calling helper function\n");
         return getPositionHelper(b_data, c_data, engine);
 #else
         std::cout << "getting position in InjPosSTLPlane" << std::endl;
