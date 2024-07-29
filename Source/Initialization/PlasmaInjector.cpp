@@ -461,23 +461,12 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     std::cout << "size of async arrays: " << size << std::endl;
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
-
-    size_t total_size = cent_arrays.size() * cent_arrays[0].size();
-    size_t array4_size = cent_arrays[0].size();
-    amrex::Gpu::Buffer<amrex::Real> gpu_buffer(total_size);
-
-    size_t offset = 0;
-    for (size_t i = 0; i < cemt_arrays.size(); i++) {
-        amrex::Gpu::copy(amrex::Gpu::hostToDevice, cent_arrays[i].dataPtr(),
-                                                   cent_arrays[i].data_Ptr() + cent_arrays[i].size(),
-                                                   gpu_buffer.data() + offset);
-        offset += cent_arrays[i].size();
-    }
+    amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
 
     std::cout << "creating injector position" << std::endl;
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandomSTLPlane*)nullptr,
-        xmin, xmax, ymin, ymax, zmin, zmax, barray, gpu_buffer, size. array4_size);
+        xmin, xmax, ymin, ymax, zmin, zmax, barray, carray, size);
 #ifdef AMREX_USE_GPU
     d_flux_pos = static_cast<InjectorPosition*>
         (amrex::The_Arena()->alloc(sizeof(InjectorPosition)));
