@@ -433,7 +433,6 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
-    amrex::Vector<const amrex::Array4<const amrex::Real>> cent_arrays;
     amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
 
