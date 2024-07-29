@@ -240,7 +240,7 @@ struct InjectorPosition
                       amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
                       int size)
         : type(Type::randomstlplane),
-          object(t, a_ba, a_arrays, size, array4_size),
+          object(t, a_ba, a_arrays, size),
           xmin(a_xmin), xmax(a_xmax),
           ymin(a_ymin), ymax(a_ymax),
           zmin(a_zmin), zmax(a_zmax)
