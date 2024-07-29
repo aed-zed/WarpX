@@ -461,14 +461,14 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     std::cout << "size of async arrays: " << size << std::endl;
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
-    
+
     size_t total_size = cent_arrays.size() * cent_arrays[0].size();
     size_t array4_size = cent_array[0].size();
     amrex::Gpu::Buffer<amrex::Real> gpu_buffer(total_size);
-    
+
     size_t offset = 0;
     for (size_t i = 0; i < cemt_arrays.size(); i++) {
-        amrex::Gpu::copy(amrex::Gpu::hostToDevice, cent_arrays[i].dataPtr(), 
+        amrex::Gpu::copy(amrex::Gpu::hostToDevice, cent_arrays[i].dataPtr(),
                                                    cent_arrays[i].data_Ptr() + cent_arrays[i].size(),
                                                    gpu_buffer.data() + offset);
         offset += cent_arrays[i].size();
