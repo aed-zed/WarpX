@@ -68,7 +68,7 @@ private:
 struct InjectorPositionRandomSTLPlane
 {
     InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
-                                    amrex::Vector<amrex::Array4<const amrex::Real>>& a_arrays,
+                                    amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
                                     int a_size) noexcept
         : ba(a_ba), arrays(a_arrays), size(a_size) {}
 
@@ -82,8 +82,7 @@ struct InjectorPositionRandomSTLPlane
         printf("getting box in InjPosSTLPlane\n");
         amrex::Box const* b_data = ba.gpuData();
         printf("getting c_data in InjPosSTLPlane\n");
-        const amrex::Gpu::Buffer<amrex::Array4<const amrex::Real>>& carray(arrays.data(), arrays.size());
-        amrex::Array4<const amrex::Real> const* c_data = carray.data();
+        amrex::Array4<const amrex::Real> const* c_data = arrays.gpuData();
         printf("calling helper function\n");
         return getPositionHelper(b_data, c_data, engine);
 #else
@@ -144,7 +143,7 @@ private:
     }
 
     amrex::AsyncArray<amrex::Box>& ba;
-    amrex::Vector<amrex::Array4<const amrex::Real>>& arrays;
+    amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays;
     int size;
 };
 
@@ -238,7 +237,7 @@ struct InjectorPosition
                       amrex::Real a_ymin, amrex::Real a_ymax,
                       amrex::Real a_zmin, amrex::Real a_zmax,
                       amrex::AsyncArray<amrex::Box>& a_ba,
-                      amrex::Vector<amrex::Array4<const amrex::Real>>& a_arrays,
+                      amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
                       int size)
         : type(Type::randomstlplane),
           object(t, a_ba, a_arrays, size),
@@ -351,7 +350,7 @@ private:
             : randomplane(a_dir) {}
         Object (InjectorPositionRandomSTLPlane*,
                 amrex::AsyncArray<amrex::Box>& a_ba,
-                amrex::Vector<amrex::Array4<const amrex::Real>>& a_arrays,
+                amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
                 int size) noexcept
             : randomstlplane(a_ba, a_arrays, size) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
