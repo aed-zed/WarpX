@@ -461,7 +461,13 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     std::cout << "size of async arrays: " << size << std::endl;
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
-    amrex::Gpu::Buffer<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
+    amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.size());
+    for (size_t i = 0; i < cemt_arrays.size(); i++) {
+        amrex::Box bxs = barrau[i];
+        const size_t num_elem = bxs.numPts();
+        Real* array4dataptr = cent_arrays[i].dataPtr();
+        carray.copyFrom(array4dataptr, num_elem);
+    }
 
     std::cout << "creating injector position" << std::endl;
     h_flux_pos = std::make_unique<InjectorPosition> (
