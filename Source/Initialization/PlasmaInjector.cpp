@@ -433,7 +433,8 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
-    amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
+    amrex::Vector<const amrex::Array4<const amrex::Real>> cent_arrays;
+    //amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
 
     for (amrex::MFIter mfi(eb_flag); mfi.isValid(); ++mfi) {
@@ -451,7 +452,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
         normal_arrays.push_back(eb_bnd_normal_arr);
 
         const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = eb_bnd_cent.array(mfi);
-        amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
+        //amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
         cent_arrays.push_back(eb_bnd_cent_arr);
 
         size += 1;
@@ -460,7 +461,8 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     std::cout << "making vectors async arrays" << std::endl;
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
-    amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
+    //amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
+    amrex::AsyncArray<const amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
 
     std::cout << "creating injector position" << std::endl;
     h_flux_pos = std::make_unique<InjectorPosition> (
