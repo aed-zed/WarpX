@@ -12,6 +12,7 @@
 
 #include <random>
 #include <AMReX_Dim3.H>
+#include <AMReX_FabArray.H>
 #include <AMReX_Gpu.H>
 #include <AMReX_Utility.H>
 
