@@ -68,7 +68,7 @@ private:
 struct InjectorPositionRandomSTLPlane
 {
     InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
-                                    const amrex::MultiArray4<const amrex::Real>& a_eb_bn_cent) noexcept
+                                    const amrex::MultiArray4<amrex::Real const>& a_eb_bn_cent) noexcept
         : ba(a_ba), eb_bn_cent(a_eb_bn_cent) {}
 
     [[nodiscard]]
@@ -132,7 +132,7 @@ private:
     }
 
     amrex::AsyncArray<amrex::Box>& ba;
-    const amrex::MultiArray4<const amrex::Real>& eb_bn_cent;
+    const amrex::MultiArray4<amrex::Real const>& eb_bn_cent;
 };
 
 
@@ -225,7 +225,7 @@ struct InjectorPosition
                       amrex::Real a_ymin, amrex::Real a_ymax,
                       amrex::Real a_zmin, amrex::Real a_zmax,
                       amrex::AsyncArray<amrex::Box>& a_ba,
-                      const amrex::MultiArray4<const amrex::Real>& a_eb_bn_cent)
+                      const amrex::MultiArray4<amrex::Real const>& a_eb_bn_cent)
         : type(Type::randomstlplane),
           object(t, a_ba, a_eb_bn_cent),
           xmin(a_xmin), xmax(a_xmax),
@@ -337,7 +337,7 @@ private:
             : randomplane(a_dir) {}
         Object (InjectorPositionRandomSTLPlane*,
                 amrex::AsyncArray<amrex::Box>& a_ba,
-                const amrex::MultiArray4<const amrex::Real>& a_eb_bn_cent) noexcept
+                const amrex::MultiArray4<amrex::Real const>& a_eb_bn_cent) noexcept
             : randomstlplane(a_ba, a_eb_bn_cent) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}
