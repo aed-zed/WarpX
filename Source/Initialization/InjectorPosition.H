@@ -69,9 +69,8 @@ struct InjectorPositionRandomSTLPlane
 {
     InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
                                     amrex::Array4<const amrex::Real>& a_arrays_device,
-                                    amrex::Array4<const amrex::Real>& a_arrays_host,
-                                    int a_size) noexcept
-        : ba(a_ba), arrays_device(a_arrays_device), arrays_host(a_arrays_host), size(a_size) {}
+                                    amrex::Array4<const amrex::Real>& a_arrays_host) noexcept
+        : ba(a_ba), arrays_device(a_arrays_device), arrays_host(a_arrays_host) {}
 
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
@@ -144,7 +143,6 @@ private:
     amrex::AsyncArray<amrex::Box>& ba;
     amrex::Array4<const amrex::Real>& arrays_device;
     amrex::Array4<const amrex::Real>& arrays_host;
-    int size;
 };
 
 
@@ -238,10 +236,9 @@ struct InjectorPosition
                       amrex::Real a_zmin, amrex::Real a_zmax,
                       amrex::AsyncArray<amrex::Box>& a_ba,
                       amrex::Array4<const amrex::Real>& a_arrays_device,
-                      amrex::Array4<const amrex::Real>& a_arrays_host,
-                      int size)
+                      amrex::Array4<const amrex::Real>& a_arrays_host)
         : type(Type::randomstlplane),
-          object(t, a_ba, a_arrays_device, a_arrays_host, size),
+          object(t, a_ba, a_arrays_device, a_arrays_host),
           xmin(a_xmin), xmax(a_xmax),
           ymin(a_ymin), ymax(a_ymax),
           zmin(a_zmin), zmax(a_zmax)
@@ -352,9 +349,8 @@ private:
         Object (InjectorPositionRandomSTLPlane*,
                 amrex::AsyncArray<amrex::Box>& a_ba,
                 amrex::Array4<const amrex::Real>& a_arrays_device,
-                amrex::Array4<const amrex::Real>& a_arrays_host,
-                int size) noexcept
-            : randomstlplane(a_ba, a_arrays_device, a_arrays_host, size) {}
+                amrex::Array4<const amrex::Real>& a_arrays_host) noexcept
+            : randomstlplane(a_ba, a_arrays_device, a_arrays_host) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}
         InjectorPositionRandom random;
