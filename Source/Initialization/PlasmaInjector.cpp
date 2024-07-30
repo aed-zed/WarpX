@@ -433,7 +433,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
-    //amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
+    amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
 
     for (amrex::MFIter mfi(eb_flag); mfi.isValid(); ++mfi) {
@@ -450,9 +450,9 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
         amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_normal_arr);
         normal_arrays.push_back(eb_bnd_normal_arr);
 
-        // const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = eb_bnd_cent.array(mfi);
-        // amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
-        // cent_arrays.push_back(eb_bnd_cent_arr);
+        const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = eb_bnd_cent.array(mfi);
+        amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
+        cent_arrays.push_back(eb_bnd_cent_arr);
 
         size += 1;
     }
@@ -466,10 +466,12 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     //amrex::Gpu::DeviceVector<amrex::Real> cvector(b_array[0].numPts());
     //amrex::Gpu::copy(amrex::Gpu::hostToDevice, cent_arrays[0].dataPtr(), cent_arrays.dataPtr() + b_array[0].numPts(), cvector.dataPtr());
 
+    const amrex::Gpu::Buffer<amrex::Array4<amrex::Real const>> carray(cent_arrays[0].data(), cent_arrays[0].size());
+
     std::cout << "creating injector position" << std::endl;
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandomSTLPlane*)nullptr,
-        xmin, xmax, ymin, ymax, zmin, zmax, barray, eb_bnd_cent.const_arrays());
+        xmin, xmax, ymin, ymax, zmin, zmax, barray, carray);
 #ifdef AMREX_USE_GPU
     d_flux_pos = static_cast<InjectorPosition*>
         (amrex::The_Arena()->alloc(sizeof(InjectorPosition)));
