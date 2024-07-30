@@ -471,7 +471,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     std::cout << "creating injector position" << std::endl;
     h_flux_pos = std::make_unique<InjectorPosition> (
         (InjectorPositionRandomSTLPlane*)nullptr,
-        xmin, xmax, ymin, ymax, zmin, zmax, barray, carray, cent_arrays[0], size);
+        xmin, xmax, ymin, ymax, zmin, zmax, barray, static_cast<Array4<const Real>&>(carray), cent_arrays[0], size);
 #ifdef AMREX_USE_GPU
     d_flux_pos = static_cast<InjectorPosition*>
         (amrex::The_Arena()->alloc(sizeof(InjectorPosition)));
