@@ -131,9 +131,9 @@ private:
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting (x, y, z) values\n");
 #endif
-        amrex::Real x = array(index_x, index_y, index_z, 1);
-        amrex::Real y = array(index_x, index_y, index_z, 2);
-        amrex::Real z = array(index_x, index_y, index_z, 3);
+        amrex::Real x = &array(index_x, index_y, index_z, 1);
+        amrex::Real y = &array(index_x, index_y, index_z, 2);
+        amrex::Real z = &array(index_x, index_y, index_z, 3);
         return amrex::XDim3{x, y, z};
     }
 
