@@ -81,12 +81,12 @@ struct InjectorPositionRandomSTLPlane
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting box in InjPosSTLPlane\n");
         amrex::Box const* b_data = ba.gpuData();
-        const amrex::Array4<amrex::Real const> array = carray.gpuData();
+        const amrex::Array4<amrex::Real const>* array = carray.gpuData();
         return getPositionHelper(b_data, engine);
 #else
         std::cout << "getting position in InjPosSTLPlane" << std::endl;
         amrex::Box const* b_data = ba.data();
-        const amrex::Array4<amrex::Real const> array = carray.data();
+        const amrex::Array4<amrex::Real const>* array = carray.data();
         return getPositionHelper(b_data, engine);
 #endif
     }
@@ -97,7 +97,7 @@ private:
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getPositionHelper (amrex::Box const* b_data,
-                       const amrex::Array4<amrex::Real const> array,
+                       const amrex::Array4<amrex::Real const>* array,
                        amrex::RandomEngine const& engine) const noexcept
     {
 
