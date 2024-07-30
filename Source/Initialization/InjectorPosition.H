@@ -86,7 +86,7 @@ struct InjectorPositionRandomSTLPlane
 #else
         std::cout << "getting position in InjPosSTLPlane" << std::endl;
         amrex::Box const* b_data = ba.data();
-        amrex::Array4<amrex::Real const> array = carray.data();
+        const amrex::Array4<amrex::Real const> array = carray.data();
         return getPositionHelper(b_data, engine);
 #endif
     }
@@ -97,7 +97,7 @@ private:
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getPositionHelper (amrex::Box const* b_data,
-                       amrex::Array4<amrex::Real const> array,
+                       const amrex::Array4<amrex::Real const> array,
                        amrex::RandomEngine const& engine) const noexcept
     {
 
