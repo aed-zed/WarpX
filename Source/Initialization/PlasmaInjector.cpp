@@ -463,9 +463,9 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
     //amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
 
-    Gpu::DeviceVector<amrex::Real> cvector(b_array[0].numPts());
+    amrex::Gpu::DeviceVector<amrex::Real> cvector(b_array[0].numPts());
     Array4<amrex::Real> carray(d_vector.dataPtr(), b_array[0], 1);
-    Gpu::copy(Gpu::hostToDevice, cent_arrays[0].dataPtr(), cent_arrays.dataPtr() + b_array[0].numPts(), cvector.dataPtr());
+    amrex::Gpu::copy(amrex::Gpu::hostToDevice, cent_arrays[0].dataPtr(), cent_arrays.dataPtr() + b_array[0].numPts(), cvector.dataPtr());
 
 
     std::cout << "creating injector position" << std::endl;
