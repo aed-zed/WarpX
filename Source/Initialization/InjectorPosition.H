@@ -81,13 +81,13 @@ struct InjectorPositionRandomSTLPlane
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting box in InjPosSTLPlane\n");
         amrex::Box const* b_data = ba.gpuData();
-        amrex::Array4<const amrex::Real> const* array = carray.gpuData();
+        amrex::Array4<const amrex::Real> const& array_c = &carray.gpuData();
         return getPositionHelper(b_data, array, engine);
 #else
         std::cout << "getting position in InjPosSTLPlane" << std::endl;
         amrex::Box const* b_data = ba.data();
-        amrex::Array4<const amrex::Real> const* array = carray.data();
-        return getPositionHelper(b_data, array, engine);
+        amrex::Array4<const amrex::Real> const& array_c = &carray.data();
+        return getPositionHelper(b_data, array_c, engine);
 #endif
     }
 
@@ -97,7 +97,7 @@ private:
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getPositionHelper (amrex::Box const* b_data,
-                       amrex::Array4<const amrex::Real> const* array,
+                       amrex::Array4<const amrex::Real> const& array_c,
                        amrex::RandomEngine const& engine) const noexcept
     {
 
@@ -131,9 +131,9 @@ private:
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting (x, y, z) values\n");
 #endif
-        amrex::Real x = array(index_x, index_y, index_z, 1);
-        amrex::Real y = array(index_x, index_y, index_z, 2);
-        amrex::Real z = array(index_x, index_y, index_z, 3);
+        amrex::Real x = array_c(index_x, index_y, index_z, 1);
+        amrex::Real y = array_c(index_x, index_y, index_z, 2);
+        amrex::Real z = array_c(index_x, index_y, index_z, 3);
         return amrex::XDim3{x, y, z};
     }
 
