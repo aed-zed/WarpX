@@ -464,7 +464,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     //amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
 
     amrex::Gpu::DeviceVector<amrex::Real> cvector(b_array[0].numPts());
-    amrex::Array4<amrex::Real> carray(d_vector.dataPtr(), b_array[0], 1);
+    amrex::Array4<amrex::Real> carray(cvector.dataPtr(), b_array[0], 1);
     amrex::Gpu::copy(amrex::Gpu::hostToDevice, cent_arrays[0].dataPtr(), cent_arrays.dataPtr() + b_array[0].numPts(), cvector.dataPtr());
 
 
