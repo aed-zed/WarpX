@@ -124,8 +124,8 @@ private:
         int index_z = amrex::Random_int(z_size, engine);
 
         amrex::MultiArray4<amrex::Real const> multi_arrays = eb_bn_cent.const_arrays();
-        amrex::Array4<amrex::Real const> carray = multi_arrays[0]; 
-        
+        amrex::Array4<amrex::Real const> carray = multi_arrays[0];
+
         amrex::Real x = carray(index_x, index_y, index_z, 0);
         amrex::Real y = carray(index_x, index_y, index_z, 1);
         amrex::Real z = carray(index_x, index_y, index_z, 2);
