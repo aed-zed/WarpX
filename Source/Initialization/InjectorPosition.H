@@ -68,9 +68,10 @@ private:
 struct InjectorPositionRandomSTLPlane
 {
     InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
-                                    amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                                    amrex::Array4<const amrex::Real>& a_arrays_device,
+                                    amrex::Array4<const amrex::Real>& a_arrays_host,
                                     int a_size) noexcept
-        : ba(a_ba), arrays(a_arrays), size(a_size) {}
+        : ba(a_ba), arrays_device(a_arrays_device), arrays_host(a_arrays_host), size(a_size) {}
 
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
@@ -81,15 +82,11 @@ struct InjectorPositionRandomSTLPlane
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting box in InjPosSTLPlane\n");
         amrex::Box const* b_data = ba.gpuData();
-        printf("getting c_data in InjPosSTLPlane\n");
-        amrex::Array4<const amrex::Real> const* c_data = arrays.gpuData();
-        printf("calling helper function\n");
-        return getPositionHelper(b_data, c_data, engine);
+        return getPositionHelper(b_data, engine);
 #else
         std::cout << "getting position in InjPosSTLPlane" << std::endl;
         amrex::Box const* b_data = ba.data();
-        amrex::Array4<const amrex::Real> const* c_data = arrays.data();
-        return getPositionHelper(b_data, c_data, engine);
+        return getPositionHelper(b_data, engine);
 #endif
     }
 
@@ -98,23 +95,20 @@ private:
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
-    getPositionHelper (amrex::Box const* b_data, amrex::Array4<const amrex::Real> const* c_data,
+    getPositionHelper (amrex::Box const* b_data,
                        amrex::RandomEngine const& engine) const noexcept
     {
 
         using namespace amrex::literals;
 
-        int i = amrex::Random_int(size, engine);
-
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting box in InjPosSTLPlane Helper\n");
 #endif
-        amrex::Box const& box = b_data[i];
+        amrex::Box const& box = b_data[0];
 
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting eb_cent in InjPosSTLPlane Helper\n");
 #endif
-        amrex::Array4<const amrex::Real> const& eb_cent = c_data[i];
 
         // get mins and maxs of the x, y, z values of the randomly selected cell given
         const auto lo = amrex::lbound(box);
@@ -133,17 +127,23 @@ private:
 
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting amrex Real in InjPosSTLPlane Helper\n");
-#endif
-        amrex::Real x = eb_cent(index_x, index_y, index_z, 0);
-        amrex::Real y = eb_cent(index_x, index_y, index_z, 1);
-        amrex::Real z = eb_cent(index_x, index_y, index_z, 2);
-
+        amrex::Real x = arrays_device(index_x, index_y, index_z, 0);
+        amrex::Real y = arrays_device(index_x, index_y, index_z, 1);
+        amrex::Real z = arrays_device(index_x, index_y, index_z, 2);
         return amrex::XDim3{x, y, z};
+#else 
+        printf("getting amrex Real in InjPosSTLPlane Helper\n");
+        amrex::Real x = arrays_host(index_x, index_y, index_z, 0);
+        amrex::Real y = arrays_host(index_x, index_y, index_z, 1);
+        amrex::Real z = arrays_host(index_x, index_y, index_z, 2);
+        return amrex::XDim3{x, y, z};
+#endif
 
     }
 
     amrex::AsyncArray<amrex::Box>& ba;
-    amrex::AsyncArray<amrex::Array4<const amrex::Real>>& arrays;
+    amrex::Array4<const amrex::Real>& arrays_device;
+    amrex::Array4<const amrex::Real>& arrays_host;
     int size;
 };
 
@@ -237,10 +237,11 @@ struct InjectorPosition
                       amrex::Real a_ymin, amrex::Real a_ymax,
                       amrex::Real a_zmin, amrex::Real a_zmax,
                       amrex::AsyncArray<amrex::Box>& a_ba,
-                      amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                      amrex::Array4<const amrex::Real>& a_arrays_device,
+                      amrex::Array4<const amrex::Real>& a_arrays_host,
                       int size)
         : type(Type::randomstlplane),
-          object(t, a_ba, a_arrays, size),
+          object(t, a_ba, a_arrays_device, a_arrays_host, size),
           xmin(a_xmin), xmax(a_xmax),
           ymin(a_ymin), ymax(a_ymax),
           zmin(a_zmin), zmax(a_zmax)
@@ -350,9 +351,10 @@ private:
             : randomplane(a_dir) {}
         Object (InjectorPositionRandomSTLPlane*,
                 amrex::AsyncArray<amrex::Box>& a_ba,
-                amrex::AsyncArray<amrex::Array4<const amrex::Real>>& a_arrays,
+                amrex::Array4<const amrex::Real>& a_arrays_device,
+                amrex::Array4<const amrex::Real>& a_arrays_host,
                 int size) noexcept
-            : randomstlplane(a_ba, a_arrays, size) {}
+            : randomstlplane(a_ba, a_arrays_device, a_arrays_host, size) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}
         InjectorPositionRandom random;
