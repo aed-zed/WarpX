@@ -81,7 +81,7 @@ struct InjectorPositionRandomSTLPlane
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting box in InjPosSTLPlane\n");
         amrex::Box const* b_data = ba.gpuData();
-        amrex::Array4<amrex::Real const> array = carray.gpuData();
+        const amrex::Array4<amrex::Real const> array = carray.gpuData();
         return getPositionHelper(b_data, engine);
 #else
         std::cout << "getting position in InjPosSTLPlane" << std::endl;
