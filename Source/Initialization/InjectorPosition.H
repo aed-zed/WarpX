@@ -131,7 +131,7 @@ private:
         amrex::Real y = arrays_device(index_x, index_y, index_z, 1);
         amrex::Real z = arrays_device(index_x, index_y, index_z, 2);
         return amrex::XDim3{x, y, z};
-#else 
+#else
         printf("getting amrex Real in InjPosSTLPlane Helper\n");
         amrex::Real x = arrays_host(index_x, index_y, index_z, 0);
         amrex::Real y = arrays_host(index_x, index_y, index_z, 1);
