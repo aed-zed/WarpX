@@ -68,7 +68,7 @@ private:
 struct InjectorPositionRandomSTLPlane
 {
     InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
-                                    amrex::MultiCutFab const& a_eb_bn_cent) noexcept
+                                    auto const& a_eb_bn_cent) noexcept
         : ba(a_ba), eb_bn_cent(a_eb_bn_cent) {}
 
     [[nodiscard]]
@@ -123,17 +123,16 @@ private:
         int index_y = amrex::Random_int(y_size, engine);
         int index_z = amrex::Random_int(z_size, engine);
 
-        amrex::MultiArray4<amrex::Real const> multi_arrays = eb_bn_cent.const_arrays();
-        amrex::Array4<amrex::Real const> carray = multi_arrays[0];
+        amrex::Array4<amrex::Real const> const& carray = eb_bn_cent[0];
 
-        amrex::Real x = carray(index_x, index_y, index_z, 0);
-        amrex::Real y = carray(index_x, index_y, index_z, 1);
-        amrex::Real z = carray(index_x, index_y, index_z, 2);
+        amrex::Real x = carray(index_x, index_y, index_z, 1);
+        amrex::Real y = carray(index_x, index_y, index_z, 2);
+        amrex::Real z = carray(index_x, index_y, index_z, 3);
         return amrex::XDim3{x, y, z};
     }
 
     amrex::AsyncArray<amrex::Box>& ba;
-    amrex::MultiCutFab const& eb_bn_cent;
+    auto const& eb_bn_cent;
 };
 
 
@@ -226,7 +225,7 @@ struct InjectorPosition
                       amrex::Real a_ymin, amrex::Real a_ymax,
                       amrex::Real a_zmin, amrex::Real a_zmax,
                       amrex::AsyncArray<amrex::Box>& a_ba,
-                      amrex::MultiCutFab const& a_eb_bn_cent)
+                      auto const& a_eb_bn_cent)
         : type(Type::randomstlplane),
           object(t, a_ba, a_eb_bn_cent),
           xmin(a_xmin), xmax(a_xmax),
@@ -338,7 +337,7 @@ private:
             : randomplane(a_dir) {}
         Object (InjectorPositionRandomSTLPlane*,
                 amrex::AsyncArray<amrex::Box>& a_ba,
-                amrex::MultiCutFab const& a_eb_bn_cent) noexcept
+                auto const& a_eb_bn_cent) noexcept
             : randomstlplane(a_ba, a_eb_bn_cent) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}

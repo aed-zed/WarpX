@@ -262,9 +262,9 @@ private:
             if (b_data[i].contains(int_x, int_y, int_z)) {
                 amrex::Array4<const amrex::Real> const& eb_bnd_normal_arr = n_data[i];
 
-                amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 0);
-                amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
-                amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
+                amrex::Real m_i = eb_bnd_normal_arr(int_x, int_y, int_z, 1);
+                amrex::Real m_j = eb_bnd_normal_arr(int_x, int_y, int_z, 2);
+                amrex::Real m_k = eb_bnd_normal_arr(int_x, int_y, int_z, 3);
 
                 // add a variable that determines if it should go inwards or outwards (default is inwards)
                 amrex::Real const ux = m_i * momentum * -1;
