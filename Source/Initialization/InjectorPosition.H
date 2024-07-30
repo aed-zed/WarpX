@@ -68,9 +68,8 @@ private:
 struct InjectorPositionRandomSTLPlane
 {
     InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
-                                    amrex::Array4<const amrex::Real>& a_arrays_device,
-                                    amrex::Array4<const amrex::Real>& a_arrays_host) noexcept
-        : ba(a_ba), arrays_device(a_arrays_device), arrays_host(a_arrays_host) {}
+                                    amrex::MultiCutFab const& a_eb_bn_cent) noexcept
+        : ba(a_ba), eb_bn_cent(a_eb_bn_cent) {}
 
     [[nodiscard]]
     AMREX_GPU_HOST_DEVICE
@@ -124,25 +123,17 @@ private:
         int index_y = amrex::Random_int(y_size, engine);
         int index_z = amrex::Random_int(z_size, engine);
 
-#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
-        printf("getting amrex Real in InjPosSTLPlane Helper\n");
-        amrex::Real x = arrays_device(index_x, index_y, index_z, 0);
-        amrex::Real y = arrays_device(index_x, index_y, index_z, 1);
-        amrex::Real z = arrays_device(index_x, index_y, index_z, 2);
+        amrex::MultiArray4<amrex::Real const> multi_arrays = eb_bn_cent.const_arrays();
+        amrex::Array4<amrex::Real const> carray = multi_arrays[0]; 
+        
+        amrex::Real x = carray(index_x, index_y, index_z, 0);
+        amrex::Real y = carray(index_x, index_y, index_z, 1);
+        amrex::Real z = carray(index_x, index_y, index_z, 2);
         return amrex::XDim3{x, y, z};
-#else
-        printf("getting amrex Real in InjPosSTLPlane Helper\n");
-        amrex::Real x = arrays_host(index_x, index_y, index_z, 0);
-        amrex::Real y = arrays_host(index_x, index_y, index_z, 1);
-        amrex::Real z = arrays_host(index_x, index_y, index_z, 2);
-        return amrex::XDim3{x, y, z};
-#endif
-
     }
 
     amrex::AsyncArray<amrex::Box>& ba;
-    amrex::Array4<const amrex::Real>& arrays_device;
-    amrex::Array4<const amrex::Real>& arrays_host;
+    amrex::MultiCutFab const& eb_bn_cent;
 };
 
 
@@ -235,10 +226,9 @@ struct InjectorPosition
                       amrex::Real a_ymin, amrex::Real a_ymax,
                       amrex::Real a_zmin, amrex::Real a_zmax,
                       amrex::AsyncArray<amrex::Box>& a_ba,
-                      amrex::Array4<const amrex::Real>& a_arrays_device,
-                      amrex::Array4<const amrex::Real>& a_arrays_host)
+                      amrex::MultiCutFab const& a_eb_bn_cent)
         : type(Type::randomstlplane),
-          object(t, a_ba, a_arrays_device, a_arrays_host),
+          object(t, a_ba, a_eb_bn_cent),
           xmin(a_xmin), xmax(a_xmax),
           ymin(a_ymin), ymax(a_ymax),
           zmin(a_zmin), zmax(a_zmax)
@@ -348,9 +338,8 @@ private:
             : randomplane(a_dir) {}
         Object (InjectorPositionRandomSTLPlane*,
                 amrex::AsyncArray<amrex::Box>& a_ba,
-                amrex::Array4<const amrex::Real>& a_arrays_device,
-                amrex::Array4<const amrex::Real>& a_arrays_host) noexcept
-            : randomstlplane(a_ba, a_arrays_device, a_arrays_host) {}
+                amrex::MultiCutFab const& a_eb_bn_cent) noexcept
+            : randomstlplane(a_ba, a_eb_bn_cent) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}
         InjectorPositionRandom random;
