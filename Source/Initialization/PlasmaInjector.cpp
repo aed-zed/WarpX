@@ -463,8 +463,8 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 
     amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> carray;
     amrex::Array4<const amrex::Real> og_array_c;
-    Dim3 lo = lbound(og_array_c);
-    Dim3 hi = ubound(og_array_c);
+    amrex::Dim3 lo = lbound(og_array_c);
+    amrex::Dim3 hi = ubound(og_array_c);
     int nc = cent_array.nComp();
     for (int n = 0; n < 4; ++n) {
         for (int k = lo.z; k <= hi.z; ++k) {
