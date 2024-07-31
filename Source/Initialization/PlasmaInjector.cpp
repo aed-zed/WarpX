@@ -471,6 +471,8 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
                 for (int i = lo.x; i <= hi.x; ++i) {
                     amrex::Array4<amrex::Real> array_c = carray[0];
                     array_c(i, j, k, n) = og_array_c(i, j, k, n);
+                    std::cout << "printing array_c new val at (" << i << ", " << j << ", " << k << ')' << std::endl;
+                    std::cout << "array_c value is: " << array_c(i, j, k, n);
                 }
             }
         }
