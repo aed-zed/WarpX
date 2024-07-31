@@ -461,7 +461,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
 
-    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> carray; 
+    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> carray;
     carray[0] = cent_arrays[0];
 
     //amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());

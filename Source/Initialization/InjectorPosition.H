@@ -128,7 +128,7 @@ private:
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting (x, y, z) values\n");
 #endif
-        
+
         amrex::Array4<const amrex::Real> array_c = carray[0];
         amrex::Real x = array_c(index_x, index_y, index_z, 1);
         amrex::Real y = array_c(index_x, index_y, index_z, 2);
