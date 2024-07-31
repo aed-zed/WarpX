@@ -461,7 +461,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
 
-    const BoxArray& ba_cent = eb_bnd_cent.boxArray(); 
+    const BoxArray& ba_cent = eb_bnd_cent.boxArray();
     const DistributionMapping& dm_cent - eb_bnd_cent.DistributionMap();
     amrex::FabArray carray = FabArray(ba_cent, dm_cent, 1, 0, MFInfo().SetArena(The_Pinned_Arena()))
 
