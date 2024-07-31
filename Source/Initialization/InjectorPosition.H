@@ -69,7 +69,7 @@ private:
 struct InjectorPositionRandomSTLPlane
 {
     InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
-                                    const amrex::Gpu::Buffer<amrex::Array4<amrex::Real const>>& a_carray) noexcept
+                                    amrex::FabArray a_carray) noexcept
         : ba(a_ba), carray(a_carray) {}
 
     [[nodiscard]]
@@ -81,13 +81,11 @@ struct InjectorPositionRandomSTLPlane
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting box in InjPosSTLPlane\n");
         amrex::Box const* b_data = ba.gpuData();
-        amrex::Array4<const amrex::Real> const* array_c = carray.gpuData();
-        return getPositionHelper(b_data, *array_c, engine);
+        return getPositionHelper(b_data, engine);
 #else
         std::cout << "getting position in InjPosSTLPlane" << std::endl;
         amrex::Box const* b_data = ba.data();
-        amrex::Array4<const amrex::Real> const* array_c = carray.data();
-        return getPositionHelper(b_data, *array_c, engine);
+        return getPositionHelper(b_data, engine);
 #endif
     }
 
@@ -97,7 +95,6 @@ private:
     AMREX_GPU_HOST_DEVICE
     amrex::XDim3
     getPositionHelper (amrex::Box const* b_data,
-                       amrex::Array4<const amrex::Real> const& array_c,
                        amrex::RandomEngine const& engine) const noexcept
     {
 
@@ -131,6 +128,8 @@ private:
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting (x, y, z) values\n");
 #endif
+        amrex::MultiArray4<amrex::Real const> arrays_c = carray.arrays();
+        amrex::Array4<amrex::Real const> array_c = arrays_c[0];
         amrex::Real x = array_c(index_x, index_y, index_z, 1);
         amrex::Real y = array_c(index_x, index_y, index_z, 2);
         amrex::Real z = array_c(index_x, index_y, index_z, 3);
@@ -138,7 +137,7 @@ private:
     }
 
     amrex::AsyncArray<amrex::Box>& ba;
-    const amrex::Gpu::Buffer<amrex::Array4<amrex::Real const>>& carray;
+    amrex::FabArray carray;
 };
 
 
@@ -231,7 +230,7 @@ struct InjectorPosition
                       amrex::Real a_ymin, amrex::Real a_ymax,
                       amrex::Real a_zmin, amrex::Real a_zmax,
                       amrex::AsyncArray<amrex::Box>& a_ba,
-                      const amrex::Gpu::Buffer<amrex::Array4<amrex::Real const>>& a_carray)
+                      amrex::FabArray a_carray)
         : type(Type::randomstlplane),
           object(t, a_ba, a_carray),
           xmin(a_xmin), xmax(a_xmax),
@@ -343,7 +342,7 @@ private:
             : randomplane(a_dir) {}
         Object (InjectorPositionRandomSTLPlane*,
                 amrex::AsyncArray<amrex::Box>& a_ba,
-                const amrex::Gpu::Buffer<amrex::Array4<amrex::Real const>>& a_carray) noexcept
+                amrex::FabArray a_carray) noexcept
             : randomstlplane(a_ba, a_carray) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}

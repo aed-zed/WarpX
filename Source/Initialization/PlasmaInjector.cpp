@@ -433,7 +433,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
-    amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
+    //amrex::Vector<amrex::CutFab> cent_arrays;
     int size = 0;
 
     for (amrex::MFIter mfi(eb_flag); mfi.isValid(); ++mfi) {
@@ -450,10 +450,9 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
         amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_normal_arr);
         normal_arrays.push_back(eb_bnd_normal_arr);
 
-        const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = eb_bnd_cent.array(mfi);
-        amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
-        cent_arrays.push_back(eb_bnd_cent_arr);
-
+        // const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = eb_bnd_cent.array(mfi);
+        // amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
+        // cent_arrays.push_back(eb_bnd_cent_arr);
         size += 1;
     }
 
@@ -461,13 +460,18 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     std::cout << "size of async arrays: " << size << std::endl;
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
+
+    const BoxArray& ba_cent = eb_bnd_cent.boxArray(); 
+    const DistributionMapping& dm_cent - eb_bnd_cent.DistributionMap();
+    amrex::FabArray carray = FabArray(ba_cent, dm_cent, 1, 0, MFInfo().SetArena(The_Pinned_Arena()))
+
     //amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
 
     //amrex::Gpu::DeviceVector<amrex::Real> cvector(b_array[0].numPts());
     //amrex::Gpu::copy(amrex::Gpu::hostToDevice, cent_arrays[0].dataPtr(), cent_arrays.dataPtr() + b_array[0].numPts(), cvector.dataPtr());
 
-    amrex::Array4<const amrex::Real>& cent_arr_0 = cent_arrays[0];
-    const amrex::Gpu::Buffer<amrex::Array4<amrex::Real const>> carray(&cent_arr_0, cent_arrays[0].size());
+    //amrex::Array4<const amrex::Real>& cent_arr_0 = cent_arrays[0];
+    //const amrex::Gpu::Buffer<amrex::Array4<amrex::Real const>> carray(&cent_arr_0, cent_arrays[0].size());
 
     std::cout << "creating injector position" << std::endl;
     h_flux_pos = std::make_unique<InjectorPosition> (
