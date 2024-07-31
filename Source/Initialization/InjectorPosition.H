@@ -137,7 +137,7 @@ private:
     }
 
     amrex::AsyncArray<amrex::Box>& ba;
-    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> a_carray;
+    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> carray;
 };
 
 
