@@ -69,7 +69,7 @@ private:
 struct InjectorPositionRandomSTLPlane
 {
     InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
-                                    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> a_carray) noexcept
+                                    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1>& a_carray) noexcept
         : ba(a_ba), carray(a_carray) {}
 
     [[nodiscard]]
@@ -137,7 +137,7 @@ private:
     }
 
     amrex::AsyncArray<amrex::Box>& ba;
-    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> carray;
+    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1>& carray;
 };
 
 
@@ -230,7 +230,7 @@ struct InjectorPosition
                       amrex::Real a_ymin, amrex::Real a_ymax,
                       amrex::Real a_zmin, amrex::Real a_zmax,
                       amrex::AsyncArray<amrex::Box>& a_ba,
-                      amrex::FabArray<amrex::CutFab>& a_carray)
+                      amrex::GpuArray<amrex::Array4<const amrex::Real>, 1>& a_carray)
         : type(Type::randomstlplane),
           object(t, a_ba, a_carray),
           xmin(a_xmin), xmax(a_xmax),
@@ -342,7 +342,7 @@ private:
             : randomplane(a_dir) {}
         Object (InjectorPositionRandomSTLPlane*,
                 amrex::AsyncArray<amrex::Box>& a_ba,
-                amrex::FabArray<amrex::CutFab>& a_carray) noexcept
+                amrex::GpuArray<amrex::Array4<const amrex::Real>, 1>& a_carray) noexcept
             : randomstlplane(a_ba, a_carray) {}
         Object (InjectorPositionRegular*, amrex::Dim3 const& a_ppc) noexcept
             : regular(a_ppc) {}
