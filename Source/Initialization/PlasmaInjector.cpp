@@ -461,7 +461,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
 
-    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> carray;
+    amrex::GpuArray<amrex::Array4<amrex::Real>, 1> carray;
     amrex::Array4<const amrex::Real> og_array_c;
     amrex::Dim3 lo = lbound(og_array_c);
     amrex::Dim3 hi = ubound(og_array_c);
@@ -469,7 +469,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
         for (int k = lo.z; k <= hi.z; ++k) {
             for (int j = lo.y; j <= hi.y; ++j) {
                 for (int i = lo.x; i <= hi.x; ++i) {
-                    amrex::Array4<const amrex::Real> array_c = carray[0];
+                    amrex::Array4<amrex::Real> array_c = carray[0];
                     array_c(i, j, k, n) = og_array_c(i, j, k, n);
                 }
             }
