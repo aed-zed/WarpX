@@ -476,7 +476,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
             }
         }
     }
-    
+
 
     //amrex::AsyncArray<amrex::Array4<const amrex::Real>> carray(cent_arrays.dataPtr(), cent_arrays.size());
 
