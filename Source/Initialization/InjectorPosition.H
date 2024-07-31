@@ -69,7 +69,7 @@ private:
 struct InjectorPositionRandomSTLPlane
 {
     InjectorPositionRandomSTLPlane (amrex::AsyncArray<amrex::Box>& a_ba,
-                                    amrex::FabArray<amrex::CutFab>& a_carray) noexcept
+                                    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> a_carray) noexcept
         : ba(a_ba), carray(a_carray) {}
 
     [[nodiscard]]
@@ -128,8 +128,8 @@ private:
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting (x, y, z) values\n");
 #endif
-        const auto& arrays_c = carray.arrays();
-        const auto& array_c = arrays_c[0];
+        
+        amrex::Array4<const amrex::Real> array_c = carray[0];
         amrex::Real x = array_c(index_x, index_y, index_z, 1);
         amrex::Real y = array_c(index_x, index_y, index_z, 2);
         amrex::Real z = array_c(index_x, index_y, index_z, 3);
@@ -137,7 +137,7 @@ private:
     }
 
     amrex::AsyncArray<amrex::Box>& ba;
-    amrex::FabArray<amrex::CutFab>& carray;
+    amrex::GpuArray<amrex::Array4<const amrex::Real>, 1> a_carray;
 };
 
 
