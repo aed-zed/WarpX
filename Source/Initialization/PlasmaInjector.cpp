@@ -417,12 +417,12 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     std::cout << "settig up with stl flux injection" << std::endl;
     amrex::EB2::Build(geom, 0, 20);
     const amrex::EB2::IndexSpace& indexSpace = amrex::EB2::IndexSpace::top();
-    const amrex::EB2::Level& eb_level = indexSpace.getLevel(amrex::AmrLevel::Geom(0));
+    const amrex::EB2::Level& eb_level = indexSpace.getLevel(amrex::AmrMesh::Geom(0));
 
-    const amrex::Geometry& geom = eb_level.Geom();
+    const amrex::Geometry& new_geom = eb_level.Geom();
     const amrex::BoxArray ba = eb_level.boxArray();
     const amrex::DistributionMapping dm = eb_level.DistributionMap();
-    std::shared_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(eb_level, geom, ba, dm, {0, 0, 0}, amrex::EBSupport::full);
+    std::shared_ptr<amrex::EBFArrayBoxFactory> field_factory_ptr = amrex::makeEBFabFactory(eb_level, new_geom, ba, dm, {0, 0, 0}, amrex::EBSupport::full);
 
     // since multicutfab, by default only contians cut cells
     std::cout << "getting field factory info" << std::endl;
