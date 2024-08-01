@@ -462,22 +462,11 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
 
-    amrex::GpuArray<amrex::Array4<amrex::Real>, 1> carray;
+    amrex::GpuArray<amrex::Array4<amrex::Real>, 12> carray;
     amrex::Array4<const amrex::Real> og_array_c = cent_arrays[0];
     std::cout << "array4 size is : " << og_array_c.size() << std::endl;
-    amrex::Dim3 lo = lbound(og_array_c);
-    amrex::Dim3 hi = ubound(og_array_c);
-    for (int n = 0; n < 4; ++n) {
-        for (int k = lo.z; k <= hi.z; ++k) {
-            for (int j = lo.y; j <= hi.y; ++j) {
-                for (int i = lo.x; i <= hi.x; ++i) {
-                    amrex::Array4<amrex::Real> array_c = carray[0];
-                    array_c(i, j, k, n) = og_array_c(i, j, k, n);
-                    std::cout << "printing array_c new val at (" << i << ", " << j << ", " << k << ')' << std::endl;
-                    std::cout << "array_c value is: " << array_c(i, j, k, n);
-                }
-            }
-        }
+    for (int n = 0; n < 12; n++) {
+        carray[n] - cent_arrays[n];
     }
 
 
