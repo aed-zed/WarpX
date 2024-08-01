@@ -431,7 +431,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
-    amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
+    //amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
 
     for (amrex::MFIter mfi(eb_flag); mfi.isValid(); ++mfi) {
@@ -447,19 +447,15 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
         const amrex::Array4<const amrex::Real> & const_eb_bnd_normal_arr = eb_bnd_normal.array(mfi);
         amrex::Array4<const amrex::Real>& eb_bnd_normal_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_normal_arr);
         normal_arrays.push_back(eb_bnd_normal_arr);
-
-        const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = eb_bnd_cent.array(mfi);
-        std::cout << "array4 size is : " << const_eb_bnd_cent_arr.size() << std::endl;
-        amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
-        std::cout << "array4 size is : " << eb_bnd_cent_arr.size() << std::endl;
-        cent_arrays.push_back(eb_bnd_cent_arr);
-        size += 1;
     }
 
     std::cout << "making vectors async arrays" << std::endl;
     std::cout << "size of async arrays: " << size << std::endl;
     amrex::AsyncArray<amrex::Box> barray(b_array.dataPtr(), b_array.size());
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
+
+    amrex::MultiArray4<amrex::Real const> cent_arrays = eb_bnd_cent.arrays();
+    std::cout << "cent_arrays size is : " << cent_arrays.size() << std::endl;
 
     amrex::GpuArray<amrex::Array4<amrex::Real>, 1> carray;
     amrex::Array4<const amrex::Real> og_array_c = cent_arrays[0];
