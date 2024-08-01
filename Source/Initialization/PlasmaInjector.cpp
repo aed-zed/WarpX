@@ -431,7 +431,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
-    amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
+    amrex::Vector<const amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
 
     for (amrex::MFIter mfi(ba, dm); mfi.isValid(); ++mfi) {
@@ -453,7 +453,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
         std::cout << "array4 size is : " << const_eb_bnd_cent_arr.size() << std::endl;
         amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
         std::cout << "array4 size is : " << eb_bnd_cent_arr.size() << std::endl;
-        cent_arrays.push_back(eb_bnd_cent_arr);
+        cent_arrays.push_back(const_eb_bnd_cent_arr);
         size += 1;
     }
 
