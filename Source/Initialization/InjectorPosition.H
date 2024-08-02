@@ -130,6 +130,8 @@ private:
         printf("getting (x, y, z) values\n");
 #endif
 
+        // getting the 0th array4 just for simplicity for now
+        // should just be able to get a random index
         amrex::Array4<const amrex::Real> array_c = carray[0];
         amrex::Real x = array_c(index_x, index_y, index_z, 1);
         amrex::Real y = array_c(index_x, index_y, index_z, 2);
