@@ -429,6 +429,13 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::MultiCutFab const& eb_bnd_normal = field_factory_ptr->getBndryNormal();
     amrex::MultiCutFab const& eb_bnd_cent = field_factory_ptr->getBndryCent();
 
+    //amrex::MultiFab const& mf_bnd_cent = eb_bnd_normal.ToMultiFab
+    const amrex::FabArray<CutFab>& bnd_cent_data = eb_bnd_cent.data();
+
+    // make fabarray to copy into with a pinned arena
+    amrex::FabArray<CutFab>& copy_farray(amrex::The_Pinned_Arena());
+    copy_farray.ParallelCopy(bnd_cent_data);
+
     amrex::Vector<amrex::Box> b_array;
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
     amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
@@ -449,7 +456,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
         normal_arrays.push_back(eb_bnd_normal_arr);
 
         std::cout << "i am here" << std::endl;
-        const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = eb_bnd_cent.array(mfi);
+        const amrex::Array4<const amrex::Real> & const_eb_bnd_cent_arr = copy_farray.array(mfi);
         std::cout << "array4 size is : " << const_eb_bnd_cent_arr.size() << std::endl;
         amrex::Array4<const amrex::Real>& eb_bnd_cent_arr = const_cast<amrex::Array4<const amrex::Real>&>(const_eb_bnd_cent_arr);
         std::cout << "array4 size is : " << eb_bnd_cent_arr.size() << std::endl;
@@ -465,7 +472,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::GpuArray<amrex::Array4<const amrex::Real>, 12> carray;
     int offset = 0;
     for (int n = 0; n < 12; n++) {
-        std::cout << "getting cent array place" << size << std::endl;
+        std::cout << "getting cent array place: " << n << std::endl;
         const amrex::Array4<const amrex::Real>& og_array_c = cent_arrays[n];
         amrex::Gpu::copyAsync(amrex::Gpu::hostToDevice, &og_array_c, &og_array_c + og_array_c.size(), carray.begin() + offset);
         std::cout << "setting gpu array to og_array_c" << size << std::endl;
