@@ -104,6 +104,8 @@ private:
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting box in InjPosSTLPlane Helper\n");
 #endif
+
+        // choose a random value from b_data 
         amrex::Box const& box = b_data[0];
 
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
@@ -121,9 +123,9 @@ private:
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
         printf("getting random indexes in InjPosSTLPlane Helper\n");
 #endif
-        int index_x = amrex::Random_int(x_size, engine);
-        int index_y = amrex::Random_int(y_size, engine);
-        int index_z = amrex::Random_int(z_size, engine);
+        int index_x = lo.x + amrex::Random_int(x_size, engine);
+        int index_y = lo.y + amrex::Random_int(y_size, engine);
+        int index_z = lo.z + amrex::Random_int(z_size, engine);
 
 
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
