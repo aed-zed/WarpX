@@ -434,7 +434,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
 
     // make fabarray to copy into with a pinned arena
     // adding comment to rebuild idk maybe it'll work
-    amrex::FabArray<amrex::CutFab>& copy_farray(amrex::The_Pinned_Arena());
+    amrex::FabArray<amrex::CutFab>& copy_farray(&(amrex::The_Pinned_Arena()));
     copy_farray.ParallelCopy(bnd_cent_data);
 
     amrex::Vector<amrex::Box> b_array;
