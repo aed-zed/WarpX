@@ -433,6 +433,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     const amrex::FabArray<CutFab>& bnd_cent_data = eb_bnd_cent.data();
 
     // make fabarray to copy into with a pinned arena
+    // adding comment to rebuild idk maybe it'll work
     amrex::FabArray<CutFab>& copy_farray(amrex::The_Pinned_Arena());
     copy_farray.ParallelCopy(bnd_cent_data);
 
@@ -440,7 +441,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::Vector<amrex::Array4<const amrex::Real>> normal_arrays;
     amrex::Vector<amrex::Array4<const amrex::Real>> cent_arrays;
     int size = 0;
-
+ 
     for (amrex::MFIter mfi(ba, dm); mfi.isValid(); ++mfi) {
         const amrex::Box & box = mfi.tilebox( amrex::IntVect::TheCellVector());
 
