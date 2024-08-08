@@ -105,7 +105,7 @@ private:
         printf("getting box in InjPosSTLPlane Helper\n");
 #endif
 
-        // choose a random value from b_data 
+        // choose a random value from b_data
         amrex::Box const& box = b_data[0];
 
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
