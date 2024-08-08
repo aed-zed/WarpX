@@ -465,13 +465,11 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
     amrex::AsyncArray<amrex::Array4<const amrex::Real>> narray(normal_arrays.dataPtr(), normal_arrays.size());
 
     amrex::GpuArray<amrex::Array4<const amrex::Real>, 12> carray;
-    int offset = 0;
     for (int n = 0; n < 12; n++) {
         std::cout << "getting cent array place: " << n << std::endl;
         const amrex::Array4<const amrex::Real>& og_array_c = cent_arrays[n];
         carray[n] = og_array_c;
         std::cout << "setting gpu array to og_array_c" << size << std::endl;
-        offset += og_array_c.size();
     }
     if (carray[0].size() > 0) {
         std::cout << "yayayay" << std::endl;
