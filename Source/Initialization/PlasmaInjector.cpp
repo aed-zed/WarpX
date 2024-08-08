@@ -473,7 +473,7 @@ void PlasmaInjector::setupSTLFluxInjection (amrex::ParmParse const& pp_species, 
         std::cout << "setting gpu array to og_array_c" << size << std::endl;
         offset += og_array_c.size();
     }
-    if carray[0].size() > 0 {
+    if (carray[0].size() > 0) {
         std::cout << "yayayay" << std::endl;
     }
     else {
