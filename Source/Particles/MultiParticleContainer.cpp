@@ -959,8 +959,9 @@ void MultiParticleContainer::CheckIonizationProductSpecies()
 void MultiParticleContainer::ScrapeParticlesAtEB (const amrex::Vector<const amrex::MultiFab*>& distance_to_eb)
 {
 #ifdef AMREX_USE_EB
+    amrex::Real particle_removal_depth = WarpX::GetInstance().GetParticleRemovalDepth();
     for (auto& pc : allcontainers) {
-        scrapeParticlesAtEB(*pc, distance_to_eb, ParticleBoundaryProcess::Absorb());
+        scrapeParticlesAtEB(*pc, distance_to_eb, ParticleBoundaryProcess::Absorb(), particle_removal_depth );
     }
 #else
     amrex::ignore_unused(distance_to_eb);

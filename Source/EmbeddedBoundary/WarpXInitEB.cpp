@@ -107,6 +107,13 @@ WarpX::InitEB ()
         amrex::EB2::Build(Geom(maxLevel()), maxLevel(), maxLevel()+20);
     }
 
+    // Read the particle removal depth
+    amrex::Real unscaled_particle_removal_depth = 0;
+    pp_warpx.query("eb_particle_removal_depth", unscaled_particle_removal_depth);
+    // Scale it by the size of the diagonal of a cell
+    const amrex::Real* dx = Geom(0).CellSize();
+    const amrex::Real diagonal_dx = std::sqrt( AMREX_D_TERM( dx[0]*dx[0], + dx[1]*dx[1], + dx[2]*dx[2] ) );
+    m_eb_particle_removal_depth = unscaled_particle_removal_depth * diagonal_dx;
 #endif
 }
 
