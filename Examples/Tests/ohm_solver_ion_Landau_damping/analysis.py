@@ -6,6 +6,7 @@ import dill
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+
 from pywarpx import picmi
 
 constants = picmi.constants
@@ -13,7 +14,7 @@ constants = picmi.constants
 matplotlib.rcParams.update({'font.size': 20})
 
 # load simulation parameters
-with open(f'sim_parameters.dpkl', 'rb') as f:
+with open('sim_parameters.dpkl', 'rb') as f:
     sim = dill.load(f)
 
 # theoretical damping rates were taken from Fig. 14b of Munoz et al.

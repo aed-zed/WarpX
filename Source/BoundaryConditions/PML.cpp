@@ -10,7 +10,8 @@
 
 #include "BoundaryConditions/PML.H"
 #include "BoundaryConditions/PMLComponent.H"
-#ifdef WARPX_USE_PSATD
+#include "FieldSolver/Fields.H"
+#ifdef WARPX_USE_FFT
 #   include "FieldSolver/SpectralSolver/SpectralFieldData.H"
 #endif
 #include "Utils/TextMsg.H"
@@ -21,6 +22,7 @@
 #include "WarpX.H"
 
 #include <ablastr/utils/Communication.H>
+#include <ablastr/utils/Enums.H>
 
 #include <AMReX.H>
 #include <AMReX_Algorithm.H>
@@ -55,6 +57,7 @@
 #endif
 
 using namespace amrex;
+using namespace warpx::fields;
 
 namespace
 {
@@ -542,10 +545,12 @@ MultiSigmaBox::ComputePMLFactorsE (const Real* dx, Real dt)
     }
 }
 
-PML::PML (const int lev, const BoxArray& grid_ba, const DistributionMapping& grid_dm,
+PML::PML (const int lev, const BoxArray& grid_ba,
+          const DistributionMapping& grid_dm, const bool do_similar_dm_pml,
           const Geometry* geom, const Geometry* cgeom,
           int ncell, int delta, amrex::IntVect ref_ratio,
-          Real dt, int nox_fft, int noy_fft, int noz_fft, short grid_type,
+          Real dt, int nox_fft, int noy_fft, int noz_fft,
+          ablastr::utils::enums::GridType grid_type,
           int do_moving_window, int /*pml_has_particles*/, int do_pml_in_domain,
           const int psatd_solution_type, const int J_in_time, const int rho_in_time,
           const bool do_pml_dive_cleaning, const bool do_pml_divb_cleaning,
@@ -628,6 +633,8 @@ PML::PML (const int lev, const BoxArray& grid_ba, const DistributionMapping& gri
     }
 
     if (WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::PSATD) {
+        using namespace ablastr::utils::enums;
+
         // Increase the number of guard cells, in order to fit the extent
         // of the stencil for the spectral solver
         int ngFFt_x = (grid_type == GridType::Collocated) ? nox_fft : nox_fft/2;
@@ -658,7 +665,7 @@ PML::PML (const int lev, const BoxArray& grid_ba, const DistributionMapping& gri
     }
 
     DistributionMapping dm;
-    if (WarpX::do_similar_dm_pml) {
+    if (do_similar_dm_pml) {
         auto ng_sim = amrex::elemwiseMax(amrex::elemwiseMax(nge, ngb), ngf);
         dm = amrex::MakeSimilarDM(ba, grid_ba, grid_dm, ng_sim);
     } else {
@@ -740,7 +747,7 @@ PML::PML (const int lev, const BoxArray& grid_ba, const DistributionMapping& gri
                                                IntVect(ncell), IntVect(delta), single_domain_box, v_sigma_sb);
 
     if (WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::PSATD) {
-#ifndef WARPX_USE_PSATD
+#ifndef WARPX_USE_FFT
         amrex::ignore_unused(lev, dt, psatd_solution_type, J_in_time, rho_in_time);
 #   if(AMREX_SPACEDIM!=3)
         amrex::ignore_unused(noy_fft);
@@ -806,7 +813,7 @@ PML::PML (const int lev, const BoxArray& grid_ba, const DistributionMapping& gri
         const BoxArray& cba = MakeBoxArray(is_single_box_domain, cdomain, *cgeom, grid_cba_reduced,
                                            cncells, do_pml_in_domain, do_pml_Lo, do_pml_Hi);
         DistributionMapping cdm;
-        if (WarpX::do_similar_dm_pml) {
+        if (do_similar_dm_pml) {
             auto ng_sim = amrex::elemwiseMax(amrex::elemwiseMax(nge, ngb), ngf);
             cdm = amrex::MakeSimilarDM(cba, grid_cba_reduced, grid_dm, ng_sim);
         } else {
@@ -855,7 +862,7 @@ PML::PML (const int lev, const BoxArray& grid_ba, const DistributionMapping& gri
                                                    cncells, cdelta, single_domain_box, v_sigma_sb);
 
         if (WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::PSATD) {
-#ifndef WARPX_USE_PSATD
+#ifndef WARPX_USE_FFT
             amrex::ignore_unused(dt);
             WARPX_ALWAYS_ASSERT_WITH_MESSAGE(false,
                 "PML: PSATD solver selected but not built.");
@@ -1364,7 +1371,7 @@ PML::Restart (const std::string& dir)
     }
 }
 
-#ifdef WARPX_USE_PSATD
+#ifdef WARPX_USE_FFT
 void
 PML::PushPSATD (const int lev) {
 

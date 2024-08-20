@@ -14,6 +14,7 @@ import sys
 import dill
 import numpy as np
 from mpi4py import MPI as mpi
+
 from pywarpx import callbacks, fields, libwarpx, picmi
 
 constants = picmi.constants
@@ -92,7 +93,7 @@ class EMModes(object):
 
         # dump all the current attributes to a dill pickle file
         if comm.rank == 0:
-            with open(f'sim_parameters.dpkl', 'wb') as f:
+            with open('sim_parameters.dpkl', 'wb') as f:
                 dill.dump(self, f)
 
         # print out plasma parameters

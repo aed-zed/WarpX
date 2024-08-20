@@ -4,8 +4,10 @@
  *
  * License: BSD-3-Clause-LBNL
  */
-#ifndef GUARDCELLMANAGER_H_
-#define GUARDCELLMANAGER_H_
+#ifndef WARPX_GUARDCELLMANAGER_H_
+#define WARPX_GUARDCELLMANAGER_H_
+
+#include <ablastr/utils/Enums.H>
 
 #include <AMReX_Array.H>
 #include <AMReX_IntVect.H>
@@ -52,10 +54,10 @@ public:
      */
     void Init(
         amrex::Real dt,
-        amrex::RealVect dx,
+        const amrex::Real * dx,
         bool do_subcycling,
         bool do_fdtd_nci_corr,
-        short grid_type,
+        ablastr::utils::enums::GridType grid_type,
         bool do_moving_window,
         int moving_window_dir,
         int nox,
@@ -108,4 +110,4 @@ public:
     amrex::IntVect ng_depos_rho = amrex::IntVect::TheZeroVector();
 };
 
-#endif // GUARDCELLMANAGER_H_
+#endif // WARPX_GUARDCELLMANAGER_H_

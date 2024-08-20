@@ -18,6 +18,7 @@ known analytic solution. While the radius r(t) is not analytically known, its
 inverse t(r) can be solved for exactly.
 """
 import os
+import re
 import sys
 
 import numpy as np
@@ -36,6 +37,15 @@ filename = sys.argv[1]
 ds = yt.load( filename )
 t_max = ds.current_time.item()  # time of simulation
 
+# Parse test name and check if particle_shape = 4 is used
+emass_10 = True if re.search('emass_10', filename) else False
+
+if emass_10:
+    l2_tolerance = 0.096
+    m_e = 10
+else:
+    l2_tolerance = 0.05
+    m_e = 9.10938356e-31 #Electron mass in kg
 ndims = np.count_nonzero(ds.domain_dimensions > 1)
 
 if ndims == 2:
@@ -60,7 +70,6 @@ iz0 = round((0. - zmin)/dz)
 
 # Constants
 eps_0 = 8.8541878128e-12  #Vacuum Permittivity in C/(V*m)
-m_e = 9.10938356e-31  #Electron mass in kg
 q_e = -1.60217662e-19  #Electron charge in C
 pi = np.pi  #Circular constant of the universe
 r_0 = 0.1  #Initial radius of sphere
@@ -75,14 +84,15 @@ q_tot = -1e-15  #Total charge of sphere in C
 # r(0) = r_0, r'(0) = 0, and a = q_e*q_tot/(4*pi*eps_0*m_e)
 #
 # The E was calculated at the end of the last time step
-v_exact = lambda r: np.sqrt((q_e*q_tot)/(2*pi*m_e*eps_0)*(1/r_0-1/r))
-t_exact = lambda r: np.sqrt(r_0**3*2*pi*m_e*eps_0/(q_e*q_tot)) \
-    * (np.sqrt(r/r_0-1)*np.sqrt(r/r_0) \
-       + np.log(np.sqrt(r/r_0-1)+np.sqrt(r/r_0)))
-func = lambda rho: t_exact(rho) - t_max  #Objective function to find r(t_max)
+def v_exact(r):
+    return np.sqrt(q_e * q_tot / (2 * pi * m_e * eps_0) * (1 / r_0 - 1 / r))
+def t_exact(r):
+    return np.sqrt(r_0 ** 3 * 2 * pi * m_e * eps_0 / (q_e * q_tot)) * (np.sqrt(r / r_0 - 1) * np.sqrt(r / r_0) + np.log(np.sqrt(r / r_0 - 1) + np.sqrt(r / r_0)))
+def func(rho):
+    return t_exact(rho) - t_max  #Objective function to find r(t_max)
 r_end = fsolve(func,r_0)[0]  #Numerically solve for r(t_max)
-E_exact = lambda r: np.sign(r)*(q_tot/(4*pi*eps_0*r**2)*(abs(r)>=r_end) \
-    + q_tot*abs(r)/(4*pi*eps_0*r_end**3)*(abs(r)<r_end))
+def E_exact(r):
+    return np.sign(r) * (q_tot / (4 * pi * eps_0 * r ** 2) * (abs(r) >= r_end) + q_tot * abs(r) / (4 * pi * eps_0 * r_end ** 3) * (abs(r) < r_end))
 
 # Load data pertaining to fields
 data = ds.covering_grid(level=0,
@@ -134,9 +144,9 @@ print("L2 error along x-axis = %s" %L2_error_x)
 print("L2 error along y-axis = %s" %L2_error_y)
 print("L2 error along z-axis = %s" %L2_error_z)
 
-assert L2_error_x < 0.05
-assert L2_error_y < 0.05
-assert L2_error_z < 0.05
+assert L2_error_x < l2_tolerance
+assert L2_error_y < l2_tolerance
+assert L2_error_z < l2_tolerance
 
 # Check conservation of energy
 def return_energies(iteration):
