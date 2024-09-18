@@ -1366,6 +1366,22 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
     const auto dx = geom.CellSizeArray();
     const auto problo = geom.ProbLoArray();
 
+#ifdef AMREX_USE_EB
+    bool inject_from_eb = plasma_injector.m_inject_from_eb; // whether to inject from EB or from a plane
+    // Extract data structures for embedded boundaries
+    amrex::FabArray<amrex::EBCellFlagFab> const* eb_flag = nullptr;
+    amrex::MultiCutFab const* eb_bnd_area = nullptr;
+    amrex::MultiCutFab const* eb_bnd_normal = nullptr;
+    amrex::MultiCutFab const* eb_bnd_cent = nullptr;
+    if (inject_from_eb) {
+        amrex::EBFArrayBoxFactory const& eb_box_factory = WarpX::GetInstance().fieldEBFactory(0);
+        eb_flag = &eb_box_factory.getMultiEBCellFlagFab();
+        eb_bnd_area = &eb_box_factory.getBndryArea();
+        eb_bnd_normal = &eb_box_factory.getBndryNormal();
+        eb_bnd_cent = &eb_box_factory.getBndryCent();
+    }
+#endif
+
     amrex::LayoutData<amrex::Real>* cost = WarpX::getCosts(0);
 
     // Create temporary particle container to which particles will be added;
@@ -1423,9 +1439,20 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
         RealBox overlap_realbox;
         Box overlap_box;
         IntVect shifted;
-        const bool no_overlap = find_overlap_flux(tile_realbox, part_realbox, dx, problo, plasma_injector, overlap_realbox, overlap_box, shifted);
-        if (no_overlap) {
-            continue; // Go to the next tile
+#ifdef AMREX_USE_EB
+        if (inject_from_eb) {
+            // Injection from EB
+            const amrex::FabType fab_type = (*eb_flag)[mfi].getType(tile_box);
+            if (fab_type == amrex::FabType::regular) { continue; } // Go to the next tile
+            if (fab_type == amrex::FabType::covered) { continue; } // Go to the next tile
+            overlap_box = tile_box;
+            overlap_realbox = part_realbox;
+        } else
+#endif
+        {
+            // Injection from a plane
+            const bool no_overlap = find_overlap_flux(tile_realbox, part_realbox, dx, problo, plasma_injector, overlap_realbox, overlap_box, shifted);
+            if (no_overlap) { continue; } // Go to the next tile
         }
 
         const int grid_id = mfi.index();
@@ -1445,24 +1472,55 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
         if (refine_injection) {
             fine_overlap_box = overlap_box & amrex::shift(fine_injection_box, -shifted);
         }
+
+#ifdef AMREX_USE_EB
+        // Extract data structures for embedded boundaries
+        amrex::Array4<const typename FabArray<EBCellFlagFab>::value_type> eb_flag_arr;
+        amrex::Array4<const amrex::Real> eb_bnd_area_arr;
+        amrex::Array4<const amrex::Real> eb_bnd_normal_arr;
+        amrex::Array4<const amrex::Real> eb_bnd_cent_arr;
+        if (inject_from_eb) {
+            eb_flag_arr = eb_flag->array(mfi);
+            eb_bnd_area_arr = eb_bnd_area->array(mfi);
+            eb_bnd_normal_arr = eb_bnd_normal->array(mfi);
+            eb_bnd_cent_arr = eb_bnd_cent->array(mfi);
+        }
+#endif
+
         amrex::ParallelForRNG(overlap_box, [=] AMREX_GPU_DEVICE (int i, int j, int k, amrex::RandomEngine const& engine) noexcept
         {
             const IntVect iv(AMREX_D_DECL(i, j, k));
             amrex::ignore_unused(j,k);
 
-            auto lo = getCellCoords(overlap_corner, dx, {0._rt, 0._rt, 0._rt}, iv);
-            auto hi = getCellCoords(overlap_corner, dx, {1._rt, 1._rt, 1._rt}, iv);
-
-            if (flux_pos->overlapsWith(lo, hi))
+            // Determine the number of macroparticles to inject in this cell (num_ppc_int)
+            amrex::Real num_ppc_real_in_this_cell = num_ppc_real; // user input: number of macroparticles per cell
+#ifdef AMREX_USE_EB
+            if (inject_from_eb) {
+                // Injection from EB
+                // Skip cells that are not partially covered by the EB
+                if (eb_flag_arr(i,j,k).isRegular() || eb_flag_arr(i,j,k).isCovered()) return;
+                // Scale by the (normalized) area of the EB surface in this cell
+                num_ppc_real_in_this_cell *= eb_bnd_area_arr(i,j,k);
+            } else
+#endif
             {
-                auto index = overlap_box.index(iv);
-                int r = 1;
-                if (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) {
-                    r = compute_area_weights(rrfac, flux_normal_axis);
-                }
-                const int num_ppc_int = static_cast<int>(num_ppc_real*r + amrex::Random(engine));
-                pcounts[index] = num_ppc_int;
+                // Injection from a plane
+                auto lo = getCellCoords(overlap_corner, dx, {0._rt, 0._rt, 0._rt}, iv);
+                auto hi = getCellCoords(overlap_corner, dx, {1._rt, 1._rt, 1._rt}, iv);
+                // Skip cells that do not overlap with the plane
+                if (!flux_pos->overlapsWith(lo, hi)) return;
             }
+            const int num_ppc_int = static_cast<int>(num_ppc_real_in_this_cell + amrex::Random(engine));
+
+            auto index = overlap_box.index(iv);
+            // Take into account refined injection region
+            int r = 1;
+            if (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) {
+                r = compute_area_weights(rrfac, flux_normal_axis);
+            }
+            pcounts[index] = num_ppc_int*r;
+
+            amrex::ignore_unused(j,k);
         });
 
         // Max number of new particles. All of them are created,
@@ -1532,7 +1590,15 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
             amrex::ignore_unused(j,k);
             const auto index = overlap_box.index(iv);
 
-            Real scale_fac = compute_scale_fac_area(dx, num_ppc_real, flux_normal_axis);
+            Real scale_fac;
+#ifdef AMREX_USE_EB
+            if (inject_from_eb) {
+                scale_fac = compute_scale_fac_area_eb(dx, num_ppc_real, eb_bnd_normal_arr, i, j, k );
+            } else
+#endif
+            {
+                scale_fac = compute_scale_fac_area_plane(dx, num_ppc_real, flux_normal_axis);
+            }
 
             if (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) {
                 scale_fac /= compute_area_weights(rrfac, flux_normal_axis);
@@ -1543,12 +1609,27 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 const long ip = poffset[index] + i_part;
                 pa_idcpu[ip] = amrex::SetParticleIDandCPU(pid+ip, cpuid);
 
-                // This assumes the flux_pos is of type InjectorPositionRandomPlane
-                const XDim3 r = (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) ?
-                  // In the refined injection region: use refinement ratio `rrfac`
-                  flux_pos->getPositionUnitBox(i_part, rrfac, engine) :
-                  // Otherwise: use 1 as the refinement ratio
-                  flux_pos->getPositionUnitBox(i_part, amrex::IntVect::TheUnitVector(), engine);
+                // Determine the position of the particle within the cell
+                XDim3 r;
+#ifdef AMREX_USE_EB
+                // Injection from the EB
+                // Inject at the position of the centroid of the boundary within this cell
+                // TODO: add a random offset to the position
+                if (inject_from_eb) {
+                    r = { 0.5_rt + eb_bnd_cent_arr(i,j,k,0),
+                          0.5_rt + eb_bnd_cent_arr(i,j,k,1),
+                          0.5_rt + eb_bnd_cent_arr(i,j,k,2) };
+                } else
+#endif
+                {
+                    // Injection from a plane
+                    // This assumes the flux_pos is of type InjectorPositionRandomPlane
+                    r = (fine_overlap_box.ok() && fine_overlap_box.contains(iv)) ?
+                        // In the refined injection region: use refinement ratio `rrfac`
+                        flux_pos->getPositionUnitBox(i_part, rrfac, engine) :
+                        // Otherwise: use 1 as the refinement ratio
+                        flux_pos->getPositionUnitBox(i_part, amrex::IntVect::TheUnitVector(), engine);
+                }
                 auto pos = getCellCoords(overlap_corner, dx, r, iv);
                 auto ppos = PDim3(pos);
 
@@ -1589,6 +1670,41 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                     pa_idcpu[ip] = amrex::ParticleIdCpus::Invalid;
                     continue;
                 }
+
+#ifdef AMREX_USE_EB
+                if (inject_from_eb) {
+                    // Injection from EB: rotate momentum according to the normal of the EB surface
+                    // (The above code initialized the momentum by assuming that z is the direction
+                    // normal to the EB surface. Thus we need to rotate from z to the normal.)
+                    // The minus sign below takes into account the fact that eb_bnd_normal_arr
+                    // points towards the covered region, while particles are to be emitted
+                    // *away* from the covered region.
+                    amrex::Real const nx = -eb_bnd_normal_arr(i,j,k,0);
+                    amrex::Real const ny = -eb_bnd_normal_arr(i,j,k,1);
+                    amrex::Real const nz = -eb_bnd_normal_arr(i,j,k,2);
+
+                    // Rotate the momentum along the theta direction (in the z-x plane)
+                    amrex::Real const cos_theta = nz;
+                    amrex::Real const sin_theta = std::sqrt(1-nz*nz);
+                    amrex::Real uz = pu.z*cos_theta - pu.x*sin_theta;
+                    amrex::Real ux = pu.x*cos_theta + pu.z*sin_theta;
+                    amrex::Real uy = pu.y; // unchanged
+
+                    // Rotate the momentum along the phi direction (in the x-y plane)
+                    amrex::Real const nperp = std::sqrt(nx*nx + ny*ny);
+                    if ( nperp > 0.0 ) {
+                        amrex::Real const cos_phi = nx/nperp;
+                        amrex::Real const sin_phi = ny/nperp;
+                        pu.z = uz; // unchanged
+                        pu.x = ux*cos_phi - uy*sin_phi;
+                        pu.y = uy*cos_phi + ux*sin_phi;
+                    } else {
+                        pu.x = ux;
+                        pu.y = uy;
+                        pu.z = uz;
+                    }
+                }
+#endif
 
 #ifdef WARPX_DIM_RZ
                 // Conversion from cylindrical to Cartesian coordinates
@@ -1654,6 +1770,9 @@ PhysicalParticleContainer::AddPlasmaFlux (PlasmaInjector const& plasma_injector,
                 // For cylindrical emission (flux_normal_axis==0
                 // or flux_normal_axis==2), the emission surface depends on
                 // the radius ; thus, the calculation is finalized here
+
+                // TODO: EBInjection: check that this is fine
+
                 Real t_weight = flux * scale_fac * dt;
                 if (loc_flux_normal_axis != 1) {
                     if (radially_weighted) {
