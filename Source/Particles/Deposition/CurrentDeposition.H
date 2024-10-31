@@ -749,7 +749,7 @@ void doEsirkepovDepositionShapeN (const GetParticlePosition<PIdx>& GetPosition,
             // TODO: abstract in a separate function (doGatherScalarFieldNodal)
             // TODO: check calculation for RZ
             {
-                amrex::Real distance = ablastr::particles::doGatherScalarFieldNodal(
+                const amrex::Real distance = ablastr::particles::doGatherScalarFieldNodal(
                     xp + (relative_time - 0.5_rt*dt)*uxp[ip]*gaminv,
                     yp + (relative_time - 0.5_rt*dt)*uyp[ip]*gaminv,
                     zp + (relative_time - 0.5_rt*dt)*uzp[ip]*gaminv,
@@ -757,7 +757,7 @@ void doEsirkepovDepositionShapeN (const GetParticlePosition<PIdx>& GetPosition,
                 close_to_eb_old = (distance < 1.0_rt); // TODO: tune depth
             }
             {
-                amrex::Real distance = ablastr::particles::doGatherScalarFieldNodal(
+                const amrex::Real distance = ablastr::particles::doGatherScalarFieldNodal(
                     xp + (relative_time + 0.5_rt*dt)*uxp[ip]*gaminv,
                     yp + (relative_time + 0.5_rt*dt)*uyp[ip]*gaminv,
                     zp + (relative_time + 0.5_rt*dt)*uzp[ip]*gaminv,
