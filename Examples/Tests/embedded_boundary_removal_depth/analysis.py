@@ -57,13 +57,13 @@ def plot(array):
     fig, ax = plt.subplots()
 
     # Plot the boundary curves
-    ax.plot(x, y, 'k--')
-    ax.plot(x, -y, 'k--')
-    cax = ax.imshow(array, cmap='RdBu', extent=[-10, 10, -10, 10], origin='lower')
+    ax.plot(x, y, "k--")
+    ax.plot(x, -y, "k--")
+    cax = ax.imshow(array, cmap="RdBu", extent=[-10, 10, -10, 10], origin="lower")
     fig.colorbar(cax, ax=ax)
-    ax.set_xlabel('x (m)')
-    ax.set_ylabel('z (m)')
-    ax.set_title('Averaged divE')
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("z (m)")
+    ax.set_title("Averaged divE")
 
 
 ts = OpenPMDTimeSeries("./diags/diag1/")
