@@ -659,6 +659,7 @@ WarpXParticleContainer::DepositCurrent (WarpXParIter& pti,
                             np_to_deposit, dt, relative_time, dinv, xyzmin, lo, q,
                             WarpX::n_rz_azimuthal_modes);
                     }
+                }
 #endif //AMREX_USE_EB
             } else if (push_type == PushType::Implicit) {
 #if (AMREX_SPACEDIM >= 2)
