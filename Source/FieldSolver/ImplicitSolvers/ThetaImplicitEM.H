@@ -8,12 +8,11 @@
 #define THETA_IMPLICIT_EM_H_
 
 #include "FieldSolver/ImplicitSolvers/WarpXSolverVec.H"
+#include "ImplicitSolver.H"
 
 #include <AMReX_Array.H>
 #include <AMReX_MultiFab.H>
 #include <AMReX_REAL.H>
-
-#include "ImplicitSolver.H"
 
 /** @file
  *  Theta-implicit electromagnetic time solver class. This is a fully implicit
@@ -79,7 +78,7 @@ public:
                       int              a_nl_iter,
                       bool             a_from_jacobian ) override;
 
-    [[nodiscard]] amrex::Real theta () const { return m_theta; }
+    [[nodiscard]] amrex::Real theta () const override { return m_theta; }
 
 private:
 
@@ -97,14 +96,6 @@ private:
      * WarpXSovlerVec, but magnetic field B should not be.
      */
     WarpXSolverVec m_E, m_Eold;
-
-    /**
-     * \brief B is a derived variable from E. Need to save Bold to update B during
-     * the iterative nonlinear solve for E. Bold is owned here, but only used by WarpX.
-     * It is not used directly by the nonlinear solver, nor is it the same size as the
-     * solver vector (size E), and so it should not be WarpXSolverVec type.
-     */
-    amrex::Vector<std::array< std::unique_ptr<amrex::MultiFab>, 3 > > m_Bold;
 
     /**
      * \brief Update the E and B fields owned by WarpX

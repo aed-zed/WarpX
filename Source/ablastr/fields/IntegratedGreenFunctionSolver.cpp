@@ -120,8 +120,8 @@ computePhiIGF ( amrex::MultiFab const & rho,
     tmp_G.setVal(0);
 
     BL_PROFILE_VAR_START(timer_pcopies);
-    // Copy from rho including its ghost cells to tmp_rho
-    tmp_rho.ParallelCopy( rho, 0, 0, 1, rho.nGrowVect(), amrex::IntVect::TheZeroVector() );
+    // Copy from rho to tmp_rho
+    tmp_rho.ParallelCopy( rho, 0, 0, 1, amrex::IntVect::TheZeroVector(), amrex::IntVect::TheZeroVector() );
     BL_PROFILE_VAR_STOP(timer_pcopies);
 
 #if !defined(ABLASTR_USE_HEFFTE)
@@ -193,12 +193,12 @@ computePhiIGF ( amrex::MultiFab const & rho,
 
     // Prepare to perform global FFT
     // Since there is 1 MPI rank per box, here each MPI rank obtains its local box and the associated boxid
-    int local_boxid = amrex::ParallelDescriptor::MyProc(); // because of how we made the DistributionMapping
+    const int local_boxid = amrex::ParallelDescriptor::MyProc(); // because of how we made the DistributionMapping
     if (local_boxid < realspace_ba.size()) {
         // When not using heFFTe, there is only one box (the global box)
         // It is taken care of my MPI rank 0 ; other ranks have no work (hence the if condition)
 
-        amrex::Box local_nodal_box = realspace_ba[local_boxid];
+        const amrex::Box local_nodal_box = realspace_ba[local_boxid];
         amrex::Box local_box(local_nodal_box.smallEnd(), local_nodal_box.bigEnd());
         local_box.shift(-realspace_box.smallEnd()); // This simplifies the setup because the global lo is zero now
         // Since we the domain decompostion is in the z-direction, setting up c_local_box is simple.
