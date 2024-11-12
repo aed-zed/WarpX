@@ -134,8 +134,7 @@ WarpX::AddMagnetostaticFieldLabFrame()
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE( !IsPythonCallbackInstalled("poissonsolver"),
         "Python Level Poisson Solve not supported for Magnetostatic implementation.");
 
-    // const amrex::Real magnetostatic_absolute_tolerance = self_fields_absolute_tolerance*PhysConst::c;
-    // temporary fix!!!
+    // Determine precision required for convergence
     const amrex::Real magnetostatic_absolute_tolerance = 0.0;
     amrex::Real self_fields_required_precision;
     if constexpr (std::is_same<Real, float>::value) {
@@ -144,6 +143,13 @@ WarpX::AddMagnetostaticFieldLabFrame()
     else {
         self_fields_required_precision = 1e-11;
     }
+    ParmParse const pp_warpx("warpx");
+    utils::parser::queryWithParser(
+        pp_warpx, "self_fields_required_precision", self_fields_required_precision);
+    utils::parser::queryWithParser(
+        pp_warpx, "self_fields_absolute_tolerance", self_fields_absolute_tolerance);
+    const amrex::Real magnetostatic_absolute_tolerance = self_fields_absolute_tolerance*PhysConst::c;
+
     const int self_fields_max_iters = 200;
     const int self_fields_verbosity = 2;
 
