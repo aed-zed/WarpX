@@ -13,6 +13,7 @@
 #include "Particles/MultiParticleContainer.H"
 #include "Particles/WarpXParticleContainer.H"
 #include "Python/callbacks.H"
+#include "Utils/Parser/ParserUtils.H"
 #include "Utils/WarpXAlgorithmSelection.H"
 #include "Utils/WarpXConst.H"
 #include "Utils/TextMsg.H"
@@ -135,7 +136,7 @@ WarpX::AddMagnetostaticFieldLabFrame()
         "Python Level Poisson Solve not supported for Magnetostatic implementation.");
 
     // Determine precision required for convergence
-    const amrex::Real magnetostatic_absolute_tolerance = 0.0;
+    amrex::Real self_fields_absolute_tolerance = 0.0;
     amrex::Real self_fields_required_precision;
     if constexpr (std::is_same<Real, float>::value) {
         self_fields_required_precision = 1e-5;
