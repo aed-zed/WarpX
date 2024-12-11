@@ -24,6 +24,7 @@
 #       include <FieldSolver/SpectralSolver/SpectralSolver.H>
 #   endif // RZ ifdef
 #endif // use PSATD ifdef
+#include <FieldSolver/ElectrostaticSolvers/RelativisticExplicitES.H>
 #include <FieldSolver/WarpX_FDTD.H>
 #include <Filter/NCIGodfreyFilter.H>
 #include <Initialization/ExternalField.H>
@@ -287,6 +288,13 @@ void init_WarpX (py::module& m)
                 return wx.get_pointer_HybridPICModel()->m_n_floor;
             },
             "Gets the number of substeps to take in the hybrid solver."
+        )
+        .def("add_boundary_electrostatic_field",
+            [] (WarpX& wx) {
+                auto Efield_fp = wx.m_fields.get_mr_levels_alldirs("Efield_fp", wx.maxLevel());
+                wx.GetElectrostaticSolver().AddBoundaryField( Efield_fp );
+            },
+            "Compute the electric field due to the potential specified on the domain boundaries and embedded boundaries."
         )
     ;
 }
