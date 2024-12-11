@@ -64,14 +64,6 @@ public:
         int verbosity
     );
 
-    /** Compute the potential `phi` by solving the Poisson equation with the
-       simulation specific boundary conditions and boundary values, then add the
-       E field due to that `phi` to `Efield_fp`.
-    * \param[in] Efield Efield updated to include potential gradient from boundary condition
-    */
-    void AddBoundaryField (
-        ablastr::fields::MultiLevelVectorField& Efield
-    );
 };
 
 #endif // WARPX_RELATIVISTICEXPLICITES_H_
