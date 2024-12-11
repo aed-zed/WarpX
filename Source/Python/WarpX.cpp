@@ -276,7 +276,7 @@ The physical fields in WarpX have the following naming:
             "Synchronize particle velocities and positions."
         )
         .def("add_boundary_electrostatic_field",
-            [] (WarpX& wx) { 
+            [] (WarpX& wx) {
                 auto Efield_fp = wx.m_fields.get_mr_levels_alldirs("Efield_fp", wx.maxLevel());
                 wx.GetElectrostaticSolver().AddBoundaryField( Efield_fp );
             },

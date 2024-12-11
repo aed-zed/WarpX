@@ -143,7 +143,7 @@ public:
     */
     void AddBoundaryField (
         ablastr::fields::MultiLevelVectorField& Efield
-    );    
+    );
 
     /** Maximum levels for the electrostatic solver grid */
     int num_levels;
