@@ -141,7 +141,7 @@ public:
        E field due to that `phi` to `Efield_fp`.
     * \param[in] Efield Efield updated to include potential gradient from boundary condition
     */
-    void AddBoundaryField (
+    void AddBoundaryField const (
         ablastr::fields::MultiLevelVectorField& Efield
     );
 

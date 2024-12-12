@@ -542,7 +542,7 @@ void ElectrostaticSolver::computeB (
     }
 }
 
-void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorField& Efield_fp)
+void ElectrostaticSolver::AddBoundaryField const (ablastr::fields::MultiLevelVectorField& Efield_fp)
 {
     WARPX_PROFILE("RelativisticExplicitES::AddBoundaryField");
 
