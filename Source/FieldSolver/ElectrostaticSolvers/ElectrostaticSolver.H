@@ -141,9 +141,9 @@ public:
        E field due to that `phi` to `Efield_fp`.
     * \param[in] Efield Efield updated to include potential gradient from boundary condition
     */
-    void AddBoundaryField const (
+    void AddBoundaryField (
         ablastr::fields::MultiLevelVectorField& Efield
-    );
+    ) const;
 
     /** Maximum levels for the electrostatic solver grid */
     int num_levels;
