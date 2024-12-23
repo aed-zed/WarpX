@@ -236,6 +236,23 @@ Overall simulation parameters
         \boldsymbol{\nabla}^2 \phi = - \rho/\epsilon_0 \qquad \boldsymbol{E} = - \boldsymbol{\nabla}\phi \\
         \boldsymbol{\nabla}^2 \boldsymbol{A} = - \mu_0 \boldsymbol{j} \qquad \boldsymbol{B} = \boldsymbol{\nabla}\times\boldsymbol{A}
 
+    * ``labframe-effective-potential``: Poisson's equation is solved with a modified dielectric function
+      (resulting in an "effective potential") to create a semi-implicit scheme which is robust to the
+      numerical instability seen in explicit electrostatic PIC when :math:`\Delta t \omega_{pe} > 2`.
+      If this option is used the additional parameter ``warpx.effective_potential_factor`` can also be
+      specified to set the value of :math:`C_{EP}` (default 4). The method is stable for :math:`C_{EP} \geq 1`
+      regardless of :math:`\Delta t`, however, the larger :math:`C_{EP}` is set, the lower the numerical plasma
+      frequency will be and therefore care must be taken to not set it so high that the plasma mode
+      hybridizes with other modes of interest.
+      Details of the method can be found in Appendix A of :cite:t:`param-Barnes2021` (note that in that paper
+      the method is referred to as "semi-implicit electrostatic" but here it has been renamed to "effective potential"
+      to avoid confusion with the semi-implicit method of Chen et al.).
+      In short, the code solves:
+
+      .. math::
+
+        \boldsymbol{\nabla}\cdot\left(1+\frac{C_{EP}}{4}\sum_{s \in \text{species}}(\omega_{ps}\Delta t)^2 \right)\boldsymbol{\nabla} \phi = - \rho/\epsilon_0 \qquad \boldsymbol{E} = - \boldsymbol{\nabla}\phi
+
     * ``relativistic``: Poisson's equation is solved **for each species**
       in their respective rest frame. The corresponding field
       is mapped back to the simulation frame and will produce both E and B
@@ -272,6 +289,21 @@ Overall simulation parameters
         In electrostatic mode, this solver requires open field boundary conditions (``boundary.field_lo,hi = open``).
         In electromagnetic mode, this solver can be used to initialize the species' self fields
         (``<species_name>.initialize_self_fields=1``) provided that the field BCs are PML (``boundary.field_lo,hi = PML``).
+
+          * ``warpx.use_2d_slices_fft_solver`` (`bool`) optional (default: 0): Select the type of Integrated Green Function solver.
+            If 0, solve Poisson equation in full 3D geometry.
+            If 1, solve Poisson equation in a quasi 3D geometry, neglecting the :math:`z` derivatives in the Laplacian of the Poisson equation.
+            In practice, in this case, the code performes many 2D Poisson solves on all :math:`(x,y)` slices, each slice at a given :math:`z`.
+            This is often a good approximation for ultra-relativistic beams propagating along the :math:`z` direction, with the relativistic solver.
+            As a consequence, this solver does not need to do an FFT along the :math:`z` direction,
+            and instead uses only transverse FFTs (along :math:`x` and :math:`y`) at each :math:`z` position (or :math:`z` "slice").
+
+          * ``ablastr.nprocs_igf_fft`` (`int`) optional (default: number of MPI ranks): Number of MPI ranks used to parallalelize the FFT solver.
+            This can be less or equal than then number of MPI ranks that are used to run the overall simulation.
+            It can be useful if the auxiliary simulation boxes fit within a single process, so to avoid extra communications.
+            The auxiliary boxes are extended boxes in real and spectral space that are used to perform the necessary FFTs.
+            The extended simulation box size in real space is :math:`2n_x-1, 2n_y-1, 2n_z-1` with the 3D solver, :math:`2n_x-1, 2n_y -1, n_z` with the 2D solver.
+            The extended simulation box size in spectral space is :math:`n_x, 2n_y-1, 2n_z-1` with the 3D solver, :math:`n_x, 2n_y-1, n_z` with the 2D solver.
 
 * ``warpx.self_fields_required_precision`` (`float`, default: 1.e-11)
     The relative precision with which the electrostatic space-charge fields should
@@ -2680,7 +2712,7 @@ WarpX has five types of diagnostics:
 ``TimeAveraged`` diagnostics only allow field data, which they output after averaging over a period of time,
 ``BackTransformed`` diagnostics are used when running a simulation in a boosted frame, to reconstruct output data to the lab frame,
 ``BoundaryScraping`` diagnostics are used to collect the particles that are absorbed at the boundary, throughout the simulation, and
-``ReducedDiags`` allow the user to compute some reduced quantity (particle temperature, max of a field) and write a small amount of data to text files.
+``ReducedDiags`` enable users to compute specific reduced quantities, such as particle temperature, energy histograms, or maximum field values, and efficiently save this in-situ analyzed data to files.
 Similar to what is done for physical species, WarpX has a class Diagnostics that allows users to initialize different diagnostics, each of them with different fields, resolution and period.
 This currently applies to standard diagnostics, but should be extended to back-transformed diagnostics and reduced diagnostics (and others) in a near future.
 
@@ -3064,15 +3096,14 @@ In addition to their usual attributes, the saved particles have
 Reduced Diagnostics
 ^^^^^^^^^^^^^^^^^^^
 
-``ReducedDiags`` allow the user to compute some reduced quantity (particle temperature, max of a field) and write a small amount of data to text files.
+``ReducedDiags`` enable users to compute specific reduced quantities, such as particle temperature, energy histograms, or maximum field values, and efficiently save this in-situ analyzed data to files.
+This shifts analysis from post-processing to runtime calculation of reduction operations (average, maximum, ...) and can greatly save disk space when "raw" particle and field outputs from `FullDiagnostics` can be avoided in favor of single values, 1D or 2D data at possibly even higher time resolution.
 
 * ``warpx.reduced_diags_names`` (`strings`, separated by spaces)
-    The names given by the user of simple reduced diagnostics.
-    Also the names of the output `.txt` files.
-    This reduced diagnostics aims to produce simple outputs
-    of the time history of some physical quantities.
+    A list of user-given names for reduced diagnostics.
+    By default, these names are also prefixing the names of output files.
     If ``warpx.reduced_diags_names`` is not provided in the input file,
-    no reduced diagnostics will be done.
+    no reduced diagnostics will be activated during the run.
     This is then used in the rest of the input deck;
     in this documentation we use ``<reduced_diags_name>`` as a placeholder.
 
@@ -3080,7 +3111,7 @@ Reduced Diagnostics
     The type of reduced diagnostics associated with this ``<reduced_diags_name>``.
     For example, ``ParticleEnergy``, ``FieldEnergy``, etc.
     All available types are described below in detail.
-    For all reduced diagnostics,
+    For all reduced diagnostics that are writing tabular data into text files,
     the first and the second columns in the output file are
     the time step and the corresponding physical time in seconds, respectively.
 
@@ -3590,22 +3621,27 @@ Reduced Diagnostics
     * ``Timestep``
         This type outputs the simulation's physical timestep (in seconds) at each mesh refinement level.
 
-* ``<reduced_diags_name>.intervals`` (`string`)
+* ``reduced_diags.intervals`` (`string`)
     Using the `Intervals Parser`_ syntax, this string defines the timesteps at which reduced
-    diagnostics are written to file.
+    diagnostics are written to the file.
+    This can also be specified for the specific diagnostic by setting ``<reduced_diags_name>.intervals``.
 
-* ``<reduced_diags_name>.path`` (`string`) optional (default `./diags/reducedfiles/`)
-    The path that the output file will be stored.
+* ``reduced_diags.path`` (`string`) optional (default `./diags/reducedfiles/`)
+    The path where the output file will be stored.
+    This can also be specified for the specific diagnostic by setting ``<reduced_diags_name>.path``.
 
-* ``<reduced_diags_name>.extension`` (`string`) optional (default `txt`)
-    The extension of the output file.
+* ``reduced_diags.extension`` (`string`) optional (default `txt`)
+    The extension of the output file (the suffix).
+    This can also be specified for the specific diagnostic by setting ``<reduced_diags_name>.extension``.
 
-* ``<reduced_diags_name>.separator`` (`string`) optional (default a `whitespace`)
+* ``reduced_diags.separator`` (`string`) optional (default a `whitespace`)
     The separator between row values in the output file.
     The default separator is a whitespace.
+    This can also be specified for the specific diagnostic by setting ``<reduced_diags_name>.separator``.
 
-* ``<reduced_diags_name>.precision`` (`integer`) optional (default `14`)
+* ``reduced_diags.precision`` (`integer`) optional (default `14`)
     The precision used when writing out the data to the text files.
+    This can also be specified for the specific diagnostic by setting ``<reduced_diags_name>.precision``.
 
 Lookup tables and other settings for QED modules
 ------------------------------------------------
