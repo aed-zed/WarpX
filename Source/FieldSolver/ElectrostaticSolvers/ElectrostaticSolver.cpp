@@ -588,7 +588,7 @@ void ElectrostaticSolver::computeB (
 
 void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorField& Efield_fp) const
 {
-    WARPX_PROFILE("RelativisticExplicitES::AddBoundaryField");
+    ABLASTR_PROFILE("ElectrostaticSolver::AddBoundaryField");
 
     auto & warpx = WarpX::GetInstance();
 
@@ -614,9 +614,7 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
 
     // Compute the potential phi, by solving the Poisson equation
     computePhi( amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
-                beta, self_fields_required_precision,
-                self_fields_absolute_tolerance, self_fields_max_iters,
-                self_fields_verbosity, is_igf_2d_slices );
+                beta, m_mlmg_options, is_igf_2d_slices);
 
     // Compute the corresponding electric field, from the potential phi.
     computeE( Efield_fp, amrex::GetVecOfPtrs(phi), beta );

@@ -298,6 +298,13 @@ density multiplied by the radial volume factor, not a physical charge density.)p
             py::arg("potential"),
             "Sets the EB potential string and updates the function parser."
         )
+        .def("add_boundary_electrostatic_field",
+            [] (WarpX& wx) {
+                auto Efield_fp = wx.m_fields.get_mr_levels_alldirs("Efield_fp", wx.maxLevel());
+                wx.GetElectrostaticSolver().AddBoundaryField( Efield_fp );
+            },
+            "Compute the electric field due to the potential specified on the domain boundaries and embedded boundaries."
+        )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
             "Executes projection based divergence cleaner on loaded Bfield_fp_external."
@@ -336,13 +343,6 @@ density multiplied by the radial volume factor, not a physical charge density.)p
                 return wx.get_pointer_HybridPICModel()->m_n_floor;
             },
             "Gets the number of substeps to take in the hybrid solver."
-        )
-        .def("add_boundary_electrostatic_field",
-            [] (WarpX& wx) {
-                auto Efield_fp = wx.m_fields.get_mr_levels_alldirs("Efield_fp", wx.maxLevel());
-                wx.GetElectrostaticSolver().AddBoundaryField( Efield_fp );
-            },
-            "Compute the electric field due to the potential specified on the domain boundaries and embedded boundaries."
         )
     ;
 }
