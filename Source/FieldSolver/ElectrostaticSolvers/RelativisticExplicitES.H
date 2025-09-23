@@ -32,8 +32,6 @@ public:
      * This function computes the electrostatic potential for species charge denisyt as source
      * and then the electric and magnetic fields are updated to include the
      * corresponding fields from the electrostatic potential.
-     * Then electric and magnetic fields are updated to include potential variation
-     * due to boundary conditions using the function ``AddBoundaryField``
      *
      * \param fields MultiFab register of fields
      * \param mpc Reference to multi-particle container
