@@ -537,8 +537,54 @@ FullDiagnostics::InitializeFieldFunctorsRZopenPMD (int lev)
             }
         }
         else {
-            WARPX_ABORT_WITH_MESSAGE(
-                "Error: " + m_varnames_fields[comp] + " is not a known field output type in RZ geometry");
+            // FALLBACK: Check if field exists in MultiFabRegister (RZ geometry path)
+            // This allows output of persistent internal auxiliary fields or user-registered fields from Python
+            bool found_in_register = false;
+            
+            // Try as scalar field
+            if (warpx.m_fields.has(m_varnames_fields[comp], lev)) {
+                m_all_field_functors[lev][comp] = std::make_unique<CellCenterFunctor>(
+                    warpx.m_fields.get(m_varnames_fields[comp], lev), lev, m_crse_ratio,
+                    false, ncomp);
+                if (update_varnames) {
+                    AddRZModesToOutputNames(m_varnames_fields[comp], ncomp);
+                }
+                found_in_register = true;
+            }
+            // Try as vector field component
+            else {
+                for (int idir = 0; idir < 3; idir++) {
+                    std::string base_name = m_varnames_fields[comp];
+                    if (base_name.size() > 1) {
+                        char last_char = base_name.back();
+                        if (last_char == field_names[idir][0]) {
+                            base_name.pop_back();
+                            if (!base_name.empty() && base_name.back() == '_') {
+                                base_name.pop_back();
+                            }
+                            if (warpx.m_fields.has_vector(base_name, lev)) {
+                                m_all_field_functors[lev][comp] = std::make_unique<CellCenterFunctor>(
+                                    warpx.m_fields.get(base_name, Direction{idir}, lev), lev, m_crse_ratio,
+                                    false, ncomp);
+                                if (update_varnames) {
+                                    AddRZModesToOutputNames(m_varnames_fields[comp], ncomp);
+                                }
+                                found_in_register = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (!found_in_register) {
+                WARPX_ABORT_WITH_MESSAGE(
+                    "Error: " + m_varnames_fields[comp] + " is not a known field output type in RZ geometry "
+                    "and was not found in the MultiFab register. "
+                    "If using for auxiliary WarpX-internal fields, ensure the corresponding solvers are set to active."
+                    "E.g. the hybrid Ohm solver for `hybrid_electron_pressure_fp`."
+                    "If using Python-registered fields, ensure the field is allocated before diagnostics initialization.");
+            }
         }
     }
 
@@ -911,9 +957,49 @@ FullDiagnostics::InitializeFieldFunctors (int lev)
         } else if ( m_varnames[comp] == "eb_covered" ){
             m_all_field_functors[lev][comp] = std::make_unique<EBCoveredFunctor>(lev, m_crse_ratio);
         } else {
-            WARPX_ABORT_WITH_MESSAGE(
-                "Error on component " + m_varnames[comp] + ": "
-                + m_varnames[comp] + " is not a known field output type for this geometry");
+            // FALLBACK: Check if field exists in MultiFabRegister
+            // This allows output of persistent internal auxiliary fields or user-registered fields from Python
+            bool found_in_register = false;
+            
+            // Try as scalar field
+            if (warpx.m_fields.has(m_varnames[comp], lev)) {
+                m_all_field_functors[lev][comp] = std::make_unique<CellCenterFunctor>(
+                    warpx.m_fields.get(m_varnames[comp], lev), lev, m_crse_ratio);
+                found_in_register = true;
+            }
+            // Try as vector field component (e.g., my_field_x -> my_field with direction x)
+            else {
+                for (int idir = 0; idir < 3; idir++) {
+                    std::string base_name = m_varnames[comp];
+                    // Check if field name ends with direction suffix (x/y/z or r/t/p)
+                    if (base_name.size() > 1) {
+                        char last_char = base_name.back();
+                        if (last_char == field_names[idir][0]) {  // matches direction character
+                            base_name.pop_back();
+                            // Check for underscore separator (e.g., my_field_x)
+                            if (!base_name.empty() && base_name.back() == '_') {
+                                base_name.pop_back();
+                            }
+                            if (warpx.m_fields.has_vector(base_name, lev)) {
+                                m_all_field_functors[lev][comp] = std::make_unique<CellCenterFunctor>(
+                                    warpx.m_fields.get(base_name, Direction{idir}, lev), lev, m_crse_ratio);
+                                found_in_register = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (!found_in_register) {
+                WARPX_ABORT_WITH_MESSAGE(
+                    "Error on component " + m_varnames[comp] + ": "
+                    + m_varnames[comp] + " is not a known field output type for this geometry "
+                    "and was not found in the MultiFab register. "
+                    "If using for auxiliary WarpX-internal fields, ensure the corresponding solvers are set to active."
+                    "E.g. the hybrid Ohm solver for `hybrid_electron_pressure_fp`."
+                    "If using Python-registered fields, ensure the field is allocated before diagnostics initialization.");
+            }
         }
     }
     // Add functors for average particle data for each species
