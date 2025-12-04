@@ -206,3 +206,20 @@ In the example below, a new ``MultiFab`` is created with the same properties as 
     .. literalinclude:: ../../../../Examples/Physics_applications/spacecraft_charging/inputs_test_rz_spacecraft_charging_picmi.py
         :language: python
         :caption: You can copy this file from ``Examples/Physics_applications/spacecraft_charging/inputs_test_rz_secondary_ion_emission_picmi.py``.
+
+Checkpointing custom fields
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Custom fields can be marked for inclusion in checkpoint files, enabling restart capabilities:
+
+.. code-block:: python
+
+   # Mark scalar field for checkpointing
+   sim.fields.set_checkpoint("normalized_Ex", level=0, checkpoint=True)
+
+   # Mark vector field component for checkpointing
+   sim.fields.set_checkpoint("my_vector", dir=0, level=0, checkpoint=True)
+
+On restart, the field must be re-allocated in the user script, then its data
+will be automatically restored from the checkpoint file.
+See ``Examples/Tests/checkpoint_restart`` for a complete example.
