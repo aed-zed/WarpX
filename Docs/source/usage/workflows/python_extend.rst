@@ -265,7 +265,7 @@ To fetch the data from all of the valid cells of all dimensions, the ellipsis ca
 Similarly, to fetch all of the data including valid cells and ghost cells, use an empty tuple, ``Jx[()]``.
 The code does error checking to ensure that the specified indices are within the bounds of the global domain.
 
-New MultiFabs can be created at the Python level and added to the registry. Using this method, the new MultiFabs will be handled in the same way as internal MultiFabs, for example that data can be redistributed during load balancing (when the flags are set as shpwn in the example).
+New MultiFabs can be created at the Python level and added to the registry. Using this method, the new MultiFabs will be handled in the same way as internal MultiFabs, for example that data can be redistributed during load balancing (when the flags are set as shown in the example).
 In this example, a new MultiFab is added with the same properties as `Ex`.
 
 .. code-block:: python
@@ -281,6 +281,20 @@ In this example, a new MultiFab is added with the same properties as `Ex`.
                                          initial_value=0.,
                                          redistribute=True,
                                          redistribute_on_remake=True)
+
+Custom fields can be marked for inclusion in checkpoint files, enabling restart capabilities:
+
+.. code-block:: python
+
+   # Mark scalar field for checkpointing
+   sim.fields.set_checkpoint("normalized_Ex", level=0, checkpoint=True)
+   
+   # Mark vector field component for checkpointing
+   sim.fields.set_checkpoint("my_vector", dir=0, level=0, checkpoint=True)
+
+On restart, the field must be re-allocated in the user script, then its data
+will be automatically restored from the checkpoint file.
+See ``Examples/Tests/checkpoint_restart`` for a complete example.
 
 Particles
 ^^^^^^^^^
