@@ -1084,6 +1084,49 @@ FullDiagnostics::InitializeFieldFunctors (int lev)
     AddRZModesToDiags( lev );
 }
 
+void
+FullDiagnostics::AddFieldToOutput (const std::string& field_name, int lev)
+{
+    using ablastr::fields::Direction;
+    auto & warpx = WarpX::GetInstance();
+
+    bool found_in_register = false;
+
+    // Try as scalar field
+    if (warpx.m_fields.has(field_name, lev)) {
+        // Add to varnames list
+        m_varnames.push_back(field_name);
+
+        // Create functor and add to functors list
+        m_all_field_functors[lev].push_back(
+            std::make_unique<CellCenterFunctor>(
+                warpx.m_fields.get(field_name, lev), lev, m_crse_ratio));
+        found_in_register = true;
+    }
+    // Try as vector field - add all three components
+    else if (warpx.m_fields.has_vector(field_name, lev)) {
+        for (int idir = 0; idir < 3; idir++) {
+            Direction dir{idir};
+            // Use Direction's string conversion to get proper component name (x/y/z or r/t/p)
+            std::string dir_str = static_cast<std::string>(dir);
+            std::string comp_name = field_name + "_" + dir_str;
+            m_varnames.push_back(comp_name);
+
+            // Create functor for this component
+            m_all_field_functors[lev].push_back(
+                std::make_unique<CellCenterFunctor>(
+                    warpx.m_fields.get(field_name, dir, lev), lev, m_crse_ratio));
+        }
+        found_in_register = true;
+    }
+
+    if (!found_in_register) {
+        WARPX_ABORT_WITH_MESSAGE(
+            "AddFieldToOutput: Field '" + field_name + "' not found in MultiFab register at level " 
+            + std::to_string(lev));
+    }
+}
+
 
 void
 FullDiagnostics::PrepareFieldDataForOutput ()
