@@ -296,6 +296,44 @@ On restart, the field must be re-allocated in the user script, then its data
 will be automatically restored from the checkpoint file.
 See ``Examples/Tests/checkpoint_restart`` for a complete example.
 
+Custom fields can also be added to diagnostic output dynamically. This is useful
+because fields created in callbacks (after simulation initialization) cannot be
+included in the diagnostic's initial ``data_list``:
+
+.. code-block:: python
+
+   from pywarpx import callbacks
+   
+   # Create a field diagnostic
+   diag = picmi.FieldDiagnostic(name="diag1", period=10,
+                                data_list=["Ex", "Ey", "Ez"])
+   sim.add_diagnostic(diag)
+   
+   # Callback runs after initial E-field solve (earliest safe time for field operations)
+   @callbacks.installafterInitEsolve
+   def add_custom_field():
+       # Create a custom field
+       Ex = sim.fields.get("Efield_fp", dir='x', level=0)
+       my_field = sim.fields.alloc_init(
+           name="my_field", level=0,
+           ba=Ex.box_array(), dm=Ex.dm(),
+           ncomp=1, ngrow=Ex.n_grow_vect,
+           initial_value=0.,
+           redistribute=True, redistribute_on_remake=True,
+       )
+       
+       # Add it to diagnostic output
+       sim.extension.warpx.add_field_to_diagnostic(
+           diag_name="diag1",  # name of the diagnostic
+           field_name="my_field",  # name of field in MultiFabRegister
+           lev=0)  # refinement level (default: 0)
+       
+       # For vector fields, all components are added automatically:
+       # my_vector -> my_vector_x, my_vector_y, my_vector_z
+   
+   # Run simulation (this calls initialize_inputs() and initialize_warpx())
+   sim.step(10)
+
 Particles
 ^^^^^^^^^
 
