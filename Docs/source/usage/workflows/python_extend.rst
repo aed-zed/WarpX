@@ -266,37 +266,80 @@ Similarly, to fetch all of the data including valid cells and ghost cells, use a
 The code does error checking to ensure that the specified indices are within the bounds of the global domain.
 
 New MultiFabs can be created at the Python level and added to the registry. Using this method, the new MultiFabs will be handled in the same way as internal MultiFabs, for example that data can be redistributed during load balancing (when the flags are set as shown in the example).
-In this example, a new MultiFab is added with the same properties as `Ex`.
+In this example, a new vector MultiFab is created with the same properties as ``Ex``.
 
 .. code-block:: python
 
    Ex = sim.fields.get("Efield_fp", dir=0, level=0)
-   normalized_Ex = sim.fields.alloc_init(name="normalized_Ex",
-                                         dir=0,
-                                         level=0,
-                                         ba=Ex.box_array(),
-                                         dm=Ex.dm(),
-                                         ncomp=Ex.n_comp,
-                                         ngrow=Ex.n_grow_vect,
-                                         initial_value=0.,
-                                         redistribute=True,
-                                         redistribute_on_remake=True)
+   
+   # Create all three components of a vector field
+   for dir_str in ['x', 'y', 'z']:
+       my_vector = sim.fields.alloc_init(
+           name="my_vector",
+           dir=dir_str,
+           level=0,
+           ba=Ex.box_array(),
+           dm=Ex.dm(),
+           ncomp=Ex.n_comp,
+           ngrow=Ex.n_grow_vect,
+           initial_value=0.,
+           redistribute=True,
+           redistribute_on_remake=True
+       )
 
 Custom fields can be marked for inclusion in checkpoint files, enabling restart capabilities:
 
 .. code-block:: python
 
    # Mark scalar field for checkpointing
-   sim.fields.set_checkpoint("normalized_Ex", level=0, checkpoint=True)
+   sim.fields.set_checkpoint("my_scalar", level=0, checkpoint=True)
    
-   # Mark vector field component for checkpointing
-   sim.fields.set_checkpoint("my_vector", dir=0, level=0, checkpoint=True)
+   # Mark vector field components for checkpointing (use string for direction)
+   sim.fields.set_checkpoint("my_vector", dir='x', level=0, checkpoint=True)
+   sim.fields.set_checkpoint("my_vector", dir='y', level=0, checkpoint=True)
+   sim.fields.set_checkpoint("my_vector", dir='z', level=0, checkpoint=True)
+   
+   # Unmark a field (disable checkpointing)
+   sim.fields.set_checkpoint("my_scalar", level=0, checkpoint=False)
+   
+   # Query which fields are marked for checkpointing
+   checkpoint_fields = sim.fields.get_checkpoint_fields(level=0)
+   # Returns: [("field_name", direction), ...]
+   # where has_direction is bool and direction is a Direction enum or None
 
-On restart, the field must be re-allocated in the user script, then its data
-will be automatically restored from the checkpoint file.
-See ``Examples/Tests/checkpoint_restart`` for a complete example.
+Checkpoint and Restart with Custom Fields
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Custom fields can also be added to diagnostic output dynamically. This is useful
+Custom fields can be saved to checkpoint files and automatically restored on restart.
+
+**Key points:**
+
+1. Fields must be allocated in **both** ``afterInitEsolve`` (fresh start) and
+   ``afterInitatRestart`` (restart) callbacks. Register the same setup function for both.
+
+2. On restart, field data is **automatically restored** after allocation.
+   You do not need to manually read the data.
+
+3. Check ``sim.amr_restart`` to distinguish between fresh start (``None``) and
+   restart (checkpoint path) when initializing field values.
+
+4. All fields marked with ``set_checkpoint()`` are included in checkpoint files.
+   Aliases are excluded.
+
+5. To restart:
+
+   .. code-block:: bash
+
+      python inputs_test_checkpoint_restart_custom_fields_picmi.py  # Initial run
+      python inputs_test_checkpoint_restart_custom_fields_picmi.py --restart diags/checkpoint000006  # Restart from step 6
+
+.. dropdown:: Complete checkpoint/restart example
+   :icon: code
+
+   .. literalinclude:: ../../../../Examples/Tests/checkpoint_field_register/inputs_test_checkpoint_restart_custom_fields_picmi.py
+      :language: python
+
+Custom fields can also be added to diagnostic output dynamically.
 because fields created in callbacks (after simulation initialization) cannot be
 included in the diagnostic's initial ``data_list``:
 
