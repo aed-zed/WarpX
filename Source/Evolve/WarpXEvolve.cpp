@@ -342,6 +342,9 @@ WarpX::Evolve (int numsteps)
             reduced_diags->ComputeDiags(step);
             reduced_diags->WriteToFile(step);
         }
+        // execute beforediagnostics callbacks
+        ExecutePythonCallback("beforediagnostics");
+        
         multi_diags->FilterComputePackFlush( step );
 
         // execute afterdiagnostic callbacks

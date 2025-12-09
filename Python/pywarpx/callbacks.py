@@ -38,6 +38,7 @@ Functions can be called at the following times:
 * ``afterdeposition``: after particle deposition (for charge and/or current)
 * ``beforestep``: before the time step
 * ``afterstep``: after the time step
+* ``beforediagnostics``: before diagnostic output (useful for computing custom fields marked for regular output)
 * ``afterdiagnostics``: after diagnostic output
 * ``oncheckpointsignal``: on a checkpoint signal
 * ``onbreaksignal``: on a break signal. These callbacks will be the last ones executed before the simulation ends.
@@ -296,6 +297,7 @@ callback_instances = {
     "particleloader": {},
     "beforestep": {},
     "afterstep": {},
+    "beforediagnostics": {},
     "afterdiagnostics": {},
     "afterrestart": {},
     "oncheckpointsignal": {},
@@ -556,6 +558,16 @@ def callfromafterstep(f):
 
 def installafterstep(f):
     installcallback("afterstep", f)
+
+
+# ----------------------------------------------------------------------------
+def callfrombeforediagnostics(f):
+    installcallback("beforediagnostics", f)
+    return f
+
+
+def installbeforediagnostics(f):
+    installcallback("beforediagnostics", f)
 
 
 # ----------------------------------------------------------------------------
