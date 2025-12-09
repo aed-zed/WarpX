@@ -95,11 +95,18 @@ def test_checkpoint_flags():
             print(f"    - {field_name} (vector, dir={str(dir_opt)})")
     
     # Verify our test fields are in the list
+    # Scalar field: name only
     field_names = [name for name, _ in checkpoint_fields]
     assert "test_scalar" in field_names, "test_scalar not in checkpoint list!"
-    assert "test_vector[dir=x]" in field_names, "test_vector_x not in checkpoint list!"
-    assert "test_vector[dir=y]" in field_names, "test_vector_y not in checkpoint list!"
-    assert "test_vector[dir=z]" in field_names, "test_vector_z not in checkpoint list!"
+    
+    # Vector field: check base name with each direction
+    vector_entries = [(name, dir_opt) for name, dir_opt in checkpoint_fields if name == "test_vector"]
+    assert len(vector_entries) == 3, f"Expected 3 test_vector components, found {len(vector_entries)}"
+    
+    directions_found = [str(dir_opt) for _, dir_opt in vector_entries if dir_opt is not None]
+    assert "x" in directions_found, "test_vector direction x not found!"
+    assert "y" in directions_found, "test_vector direction y not found!"
+    assert "z" in directions_found, "test_vector direction z not found!"
     
     print("\n  [OK] All test fields found in checkpoint list")
     
