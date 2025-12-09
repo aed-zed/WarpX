@@ -670,6 +670,12 @@ namespace ablastr::fields
                 // Internal name format: "name[dir=x][level=0]" or "name[level=0]"
                 std::string field_name = internal_name;
                 
+                // Remove direction suffix (if present)
+                size_t dir_pos = field_name.find("[dir=");
+                if (dir_pos != std::string::npos) {
+                    field_name = field_name.substr(0, dir_pos);
+                }
+                
                 // Remove level suffix
                 size_t level_pos = field_name.find("[level=");
                 if (level_pos != std::string::npos) {
