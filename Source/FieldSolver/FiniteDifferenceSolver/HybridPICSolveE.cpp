@@ -1057,6 +1057,33 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
 
     auto & warpx = WarpX::GetInstance();
     const amrex::Real t_new = warpx.gett_new(lev);
+
+    // custom Hall term diagnostic
+    bool const store_hall_term = warpx.m_fields.has_vector("hall_term", lev);
+
+    amrex::MultiFab *hall_x_mf = nullptr;
+    amrex::MultiFab *hall_y_mf = nullptr;
+    amrex::MultiFab *hall_z_mf = nullptr;
+
+    if (store_hall_term) {
+        hall_x_mf = warpx.m_fields.get("hall_term", ablastr::fields::Direction::x, lev);
+        hall_y_mf = warpx.m_fields.get("hall_term", ablastr::fields::Direction::y, lev);
+        hall_z_mf = warpx.m_fields.get("hall_term", ablastr::fields::Direction::z, lev);
+    }
+
+    // custom electron pressure diagnostic
+    bool const store_grad_Pe = warpx.m_fields.has_vector("grad_Pe", lev);
+
+    amrex::MultiFab *grad_Pe_x_mf = nullptr;
+    amrex::MultiFab *grad_Pe_y_mf = nullptr;
+    amrex::MultiFab *grad_Pe_z_mf = nullptr;
+
+    if (store_grad_Pe) {
+        grad_Pe_x_mf = warpx.m_fields.get("grad_Pe", ablastr::fields::Direction::x, lev);
+        grad_Pe_y_mf = warpx.m_fields.get("grad_Pe", ablastr::fields::Direction::y, lev);
+        grad_Pe_z_mf = warpx.m_fields.get("grad_Pe", ablastr::fields::Direction::z, lev);
+    }
+
     ablastr::fields::VectorField Bfield_external, Efield_external;
     if (include_external_fields) {
         Bfield_external = warpx.m_fields.get_alldirs(FieldType::hybrid_B_fp_external, 0); // lev=0
@@ -1222,6 +1249,23 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
             eta_coef_y = eta_coef_mf[1]->const_array(mfi);
             eta_coef_z = eta_coef_mf[2]->const_array(mfi);
         }
+        // Local tile views for the diagnostics (only if allocated)
+        Array4<Real> hall_x_diag;
+        Array4<Real> hall_y_diag;
+        Array4<Real> hall_z_diag;
+        if (store_hall_term) {
+            hall_x_diag = hall_x_mf->array(mfi);
+            hall_y_diag = hall_y_mf->array(mfi);
+            hall_z_diag = hall_z_mf->array(mfi);
+        }
+        Array4<Real> grad_Pe_x_diag;
+        Array4<Real> grad_Pe_y_diag;
+        Array4<Real> grad_Pe_z_diag;
+        if (store_grad_Pe) {
+            grad_Pe_x_diag = grad_Pe_x_mf->array(mfi);
+            grad_Pe_y_diag = grad_Pe_y_mf->array(mfi);
+            grad_Pe_z_diag = grad_Pe_z_mf->array(mfi);
+        }
 
         // Extract structures indicating where the fields
         // should be updated, given the position of the embedded boundaries
@@ -1274,10 +1318,15 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
                 const Real grad_Pe = include_grad_pe ?
                     T_Algo::UpwardDx(Pe, coefs_x, n_coefs_x, i, j, k)
                     : 0._rt;
+                if (store_grad_Pe) {
+                    grad_Pe_x_diag(i, j, k) = grad_Pe;  // write into diagnostic multifab
+                }
 
                 // interpolate the nodal neE values to the Yee grid
                 const auto enE_x = Interp(enE, nodal, Ex_stag, coarsen, i, j, k, 0);
-
+                if (store_hall_term) {
+                    hall_x_diag(i, j, k) = enE_x;  // write into diagnostic multifab
+                }
                 // Floor selection follows the vacuum-seam decision: a
                 // vacuum-decided component divides by the floor, a
                 // plasma-decided one by rho_val (still floored for division
@@ -1354,9 +1403,15 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
                 const Real grad_Pe = include_grad_pe ?
                     T_Algo::UpwardDy(Pe, coefs_y, n_coefs_y, i, j, k)
                     : 0._rt;
+                if (store_grad_Pe) {
+                    grad_Pe_y_diag(i, j, k) = grad_Pe;  // write into diagnostic multifab
+                }
 
                 // interpolate the nodal neE values to the Yee grid
                 const auto enE_y = Interp(enE, nodal, Ey_stag, coarsen, i, j, k, 1);
+                if (store_hall_term) {
+                    hall_y_diag(i, j, k) = enE_y;  // write into diagnostic multifab
+                }
 
                 // Floor selection follows the vacuum-seam decision: a
                 // vacuum-decided component divides by the floor, a
@@ -1432,9 +1487,15 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
                 const Real grad_Pe = include_grad_pe ?
                     T_Algo::UpwardDz(Pe, coefs_z, n_coefs_z, i, j, k)
                     : 0._rt;
+                if (store_grad_Pe) {
+                    grad_Pe_z_diag(i, j, k) = grad_Pe;  // write into diagnostic multifab
+                }
 
                 // interpolate the nodal neE values to the Yee grid
                 const auto enE_z = Interp(enE, nodal, Ez_stag, coarsen, i, j, k, 2);
+                if (store_hall_term) {
+                    hall_z_diag(i, j, k) = enE_z;  // write into diagnostic multifab
+                }
 
                 // Floor selection follows the vacuum-seam decision: a
                 // vacuum-decided component divides by the floor, a
