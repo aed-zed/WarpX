@@ -2209,6 +2209,7 @@ class HybridPICSolver(
         "Jy_external_function",
         "Jz_external_function",
         "A_external",
+        "Phi_external",
     )
 
     grid: picmistandard.PICMI_AnyGrid = Field(description="Grid object for the solver")
@@ -2306,6 +2307,10 @@ class HybridPICSolver(
     do_external_diva_cleaning: bool | None = Field(
         default=None,
         description="This flag can be used to disable divA cleaning. This may be necessary when using a non-periodic external A with periodic field boundary conditions. (default True)",
+    )
+    Phi_external: dict[str, dict[str, float | str | bool]] | None = Field(
+        default=None,
+        description="Function of space and time specifying external (non-plasma) scalar potential fields, given as a nested dictionary with one entry per potential. Each entry can be a custom function ``{'Phi_external_function': 'expr(x,y,z)', 'Phi_time_external_function': 'expr(t)'}``, loaded from file ``{'read_from_file': True, 'path': '/path/to/file', 'Phi_time_external_function': 'expr(t)'}``, or use the boundary potentials ``{'use_boundary_potentials': True}``, which applies ``boundary.potential_*`` and ``warpx.eb_potential`` as external fields via a Poisson solve.",
     )
     user_defined_kw: dict = Field(
         default_factory=dict,
@@ -2437,6 +2442,43 @@ class HybridPICSolver(
                         field_dict["A_time_external_function"], self._mangle_dict
                     ),
                 )
+
+        # Handle external scalar potential fields
+        if self.Phi_external is not None:
+            pywarpx.external_scalar_potential.__setattr__(
+                "fields",
+                pywarpx.my_constants.mangle_expression(
+                    list(self.Phi_external.keys()), self._mangle_dict
+                ),
+            )
+            for field_name, field_dict in self.Phi_external.items():
+                # Check if this entry wants to use boundary potentials
+                if field_dict.get("use_boundary_potentials", False):
+                    # Signal to C++ code that this field uses boundary potentials
+                    pywarpx.hybridpicmodel.use_boundary_potentials_for_external_field = True
+                elif field_dict.get("read_from_file", False):
+                    pywarpx.external_scalar_potential.__setattr__(
+                        f"{field_name}.read_from_file", field_dict["read_from_file"]
+                    )
+                    pywarpx.external_scalar_potential.__setattr__(
+                        f"{field_name}.path", field_dict["path"]
+                    )
+                else:
+                    # Custom Phi function
+                    pywarpx.external_scalar_potential.__setattr__(
+                        f"{field_name}.Phi_external_grid_function(x,y,z)",
+                        pywarpx.my_constants.mangle_expression(
+                            field_dict["Phi_external_function"], self._mangle_dict
+                        ),
+                    )
+                # Set time function (common to all types)
+                if "Phi_time_external_function" in field_dict:
+                    pywarpx.external_scalar_potential.__setattr__(
+                        f"{field_name}.Phi_time_external_function(t)",
+                        pywarpx.my_constants.mangle_expression(
+                            field_dict["Phi_time_external_function"], self._mangle_dict
+                        ),
+                    )
 
 
 class ElectrostaticSolver(picmistandard.PICMI_ElectrostaticSolver):

@@ -18,6 +18,7 @@
 #include "Fluids/QdsmcParticleContainer_fwd.H"
 
 #include "ExternalVectorPotential.H"
+#include "ExternalScalarPotential.H"
 #include "Utils/WarpXAlgorithmSelection.H"
 
 #include "FieldSolver/FiniteDifferenceSolver/FiniteDifferenceSolver.H"
@@ -461,6 +462,21 @@ public:
      *  allowing the first deposition on a newly constructed restart instance. */
     bool m_evolve_initialized = false;
 
+    /**
+     * \brief Update all external fields (from both A_ext and Phi_ext) at time t.
+     * 
+     * This zeros hybrid_E_fp_external and hybrid_B_fp_external, then accumulates
+     * contributions from external vector potential (A_ext) and external scalar
+     * potential (Phi_ext).
+     * 
+     * \param[in] t current simulation time
+     * \param[in] dt timestep
+     */
+    void UpdateHybridExternalFields (
+        amrex::Real t,
+        amrex::Real dt
+    );
+
     // Declare variables to hold hybrid-PIC model parameters
     /** Number of substeps to take when evolving B (also used as initial substep
      *  count guess when RKF45 adaptive stepping is active). May increase under
@@ -648,6 +664,7 @@ public:
     /** External E/B fields */
     bool m_add_external_fields = false;
     std::unique_ptr<ExternalVectorPotential> m_external_vector_potential;
+    std::unique_ptr<ExternalScalarPotential> m_external_scalar_potential;
 
     /** Gpu Vector with index type of the Jx multifab */
     amrex::GpuArray<int, 3> Jx_IndexType;
