@@ -39,8 +39,9 @@ void PoissonBoundaryHandler::ReadParameters()
         ablastr::warn_manager::WMRecordWarning(
             "Algorithms",
             "The input script specifies the electric potential (phi) at the boundary, but \
-            also uses the hybrid PIC solver based on Ohm’s law. When using this solver, the \
-            electric potential does not have any impact on the simulation.",
+            also uses the hybrid PIC solver based on Ohm's law. By default, boundary potentials \
+            do not affect hybrid simulations. To use boundary potentials to derive external fields, set \
+            hybridpicmodel.use_boundary_potentials_for_external_field=1.",
             ablastr::warn_manager::WarnPriority::low);
     }
     else if (m_boundary_potential_specified & (WarpX::electromagnetic_solver_id != ElectromagneticSolverAlgo::None)) {

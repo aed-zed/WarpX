@@ -38,13 +38,13 @@ void WarpX::HybridPICEvolveFields ()
     const bool add_external_fields = m_hybrid_pic_model->m_add_external_fields;
 
     // Handle field splitting for Hybrid field push
-    if (add_external_fields) {
-        // Get the external fields
-        m_hybrid_pic_model->m_external_vector_potential->UpdateHybridExternalFields(
-            gett_old(0),
-            0.5_rt*dt[0]);
+    // Update all external fields (A_ext and Phi_ext) at t^n
+    m_hybrid_pic_model->UpdateHybridExternalFields(
+        gett_old(0),
+        0.5_rt*dt[0]);
 
-        // If using split fields, subtract the external field at the old time
+    if (add_external_fields) {
+        // If using split fields, subtract the external B field at the old time
         for (int lev = 0; lev <= finest_level; ++lev) {
             for (int idim = 0; idim < 3; ++idim) {
                 MultiFab::Subtract(
@@ -131,12 +131,10 @@ void WarpX::HybridPICEvolveFields ()
         );
     }
 
-    if (add_external_fields) {
-        // Get the external fields at E^{n+1/2}
-        m_hybrid_pic_model->m_external_vector_potential->UpdateHybridExternalFields(
-            gett_old(0) + 0.5_rt*dt[0],
-            0.5_rt*dt[0]);
-    }
+    // Update all external fields (A_ext and Phi_ext) at t^{n+1/2}
+    m_hybrid_pic_model->UpdateHybridExternalFields(
+        gett_old(0) + 0.5_rt*dt[0],
+        0.5_rt*dt[0]);
 
     // Now push the B field from t=n+1/2 to t=n+1 using the n+1/2 quantities
     m_hybrid_pic_model->BfieldEvolve(
@@ -169,11 +167,10 @@ void WarpX::HybridPICEvolveFields ()
         }
     }
 
-    if (add_external_fields) {
-        m_hybrid_pic_model->m_external_vector_potential->UpdateHybridExternalFields(
-            gett_new(0),
-            0.5_rt*dt[0]);
-    }
+    // Update all external fields (A_ext and Phi_ext) at t^{n+1}
+    m_hybrid_pic_model->UpdateHybridExternalFields(
+        gett_new(0),
+        0.5_rt*dt[0]);
 
     // Update the E field to t=n+1 using the extrapolated J_i^n+1 value
     m_hybrid_pic_model->CalculatePlasmaCurrent(

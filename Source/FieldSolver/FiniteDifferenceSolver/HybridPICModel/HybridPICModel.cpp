@@ -150,6 +150,10 @@ void HybridPICModel::ReadParameters ()
     if (m_add_external_fields) {
         m_external_vector_potential = std::make_unique<ExternalVectorPotential>();
     }
+
+    // External scalar potential - always try to initialize
+    // (it will check if user specified fields or boundary potentials)
+    m_external_scalar_potential = std::make_unique<ExternalScalarPotential>();
 }
 
 void HybridPICModel::AllocateLevelMFs (
@@ -443,6 +447,9 @@ void HybridPICModel::InitData (const ablastr::fields::MultiFabRegister& fields)
         for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
             m_qdsmc_pc->InitParticles(lev);
         }
+    // Initialize external scalar potential (if specified)
+    if (m_external_scalar_potential) {
+        m_external_scalar_potential->InitData();
     }
 }
 
@@ -1531,6 +1538,35 @@ void HybridPICModel::AdvanceElectronEnergyQDSMC (amrex::Real const dt) const
 
 
 void HybridPICModel::BfieldEvolve (
+void HybridPICModel::UpdateHybridExternalFields (
+    amrex::Real t,
+    amrex::Real dt)
+{
+    ABLASTR_PROFILE("HybridPICModel::UpdateHybridExternalFields");
+
+    auto& warpx = WarpX::GetInstance();
+    using ablastr::fields::Direction;
+
+    // Zero external E and B fields before accumulating contributions
+    for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
+        for (int idim = 0; idim < 3; ++idim) {
+            warpx.m_fields.get(FieldType::hybrid_E_fp_external, Direction{idim}, lev)->setVal(0.0_rt);
+            warpx.m_fields.get(FieldType::hybrid_B_fp_external, Direction{idim}, lev)->setVal(0.0_rt);
+        }
+    }
+
+    // Add contributions from external vector potential (A_ext)
+    if (m_add_external_fields) {
+        m_external_vector_potential->UpdateHybridExternalFields(t, dt);
+    }
+
+    // Add contributions from external scalar potential (Phi_ext)
+    if (m_external_scalar_potential) {
+        m_external_scalar_potential->UpdateExternalElectricField(t, dt);
+    }
+}
+
+void HybridPICModel::BfieldEvolveRK (
     ablastr::fields::MultiLevelVectorField const& Bfield,
     ablastr::fields::MultiLevelVectorField const& Efield,
     ablastr::fields::MultiLevelVectorField const& Jfield,
