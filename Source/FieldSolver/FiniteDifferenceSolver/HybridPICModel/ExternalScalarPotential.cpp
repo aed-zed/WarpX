@@ -199,26 +199,26 @@ ExternalScalarPotential::AddToExternalElectricField (
             // Strategy: compute E into temporary field, scale it, then add
             
             // Create temporary storage for the E field from this potential
-            // Store each component separately to match the external field structure
+            // Need to store unique_ptrs separately, then create a view with raw pointers
+            amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_temp_storage(warpx.finestLevel() + 1);
             ablastr::fields::MultiLevelVectorField E_temp(warpx.finestLevel() + 1);
+            
             for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
+                // Create the MultiFabs
+                for (int idim = 0; idim < 3; ++idim) {
+                    E_temp_storage[lev][idim] = std::make_unique<amrex::MultiFab>(
+                        Efield_external[lev][ablastr::fields::Direction{idim}]->boxArray(),
+                        Efield_external[lev][ablastr::fields::Direction{idim}]->DistributionMap(),
+                        1, Efield_external[lev][ablastr::fields::Direction{idim}]->nGrowVect());
+                    E_temp_storage[lev][idim]->setVal(0.0_rt);
+                }
+                
+                // Create view with raw pointers
                 E_temp[lev] = {
-                    std::make_unique<amrex::MultiFab>(
-                        Efield_external[lev][ablastr::fields::Direction{0}]->boxArray(),
-                        Efield_external[lev][ablastr::fields::Direction{0}]->DistributionMap(),
-                        1, Efield_external[lev][ablastr::fields::Direction{0}]->nGrowVect()),
-                    std::make_unique<amrex::MultiFab>(
-                        Efield_external[lev][ablastr::fields::Direction{1}]->boxArray(),
-                        Efield_external[lev][ablastr::fields::Direction{1}]->DistributionMap(),
-                        1, Efield_external[lev][ablastr::fields::Direction{1}]->nGrowVect()),
-                    std::make_unique<amrex::MultiFab>(
-                        Efield_external[lev][ablastr::fields::Direction{2}]->boxArray(),
-                        Efield_external[lev][ablastr::fields::Direction{2}]->DistributionMap(),
-                        1, Efield_external[lev][ablastr::fields::Direction{2}]->nGrowVect())
+                    E_temp_storage[lev][0].get(),
+                    E_temp_storage[lev][1].get(),
+                    E_temp_storage[lev][2].get()
                 };
-                E_temp[lev][ablastr::fields::Direction{0}]->setVal(0.0_rt);
-                E_temp[lev][ablastr::fields::Direction{1}]->setVal(0.0_rt);
-                E_temp[lev][ablastr::fields::Direction{2}]->setVal(0.0_rt);
             }
 
             // Compute E from boundary potential into temporary field
