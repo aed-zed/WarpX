@@ -37,8 +37,11 @@ void WarpX::HybridPICEvolveFields ()
     // Get requested number of substeps to use
     const int sub_steps = m_hybrid_pic_model->m_substeps;
 
-    // Get flag to include external fields.
-    const bool add_external_fields = m_hybrid_pic_model->m_add_external_fields;
+    // Get flags to include external fields.
+    const bool add_external_A_fields = m_hybrid_pic_model->m_add_external_fields;
+    const bool add_external_Phi_fields = m_hybrid_pic_model->m_external_scalar_potential &&
+        m_hybrid_pic_model->m_external_scalar_potential->HasExternalFields();
+    const bool add_external_fields = add_external_A_fields || add_external_Phi_fields;
 
     // Handle field splitting for Hybrid field push
     // Update all external fields (A_ext and Phi_ext) at t^n
@@ -46,8 +49,9 @@ void WarpX::HybridPICEvolveFields ()
         gett_old(0),
         0.5_rt*dt[0]);
 
-    if (add_external_fields) {
-        // If using split fields, subtract the external B field at the old time
+    if (add_external_A_fields) {
+        // If using external A fields, subtract the external B field at the old time
+        // (Phi_external only contributes to E, not B)
         for (int lev = 0; lev <= finest_level; ++lev) {
             for (int idim = 0; idim < 3; ++idim) {
                 MultiFab::Subtract(
@@ -182,8 +186,8 @@ void WarpX::HybridPICEvolveFields ()
     FillBoundaryE(guard_cells.ng_FieldSolver, WarpX::sync_nodal_points);
 
     // Handle field splitting for Hybrid field push
-    if (add_external_fields) {
-        // If using split fields, add the external field at the new time
+    if (add_external_A_fields) {
+        // If using external A fields, add the external B field at the new time
         for (int lev = 0; lev <= finest_level; ++lev) {
             for (int idim = 0; idim < 3; ++idim) {
                 MultiFab::Add(
@@ -191,6 +195,13 @@ void WarpX::HybridPICEvolveFields ()
                     *m_fields.get(FieldType::hybrid_B_fp_external, Direction{idim}, lev),
                     0, 0, 1,
                     m_fields.get(FieldType::Bfield_fp, Direction{idim}, lev)->nGrowVect());
+            }
+        }
+    }
+    if (add_external_fields) {
+        // Add external E field (from both A_external and Phi_external)
+        for (int lev = 0; lev <= finest_level; ++lev) {
+            for (int idim = 0; idim < 3; ++idim) {
                 MultiFab::Add(
                     *m_fields.get(FieldType::Efield_fp, Direction{idim}, lev),
                     *m_fields.get(FieldType::hybrid_E_fp_external, Direction{idim}, lev),
