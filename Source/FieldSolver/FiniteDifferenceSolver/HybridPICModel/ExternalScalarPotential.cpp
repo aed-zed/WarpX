@@ -33,7 +33,7 @@ ExternalScalarPotential::ReadParameters ()
     if (m_field_names.empty()) {
         // No explicit Phi_ext fields specified
         // Check if user wants to use boundary potentials for external fields
-        const ParmParse pp_hybrid("hybridpicmodel");
+        const ParmParse pp_hybrid("hybrid_pic_model");
         bool use_boundary_potentials = false;
         pp_hybrid.query("use_boundary_potentials_for_external_field", use_boundary_potentials);
 
@@ -99,6 +99,9 @@ ExternalScalarPotential::ReadParameters ()
 void
 ExternalScalarPotential::InitData ()
 {
+    // Early return if no external scalar potential fields are configured
+    if (m_nFields == 0) { return; }
+
     using ablastr::fields::Direction;
     auto& warpx = WarpX::GetInstance();
 
@@ -147,9 +150,33 @@ ExternalScalarPotential::InitData ()
 }
 
 void
-ExternalScalarPotential::UpdateExternalElectricField (const amrex::Real t, const amrex::Real dt)
+ExternalScalarPotential::UpdateExternalElectricField (const amrex::Real t, [[maybe_unused]] const amrex::Real dt)
 {
     WARPX_PROFILE("ExternalScalarPotential::UpdateExternalElectricField");
+
+    // Early return if no external scalar potential fields are configured
+    if (m_nFields == 0) { return; }
+
+    auto& warpx = WarpX::GetInstance();
+    using ablastr::fields::Direction;
+
+    // For static potentials with valid cache, just copy from cache
+    if (!m_has_time_dependence && m_cache_valid) {
+        ablastr::fields::MultiLevelVectorField Efield_external =
+            warpx.m_fields.get_mr_levels_alldirs(FieldType::hybrid_E_fp_external, warpx.finestLevel());
+        
+        for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
+            for (int idim = 0; idim < 3; ++idim) {
+                amrex::MultiFab::Add(
+                    *Efield_external[lev][Direction{idim}],
+                    *m_E_cached[lev][idim],
+                    0, 0, 1,
+                    Efield_external[lev][Direction{idim}]->nGrowVect()
+                );
+            }
+        }
+        return;
+    }
 
     // Iterate over external fields and add contributions with individual time functions
     for (int i = 0; i < m_nFields; ++i) {
@@ -158,14 +185,37 @@ ExternalScalarPotential::UpdateExternalElectricField (const amrex::Real t, const
 
         // For time-varying potentials, only update if the time scale has changed
         // significantly (or if this is the first call)
-        // \TODO Expose control to user. Also add option to update potential every N steps.
-        const bool needs_update = !m_has_time_dependence || 
-                                  std::abs(time_scale_factor - m_prev_time_scale[i]) > 1e-14;
+        const bool needs_update = !m_cache_valid ||
+                                  (m_has_time_dependence && 
+                                   std::abs(time_scale_factor - m_prev_time_scale[i]) > 1e-14);
 
         if (needs_update) {
             AddToExternalElectricField(i, time_scale_factor);
             m_prev_time_scale[i] = time_scale_factor;
         }
+    }
+
+    // Cache the result for static potentials
+    if (!m_has_time_dependence && !m_cache_valid) {
+        ablastr::fields::MultiLevelVectorField Efield_external =
+            warpx.m_fields.get_mr_levels_alldirs(FieldType::hybrid_E_fp_external, warpx.finestLevel());
+        
+        m_E_cached.resize(warpx.finestLevel() + 1);
+        for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
+            for (int idim = 0; idim < 3; ++idim) {
+                m_E_cached[lev][idim] = std::make_unique<amrex::MultiFab>(
+                    Efield_external[lev][Direction{idim}]->boxArray(),
+                    Efield_external[lev][Direction{idim}]->DistributionMap(),
+                    1, Efield_external[lev][Direction{idim}]->nGrowVect());
+                amrex::MultiFab::Copy(
+                    *m_E_cached[lev][idim],
+                    *Efield_external[lev][Direction{idim}],
+                    0, 0, 1,
+                    Efield_external[lev][Direction{idim}]->nGrowVect()
+                );
+            }
+        }
+        m_cache_valid = true;
     }
 }
 
@@ -240,7 +290,6 @@ ExternalScalarPotential::AddToExternalElectricField (
         // Custom Phi_external_grid_function: set it as EB potential and use Poisson solve
         // This approach reuses the existing Poisson solver infrastructure
         
-        auto& es_solver = warpx.GetElectrostaticSolver();
         auto& boundary_handler = es_solver.m_poisson_boundary_handler;
         
         // Set the custom Phi as the EB potential

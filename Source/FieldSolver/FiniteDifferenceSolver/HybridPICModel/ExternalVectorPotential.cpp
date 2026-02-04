@@ -117,24 +117,9 @@ ExternalVectorPotential::AllocateLevelMFs (
             lev, amrex::convert(ba, Bz_nodal_flag),
             dm, ncomps, ngEB, 0.0_rt);
     }
-    fields.alloc_init(FieldType::hybrid_E_fp_external, Direction{0},
-        lev, amrex::convert(ba, Ex_nodal_flag),
-        dm, ncomps, ngEB, 0.0_rt);
-    fields.alloc_init(FieldType::hybrid_E_fp_external, Direction{1},
-        lev, amrex::convert(ba, Ey_nodal_flag),
-        dm, ncomps, ngEB, 0.0_rt);
-    fields.alloc_init(FieldType::hybrid_E_fp_external, Direction{2},
-        lev, amrex::convert(ba, Ez_nodal_flag),
-        dm, ncomps, ngEB, 0.0_rt);
-    fields.alloc_init(FieldType::hybrid_B_fp_external, Direction{0},
-        lev, amrex::convert(ba, Bx_nodal_flag),
-        dm, ncomps, ngEB, 0.0_rt);
-    fields.alloc_init(FieldType::hybrid_B_fp_external, Direction{1},
-        lev, amrex::convert(ba, By_nodal_flag),
-        dm, ncomps, ngEB, 0.0_rt);
-    fields.alloc_init(FieldType::hybrid_B_fp_external, Direction{2},
-        lev, amrex::convert(ba, Bz_nodal_flag),
-        dm, ncomps, ngEB, 0.0_rt);
+    // Note: hybrid_E_fp_external and hybrid_B_fp_external are allocated
+    // in HybridPICModel::AllocateLevelMFs since they may also be needed
+    // by ExternalScalarPotential
 }
 
 void
