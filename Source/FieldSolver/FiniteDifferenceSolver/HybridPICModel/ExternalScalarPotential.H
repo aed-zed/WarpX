@@ -45,7 +45,7 @@
 class ExternalScalarPotential
 {
 protected:
-    int m_nFields;
+    int m_nFields = 0;
 
     std::vector<std::string> m_field_names;
 
@@ -66,12 +66,20 @@ protected:
     // Store previous time scale values to detect changes
     std::vector<amrex::Real> m_prev_time_scale;
 
+    // Cache for static E field (computed once, reused every timestep)
+    // Indexed as m_E_cached[lev][dim]
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> m_E_cached;
+    bool m_cache_valid = false;
+
 public:
 
     // Default Constructor
     ExternalScalarPotential ();
 
     void ReadParameters ();
+
+    /** Check if this class has external fields that need hybrid_E_fp_external */
+    [[nodiscard]] bool HasExternalFields () const { return m_nFields > 0; }
 
     /**
      * \brief Initialize external scalar potential data.
