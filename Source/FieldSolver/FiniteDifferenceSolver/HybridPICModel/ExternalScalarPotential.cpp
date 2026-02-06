@@ -13,6 +13,7 @@
 
 #include <ablastr/fields/MultiFabRegister.H>
 #include <ablastr/warn_manager/WarnManager.H>
+#include "EmbeddedBoundary/Enabled.H"
 
 using namespace amrex;
 using namespace warpx::fields;
@@ -231,6 +232,10 @@ ExternalScalarPotential::AddToExternalElectricField (
     // Get the electrostatic solver to compute E from Phi
     auto& es_solver = warpx.GetElectrostaticSolver();
 
+    // Get EB update flags for masking (if EB is enabled)
+    const bool eb_on = EB::enabled();
+    auto& ebE = warpx.GetEBUpdateEFlag();
+
     // Get reference to the external E field that we'll add to
     ablastr::fields::MultiLevelVectorField Efield_external =
         warpx.m_fields.get_mr_levels_alldirs(FieldType::hybrid_E_fp_external, warpx.finestLevel());
@@ -240,49 +245,56 @@ ExternalScalarPotential::AddToExternalElectricField (
         // Use the existing boundary potential system via AddBoundaryField
         // This uses boundary.potential_* and warpx.eb_potential from the input
         
-        // \TODO replace black-box hardcode with user control
-        if (std::abs(time_scale_factor - 1.0_rt) < 1e-14) {
-            // No time scaling needed, just add directly
-            es_solver.AddBoundaryField(Efield_external);
-        } else {
-            // Need to apply time scaling
-            // Strategy: compute E into temporary field, scale it, then add
-            
-            // Create temporary storage for the E field from this potential
-            // Need to store unique_ptrs separately, then create a view with raw pointers
-            amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_temp_storage(warpx.finestLevel() + 1);
-            ablastr::fields::MultiLevelVectorField E_temp(warpx.finestLevel() + 1);
-            
-            for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
-                // Create the MultiFabs
-                for (int idim = 0; idim < 3; ++idim) {
-                    E_temp_storage[lev][idim] = std::make_unique<amrex::MultiFab>(
-                        Efield_external[lev][ablastr::fields::Direction{idim}]->boxArray(),
-                        Efield_external[lev][ablastr::fields::Direction{idim}]->DistributionMap(),
-                        1, Efield_external[lev][ablastr::fields::Direction{idim}]->nGrowVect());
-                    E_temp_storage[lev][idim]->setVal(0.0_rt);
-                }
-                
-                // Create view with raw pointers
-                E_temp[lev] = {
-                    E_temp_storage[lev][0].get(),
-                    E_temp_storage[lev][1].get(),
-                    E_temp_storage[lev][2].get()
-                };
+        // Create temporary storage for the E field from this potential
+        // (needed for both EB masking and time scaling)
+        amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_temp_storage(warpx.finestLevel() + 1);
+        ablastr::fields::MultiLevelVectorField E_temp(warpx.finestLevel() + 1);
+        
+        for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
+            for (int idim = 0; idim < 3; ++idim) {
+                E_temp_storage[lev][idim] = std::make_unique<amrex::MultiFab>(
+                    Efield_external[lev][ablastr::fields::Direction{idim}]->boxArray(),
+                    Efield_external[lev][ablastr::fields::Direction{idim}]->DistributionMap(),
+                    1, Efield_external[lev][ablastr::fields::Direction{idim}]->nGrowVect());
+                E_temp_storage[lev][idim]->setVal(0.0_rt);
             }
+            E_temp[lev] = {
+                E_temp_storage[lev][0].get(),
+                E_temp_storage[lev][1].get(),
+                E_temp_storage[lev][2].get()
+            };
+        }
 
-            // Compute E from boundary potential into temporary field
-            es_solver.AddBoundaryField(E_temp);
+        // Compute E from boundary potential into temporary field
+        es_solver.AddBoundaryField(E_temp);
 
-            // Scale and add to external field (y = a*x + y)
-            for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
-                for (int idim = 0; idim < 3; ++idim) {
-                    amrex::MultiFab::Saxpy(
-                        *Efield_external[lev][ablastr::fields::Direction{idim}],
-                        time_scale_factor, *E_temp[lev][ablastr::fields::Direction{idim}],
-                        0, 0, 1, 
-                        Efield_external[lev][ablastr::fields::Direction{idim}]->nGrowVect()
-                    );
+        // Apply EB masking and time scaling, then add to external field
+        for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
+            for (int idim = 0; idim < 3; ++idim) {
+                amrex::MultiFab& E_ext = *Efield_external[lev][ablastr::fields::Direction{idim}];
+                amrex::MultiFab& E_src = *E_temp[lev][ablastr::fields::Direction{idim}];
+                
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+                for (amrex::MFIter mfi(E_ext, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                    auto E_ext_arr = E_ext.array(mfi);
+                    auto E_src_arr = E_src.const_array(mfi);
+                    
+                    // Get EB mask if enabled (mask=0 means inside EB, skip update)
+                    amrex::Array4<int const> mask;
+                    if (eb_on && ebE[lev][idim]) {
+                        mask = ebE[lev][idim]->const_array(mfi);
+                    }
+                    
+                    const amrex::Box& tb = mfi.tilebox(E_ext.ixType().toIntVect());
+                    const amrex::Real scale = time_scale_factor;
+                    
+                    amrex::ParallelFor(tb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                        // Skip cells inside EB (mask == 0)
+                        if (eb_on && mask && mask(i,j,k) == 0) { return; }
+                        E_ext_arr(i,j,k) += scale * E_src_arr(i,j,k);
+                    });
                 }
             }
         }
@@ -308,15 +320,55 @@ ExternalScalarPotential::AddToExternalElectricField (
         
         boundary_handler->setPotentialEB(phi_with_time);
         
-        // Now compute E field from this potential via Poisson solve
-        es_solver.AddBoundaryField(Efield_external);
+        // Create temporary storage for E field (needed for EB masking)
+        amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_temp_storage(warpx.finestLevel() + 1);
+        ablastr::fields::MultiLevelVectorField E_temp(warpx.finestLevel() + 1);
         
-        // Apply time scaling if needed
-        if (std::abs(time_scale_factor - 1.0_rt) > 1e-14) {
-            for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
-                for (int idim = 0; idim < 3; ++idim) {
-                    // Scale the E field that was just computed
-                    Efield_external[lev][ablastr::fields::Direction{idim}]->mult(time_scale_factor);
+        for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
+            for (int idim = 0; idim < 3; ++idim) {
+                E_temp_storage[lev][idim] = std::make_unique<amrex::MultiFab>(
+                    Efield_external[lev][ablastr::fields::Direction{idim}]->boxArray(),
+                    Efield_external[lev][ablastr::fields::Direction{idim}]->DistributionMap(),
+                    1, Efield_external[lev][ablastr::fields::Direction{idim}]->nGrowVect());
+                E_temp_storage[lev][idim]->setVal(0.0_rt);
+            }
+            E_temp[lev] = {
+                E_temp_storage[lev][0].get(),
+                E_temp_storage[lev][1].get(),
+                E_temp_storage[lev][2].get()
+            };
+        }
+        
+        // Compute E field from custom Phi via Poisson solve
+        es_solver.AddBoundaryField(E_temp);
+        
+        // Apply EB masking and time scaling, then add to external field
+        for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
+            for (int idim = 0; idim < 3; ++idim) {
+                amrex::MultiFab& E_ext = *Efield_external[lev][ablastr::fields::Direction{idim}];
+                amrex::MultiFab& E_src = *E_temp[lev][ablastr::fields::Direction{idim}];
+                
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+                for (amrex::MFIter mfi(E_ext, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+                    auto E_ext_arr = E_ext.array(mfi);
+                    auto E_src_arr = E_src.const_array(mfi);
+                    
+                    // Get EB mask if enabled (mask=0 means inside EB, skip update)
+                    amrex::Array4<int const> mask;
+                    if (eb_on && ebE[lev][idim]) {
+                        mask = ebE[lev][idim]->const_array(mfi);
+                    }
+                    
+                    const amrex::Box& tb = mfi.tilebox(E_ext.ixType().toIntVect());
+                    const amrex::Real scale = time_scale_factor;
+                    
+                    amrex::ParallelFor(tb, [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept {
+                        // Skip cells inside EB (mask == 0)
+                        if (eb_on && mask && mask(i,j,k) == 0) { return; }
+                        E_ext_arr(i,j,k) += scale * E_src_arr(i,j,k);
+                    });
                 }
             }
         }
