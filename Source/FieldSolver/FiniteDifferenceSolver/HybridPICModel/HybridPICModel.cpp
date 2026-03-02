@@ -154,6 +154,9 @@ void HybridPICModel::ReadParameters ()
     // External scalar potential - always try to initialize
     // (it will check if user specified fields or boundary potentials)
     m_external_scalar_potential = std::make_unique<ExternalScalarPotential>();
+
+    // Control shielding of external E-field in dense plasma regions
+    pp_hybrid.query("shield_external_E_field_in_dense_plasma", m_shield_external_E_field_in_dense_plasma);
 }
 
 void HybridPICModel::AllocateLevelMFs (
