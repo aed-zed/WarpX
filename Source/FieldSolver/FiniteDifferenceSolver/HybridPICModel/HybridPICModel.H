@@ -230,6 +230,21 @@ public:
     std::unique_ptr<ExternalVectorPotential> m_external_vector_potential;
     std::unique_ptr<ExternalScalarPotential> m_external_scalar_potential;
 
+    /** Control shielding of external E-field in dense plasma regions.
+     * 
+     * When true (default): External E-field is perfectly shielded in dense plasma
+     *                      (rho >= rho_floor). Implementation: E_ext is subtracted in
+     *                      Ohm solver, then added back in field evolution. Net result:
+     *                      particles see only E_Ohm (self-consistent plasma field).
+     *                      Vacuum regions (rho < rho_floor) see only E_external.
+     * 
+     * When false: External E-field applied via superposition everywhere.
+     *             Particles see E_Ohm + E_external in all regions. Allows E×B drift
+     *             from external fields. Violates energy conservation (continuous
+     *             external energy source). Represents electrode/power supply systems.
+     */
+    bool m_shield_external_E_field_in_dense_plasma = true;
+
     /** Gpu Vector with index type of the Jx multifab */
     amrex::GpuArray<int, 3> Jx_IndexType;
     /** Gpu Vector with index type of the Jy multifab */

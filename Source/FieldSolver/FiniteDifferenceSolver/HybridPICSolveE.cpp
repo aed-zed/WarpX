@@ -547,6 +547,7 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
     const bool include_hyper_resistivity_term = hybrid_model->m_include_hyper_resistivity_term;
 
     const bool include_external_fields = hybrid_model->m_add_external_fields;
+    const bool shield_external_E_in_dense_plasma = hybrid_model->m_shield_external_E_field_in_dense_plasma;
 
     const bool holmstrom_vacuum_region = hybrid_model->m_holmstrom_vacuum_region;
 
@@ -786,7 +787,7 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
                     }
                 }
 
-                if (include_external_fields && (rho_val >= rho_floor)) {
+                if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
                     Er(i, j, 0) -= Er_ext(i, j, 0);
                 }
             },
@@ -860,7 +861,7 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
                     }
                 }
 
-                if (include_external_fields && (rho_val >= rho_floor)) {
+                if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
                     Etheta(i, j, 0) -= Etheta_ext(i, j, 0);
                 }
             },
@@ -933,7 +934,7 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
                     }
                 }
 
-                if (include_external_fields && (rho_val >= rho_floor)) {
+                if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
                     Ez(i, j, 0) -= Ez_ext(i, j, 0);
                 }
             }
@@ -990,6 +991,7 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
     const bool include_hyper_resistivity_term = hybrid_model->m_include_hyper_resistivity_term;
 
     const bool include_external_fields = hybrid_model->m_add_external_fields;
+    const bool shield_external_E_in_dense_plasma = hybrid_model->m_shield_external_E_field_in_dense_plasma;
 
     const bool holmstrom_vacuum_region = hybrid_model->m_holmstrom_vacuum_region;
 
@@ -1273,7 +1275,7 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
                 }
             }
 
-            if (include_external_fields && (rho_val >= rho_floor)) {
+            if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
                 Ex(i, j, k) -= Ex_ext(i, j, k);
             }
         });
@@ -1343,7 +1345,7 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
                 }
             }
 
-            if (include_external_fields && (rho_val >= rho_floor)) {
+            if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
                 Ey(i, j, k) -= Ey_ext(i, j, k);
             }
         });
@@ -1413,7 +1415,7 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
                 }
             }
 
-            if (include_external_fields && (rho_val >= rho_floor)) {
+            if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
                 Ez(i, j, k) -= Ez_ext(i, j, k);
             }
         });
