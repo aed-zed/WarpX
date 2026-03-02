@@ -4383,6 +4383,17 @@ Maxwell solver: kinetic-fluid hybrid
 
     If :pp:param:`algo.maxwell_solver` is set to ``hybrid``, this sets the hybrid solver to use split external fields defined in external_vector_potential inputs.
 
+.. pp:param:: hybrid_pic_model.shield_external_E_field_in_dense_plasma
+    :type: ``bool``
+    :default: ``true``
+    :optional:
+
+    If :pp:param:`algo.maxwell_solver` is set to ``hybrid`` and :pp:param:`hybrid_pic_model.add_external_fields` is ``true``, this controls how external electric fields from external potentials (e.g., external scalar potential :math:`\phi_{ext}` such that :math:`\mathbf{E}_{ext} = -\nabla \phi_{ext}`) are applied in the Hybrid-PIC solver.
+
+    When ``true`` (default), external E-fields are subtracted in Ohm's law solver for dense plasma regions (where :math:`\rho \geq \rho_{floor}`) and added back during field evolution. This enforces perfect shielding of external E-fields in dense plasma, preventing :math:`\mathbf{E} \times \mathbf{B}` drift from external fields. This is appropriate for self-consistent field evolution.
+
+    When ``false``, external E-fields are not subtracted in Ohm's law and are applied everywhere. This allows ions to see :math:`\mathbf{E}_{total} = \mathbf{E}_{Ohm} + \mathbf{E}_{ext}` regardless of plasma density, enabling :math:`\mathbf{E} \times \mathbf{B}` drift from external fields (e.g., from electrode potentials). Note: This violates energy conservation as external fields continuously supply energy, representing a physical system with an external power source.
+
 .. pp:param:: external_vector_potential.do_diva_cleaning
     :type: ``bool``
     :default: ``true``
