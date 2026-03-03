@@ -47,3 +47,13 @@ class HybridPICModel(object):
     def density_floor(self, n_floor):
         warpx = libwarpx.libwarpx_so.get_instance()
         return warpx.set_hybrid_pic_density_floor(n_floor)
+
+    @property
+    def shield_external_E_field_in_dense_plasma(self):
+        warpx = libwarpx.libwarpx_so.get_instance()
+        return warpx.get_hybrid_pic_shield_external_E_field_in_dense_plasma()
+
+    @shield_external_E_field_in_dense_plasma.setter
+    def shield_external_E_field_in_dense_plasma(self, shield):
+        warpx = libwarpx.libwarpx_so.get_instance()
+        return warpx.set_hybrid_pic_shield_external_E_field_in_dense_plasma(shield)

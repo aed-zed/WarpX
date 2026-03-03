@@ -1905,6 +1905,11 @@ class HybridPICSolver(picmistandard.base._ClassWithInit):
         This flag can be used to disable divA cleaning. This may be necessary when using a non-periodic
         external A with periodic field boundary conditions.
 
+    shield_external_E_field_in_dense_plasma: bool, default=True
+        When True, external E-field is perfectly shielded in dense plasma regions
+        (rho >= rho_floor). When False, external E-field is applied via superposition
+        everywhere, allowing E×B drift from external fields.
+
     Phi_external: dict, optional
         Function of space and time specifying external (non-plasma) scalar potential fields.
         Similar to A_external, a nested dictionary is passed for each potential field. Each entry can be:
@@ -1957,6 +1962,7 @@ class HybridPICSolver(picmistandard.base._ClassWithInit):
         A_external=None,
         do_external_diva_cleaning=None,
         Phi_external=None,
+        shield_external_E_field_in_dense_plasma=None,
         **kw,
     ):
         self.grid = grid
@@ -1982,6 +1988,8 @@ class HybridPICSolver(picmistandard.base._ClassWithInit):
         self.do_external_diva_cleaning = do_external_diva_cleaning
 
         self.Phi_external = Phi_external
+
+        self.shield_external_E_field_in_dense_plasma = shield_external_E_field_in_dense_plasma
 
         # Handle keyword arguments used in expressions
         self.user_defined_kw = {}
@@ -2019,6 +2027,7 @@ class HybridPICSolver(picmistandard.base._ClassWithInit):
         )
         pywarpx.hybridpicmodel.substeps = self.substeps
         pywarpx.hybridpicmodel.holmstrom_vacuum_region = self.holmstrom_vacuum_region
+        pywarpx.hybridpicmodel.shield_external_E_field_in_dense_plasma = self.shield_external_E_field_in_dense_plasma
         pywarpx.hybridpicmodel.__setattr__(
             "Jx_external_grid_function(x,y,z,t)",
             pywarpx.my_constants.mangle_expression(

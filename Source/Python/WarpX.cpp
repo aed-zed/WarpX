@@ -293,6 +293,19 @@ void init_WarpX (py::module& m)
             },
             "Gets the number of substeps to take in the hybrid solver."
         )
+        .def("set_hybrid_pic_shield_external_E_field_in_dense_plasma",
+            [](WarpX& wx, bool shield) {
+                wx.get_pointer_HybridPICModel()->m_shield_external_E_field_in_dense_plasma = shield;
+            },
+            py::arg("shield"),
+            "Sets whether to shield the external E-field in dense plasma regions."
+        )
+        .def("get_hybrid_pic_shield_external_E_field_in_dense_plasma",
+            [](WarpX& wx) {
+                return wx.get_pointer_HybridPICModel()->m_shield_external_E_field_in_dense_plasma;
+            },
+            "Gets whether the external E-field is shielded in dense plasma regions."
+        )
         .def("add_field_to_diagnostic",
             [](WarpX& wx, const std::string& diag_name, const std::string& field_name, int lev) {
                 auto& multi_diags = wx.GetMultiDiags();
