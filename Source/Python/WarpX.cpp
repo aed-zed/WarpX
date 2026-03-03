@@ -344,5 +344,18 @@ density multiplied by the radial volume factor, not a physical charge density.)p
             },
             "Gets the number of substeps to take in the hybrid solver."
         )
+        .def("set_hybrid_pic_shield_external_E_field_in_dense_plasma",
+            [](WarpX& wx, bool shield) {
+                wx.get_pointer_HybridPICModel()->m_shield_external_E_field_in_dense_plasma = shield;
+            },
+            py::arg("shield"),
+            "Sets whether to shield the external E-field in dense plasma regions."
+        )
+        .def("get_hybrid_pic_shield_external_E_field_in_dense_plasma",
+            [](WarpX& wx) {
+                return wx.get_pointer_HybridPICModel()->m_shield_external_E_field_in_dense_plasma;
+            },
+            "Gets whether the external E-field is shielded in dense plasma regions."
+        )
     ;
 }

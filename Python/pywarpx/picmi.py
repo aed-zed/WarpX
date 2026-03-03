@@ -2312,6 +2312,10 @@ class HybridPICSolver(
         default=None,
         description="Function of space and time specifying external (non-plasma) scalar potential fields, given as a nested dictionary with one entry per potential. Each entry can be a custom function ``{'Phi_external_function': 'expr(x,y,z)', 'Phi_time_external_function': 'expr(t)'}``, loaded from file ``{'read_from_file': True, 'path': '/path/to/file', 'Phi_time_external_function': 'expr(t)'}``, or use the boundary potentials ``{'use_boundary_potentials': True}``, which applies ``boundary.potential_*`` and ``warpx.eb_potential`` as external fields via a Poisson solve.",
     )
+    shield_external_E_field_in_dense_plasma: bool | None = Field(
+        default=None,
+        description="When True, external E-field is perfectly shielded in dense plasma regions (rho >= rho_floor). When False, external E-field is applied via superposition everywhere, allowing ExB drift from external fields. Only has an effect when external fields are enabled (``A_external`` given). (default True)",
+    )
     user_defined_kw: dict = Field(
         default_factory=dict,
         description="Constants referenced in the expressions, collected from otherwise-unrecognized keyword arguments.",
@@ -2380,6 +2384,7 @@ class HybridPICSolver(
         pywarpx.hybridpicmodel.max_substep_attempts = self.max_substep_attempts
         pywarpx.hybridpicmodel.holmstrom_vacuum_region = self.holmstrom_vacuum_region
         pywarpx.hybridpicmodel.vacuum_seam_switch_mode = self.vacuum_seam_switch_mode
+        pywarpx.hybridpicmodel.shield_external_E_field_in_dense_plasma = self.shield_external_E_field_in_dense_plasma
         pywarpx.hybridpicmodel.__setattr__(
             "Jx_external_grid_function(x,y,z,t)",
             pywarpx.my_constants.mangle_expression(
