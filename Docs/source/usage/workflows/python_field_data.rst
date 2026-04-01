@@ -206,3 +206,61 @@ In the example below, a new ``MultiFab`` is created with the same properties as 
     .. literalinclude:: ../../../../Examples/Physics_applications/spacecraft_charging/inputs_test_rz_spacecraft_charging_picmi.py
         :language: python
         :caption: You can copy this file from ``Examples/Physics_applications/spacecraft_charging/inputs_test_rz_secondary_ion_emission_picmi.py``.
+
+Checkpointing custom fields
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Custom fields can be marked for inclusion in checkpoint files, enabling restart capabilities:
+
+.. code-block:: python
+
+   # Mark scalar field for checkpointing
+   sim.fields.set_checkpoint("normalized_Ex", level=0, checkpoint=True)
+
+   # Mark vector field component for checkpointing
+   sim.fields.set_checkpoint("my_vector", dir=0, level=0, checkpoint=True)
+
+On restart, the field must be re-allocated in the user script, then its data
+will be automatically restored from the checkpoint file.
+See ``Examples/Tests/checkpoint_field_register`` for a complete example.
+
+Adding custom fields to diagnostics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Custom fields can also be added to diagnostic output dynamically. This is useful
+because fields created in callbacks (after simulation initialization) cannot be
+included in the diagnostic's initial ``data_list``:
+
+.. code-block:: python
+
+   from pywarpx import callbacks
+
+   # Create a field diagnostic
+   diag = picmi.FieldDiagnostic(name="diag1", period=10,
+                                data_list=["Ex", "Ey", "Ez"])
+   sim.add_diagnostic(diag)
+
+   # Callback runs after initial E-field solve (earliest safe time for field operations)
+   @callbacks.installafterInitEsolve
+   def add_custom_field():
+       # Create a custom field
+       Ex = sim.fields.get("Efield_fp", dir='x', level=0)
+       my_field = sim.fields.alloc_init(
+           name="my_field", level=0,
+           ba=Ex.box_array(), dm=Ex.dm(),
+           ncomp=1, ngrow=Ex.n_grow_vect,
+           initial_value=0.,
+           redistribute=True, redistribute_on_remake=True,
+       )
+
+       # Add it to diagnostic output
+       sim.extension.warpx.add_field_to_diagnostic(
+           diag_name="diag1",  # name of the diagnostic
+           field_name="my_field",  # name of field in MultiFabRegister
+           lev=0)  # refinement level (default: 0)
+
+       # For vector fields, all components are added automatically:
+       # my_vector -> my_vector_x, my_vector_y, my_vector_z
+
+   # Run simulation (this calls initialize_inputs() and initialize_warpx())
+   sim.step(10)
