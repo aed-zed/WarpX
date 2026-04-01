@@ -571,6 +571,56 @@ namespace ablastr::fields
     }
 
     void
+    MultiFabRegister::internal_set_checkpoint (
+        std::string const & name,
+        int level,
+        bool checkpoint
+    )
+    {
+        std::string const internal_name = mf_name(name, level);
+        auto it = m_mf_register.find(internal_name);
+        if (it == m_mf_register.end()) {
+            throw std::runtime_error(
+                "MultiFabRegister::set_checkpoint: field '" + name +
+                "' not found at level " + std::to_string(level)
+            );
+        }
+        it->second.m_checkpoint = checkpoint;
+    }
+
+    void
+    MultiFabRegister::internal_set_checkpoint (
+        std::string const & name,
+        Direction dir,
+        int level,
+        bool checkpoint
+    )
+    {
+        std::string const internal_name = mf_name(name, dir, level);
+        auto it = m_mf_register.find(internal_name);
+        if (it == m_mf_register.end()) {
+            throw std::runtime_error(
+                "MultiFabRegister::set_checkpoint: field '" + name +
+                "' with direction " + std::to_string(static_cast<int>(dir)) +
+                " not found at level " + std::to_string(level)
+            );
+        }
+        it->second.m_checkpoint = checkpoint;
+    }
+
+    std::vector<std::pair<std::string, std::optional<Direction>>>
+    MultiFabRegister::get_checkpoint_fields (int level) const
+    {
+        std::vector<std::pair<std::string, std::optional<Direction>>> result;
+        for (auto const & [internal_name, owner] : m_mf_register) {
+            if (owner.m_level == level && owner.m_checkpoint && !owner.is_alias()) {
+                result.push_back({owner.m_name, owner.m_dir});
+            }
+        }
+        return result;
+    }
+
+    void
     MultiFabRegister::internal_erase (
         std::string const & name,
         int level

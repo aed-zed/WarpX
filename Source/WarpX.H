@@ -1103,6 +1103,7 @@ private:
 
     void InitFromCheckpoint ();
     void PostRestart ();
+    void RestoreCustomFieldsFromCheckpoint ();
 
     void InitPML ();
     void ComputePMLFactors ();
@@ -1351,6 +1352,14 @@ private:
     amrex::Real cfl = amrex::Real(0.999);
 
     std::string restart_chkfile;
+
+    using CustomFieldsList =
+        std::vector<std::pair<std::string, std::optional<ablastr::fields::Direction>>>;
+    /** Custom fields to restore from checkpoint (per level) */
+    std::vector<CustomFieldsList> m_custom_fields_to_restore;
+
+    /** True once custom fields have been restored from checkpoint in the current run. */
+    bool m_custom_fields_restored = false;
 
     /** When `true`, write the diagnostics after restart at the time of the restart. */
     bool write_diagnostics_on_restart = false;

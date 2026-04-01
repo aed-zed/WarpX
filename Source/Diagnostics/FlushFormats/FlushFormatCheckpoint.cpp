@@ -163,6 +163,25 @@ FlushFormatCheckpoint::WriteToFile (
             }
         }
 
+        // Write custom fields marked for checkpointing
+        auto checkpoint_fields = warpx.m_fields.get_checkpoint_fields(lev);
+        for (auto const & [field_name, maybe_dir] : checkpoint_fields) {
+            if (maybe_dir.has_value()) {
+                // Vector field component
+                const Direction dir = *maybe_dir;
+                const std::string dir_str = static_cast<std::string>(dir);
+                const std::string checkpoint_name = field_name + "[dir=" + dir_str + "]";
+                const auto prefix = amrex::MultiFabFileFullPrefix(
+                    lev, checkpointname, default_level_prefix, checkpoint_name);
+                VisMF::Write(*warpx.m_fields.get(field_name, dir, lev), prefix);
+            } else {
+                // Scalar field
+                const auto prefix = amrex::MultiFabFileFullPrefix(
+                    lev, checkpointname, default_level_prefix, field_name);
+                VisMF::Write(*warpx.m_fields.get(field_name, lev), prefix);
+            }
+        }
+
         if (warpx.DoPML()) {
             if (warpx.GetPML(lev)) {
                 warpx.GetPML(lev)->CheckPoint(

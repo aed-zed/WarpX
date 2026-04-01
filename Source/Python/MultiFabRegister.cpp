@@ -207,5 +207,37 @@ void init_MultiFabRegister (py::module & m)
              py::arg("dir"),
              py::arg("level")
         )
+
+        .def("set_checkpoint",
+             py::overload_cast<
+                 std::string,
+                 int,
+                 bool
+             >(&MultiFabRegister::set_checkpoint<std::string>),
+             py::arg("name"),
+             py::arg("level"),
+             py::arg("checkpoint") = true,
+             "Mark a scalar field for inclusion in checkpoint files"
+        )
+
+        .def("set_checkpoint",
+             py::overload_cast<
+                 std::string,
+                 ablastr::fields::Direction,
+                 int,
+                 bool
+             >(&MultiFabRegister::set_checkpoint<std::string>),
+             py::arg("name"),
+             py::arg("dir"),
+             py::arg("level"),
+             py::arg("checkpoint") = true,
+             "Mark a vector field component for inclusion in checkpoint files"
+        )
+
+        .def("get_checkpoint_fields",
+             &MultiFabRegister::get_checkpoint_fields,
+             py::arg("level"),
+             "Get list of all fields marked for checkpointing at a given level"
+        )
     ;
 }
