@@ -19,6 +19,12 @@ void init_MultiFabRegister (py::module & m)
     pyDirection
         .def(py::init<int>())
         .def(py::init<std::string>())
+        .def("__str__", [](const ablastr::fields::Direction& d) {
+            return static_cast<std::string>(d);
+        })
+        .def("__repr__", [](const ablastr::fields::Direction& d) {
+            return "Direction('" + static_cast<std::string>(d) + "')";
+        })
 #if defined(WARPX_DIM_RZ) || defined(WARPX_DIM_RCYLINDER) || defined(WARPX_DIM_RSPHERE)
         .def_property_readonly_static("r", [](py::object /* self */) {
             return ablastr::fields::Direction::r;
@@ -116,7 +122,7 @@ void init_MultiFabRegister (py::module & m)
              py::arg("new_name"),
              py::arg("alias_name"),
              py::arg("level"),
-             py::arg("initial_value")
+             py::arg("initial_value") = py::none()
         )
 
         .def("alias_init",
@@ -132,7 +138,7 @@ void init_MultiFabRegister (py::module & m)
              py::arg("alias_name"),
              py::arg("dir"),
              py::arg("level"),
-             py::arg("initial_value")
+             py::arg("initial_value") = py::none()
         )
 
         .def("has",

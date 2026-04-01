@@ -91,7 +91,7 @@ namespace ablastr::fields
 
         bool operator<(const Direction& other) const
         {
-            return other.dir < this->dir;
+            return this->dir < other.dir;
         }
 
         operator std::string() const
@@ -141,7 +141,7 @@ namespace ablastr::fields
         Direction (char const * c) : dir{Direction{c}} {}
 
         // e.g., 'x'
-        Direction (char const c) : dir{Direction{c}} {}
+        Direction (char const c) : dir{Direction{std::string{1, c}}} {}
 
         // rule of five: define default constructors and the destructor
         //   because we defined a special one above for char
@@ -151,7 +151,6 @@ namespace ablastr::fields
         Direction (Direction&&) = default;
         Direction& operator= (Direction&&) = default;
 
-        /* TODO: just temporary int compatibility */
         operator int() const { return dir; }
 
     };
@@ -238,6 +237,9 @@ namespace ablastr::fields
 
         /** if m_mf is a non-owning alias, this string tracks the name of the owner */
         std::string m_owner;
+
+        /** Base field name (without level/direction encoding) */
+        std::string m_name;
 
         /** Is this part of a vector/tensor? */
         AMREX_INLINE

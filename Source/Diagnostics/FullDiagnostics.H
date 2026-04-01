@@ -5,9 +5,13 @@
 #include "Particles/MultiParticleContainer.H"
 #include "Utils/Parser/IntervalsParser.H"
 
+#include <AMReX_IntVect.H>
 #include <AMReX_REAL.H>
 
+#include <memory>
 #include <string>
+
+class CellCenterFunctor;
 
 class FullDiagnostics final : public Diagnostics
 {
@@ -108,6 +112,20 @@ private:
      *  the run if one of them is specified.
      */
     void BackwardCompatibility ();
+
+    /** Helper: find a field component in MultiFabRegister and return a CellCenterFunctor,
+     *  or nullptr if not found. Handles both scalar fields and vector components
+     *  (e.g., "my_field_x" looks up "my_field" with direction x).
+     *
+     * @param field_name the field name as specified by the user
+     * @param lev the MR level
+     * @param crse_ratio coarsening ratio
+     * @param ncomp number of components
+     * @return unique_ptr to functor, or nullptr if not found
+     */
+    std::unique_ptr<CellCenterFunctor>
+    FindFieldInRegister (const std::string& field_name, int lev,
+                         amrex::IntVect crse_ratio, int ncomp = 1) const;
 };
 
 #endif // WARPX_FULLDIAGNOSTICS_H_

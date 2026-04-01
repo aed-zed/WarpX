@@ -53,7 +53,8 @@ namespace ablastr::fields
                 level,
                 remake,
                 redistribute_on_remake,
-                ""   // we own the memory
+                "",   // we own the memory
+                name  // base field name
             }
         );
         if (!success) {
@@ -107,7 +108,8 @@ namespace ablastr::fields
                 level,
                 remake,
                 redistribute_on_remake,
-                ""   // we own the memory
+                "",   // we own the memory
+                name  // base field name
             }
         );
         if (!success) {
@@ -165,7 +167,8 @@ namespace ablastr::fields
                 level,
                 alias.m_remake,
                 alias.m_redistribute_on_remake,
-                internal_alias_name
+                internal_alias_name,
+                new_name
             }
 
         );
@@ -225,7 +228,8 @@ namespace ablastr::fields
                 level,
                 alias.m_remake,
                 alias.m_redistribute_on_remake,
-                internal_alias_name
+                internal_alias_name,
+                new_name
             }
         );
         if (!success) {
