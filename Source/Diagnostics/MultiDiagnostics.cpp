@@ -85,6 +85,18 @@ MultiDiagnostics::DoComputeAndPack (int step, bool force_flush)
     return result;
 }
 
+bool
+MultiDiagnostics::WillFlushAny (int step) const
+{
+    for (auto const & diag : alldiags) {
+        if (diag->DoComputeAndPack(step, false)) { return true; }
+        for (int i_buffer = 0; i_buffer < diag->getnumbuffers(); ++i_buffer) {
+            if (diag->DoDump(step, i_buffer, false)) { return true; }
+        }
+    }
+    return false;
+}
+
 void
 MultiDiagnostics::FilterComputePackFlush (int step, bool force_flush, bool BackTransform)
 {

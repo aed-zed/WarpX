@@ -336,6 +336,11 @@ WarpX::Evolve (int numsteps)
             reduced_diags->ComputeDiags(step);
             reduced_diags->WriteToFile(step);
         }
+        // execute beforediagnostics callbacks (only when diagnostics will actually be written)
+        if (multi_diags->WillFlushAny(step)) {
+            ExecutePythonCallback("beforediagnostics");
+        }
+
         multi_diags->FilterComputePackFlush( step );
 
         // execute afterdiagnostic callbacks
