@@ -65,18 +65,28 @@ This can be done either from Python callbacks or by modifying C++ code.
    @callbacks.callfrombeforediagnostics
    def compute_diagnostic_fields():
        """Runs before diagnostic output - compute derived quantities"""
-       
+       import numpy as np
+
        # Get input fields
-       Bx = sim.fields.get("Bfield_fp", dir='x', level=0)
-       Jx = sim.fields.get("current_fp", dir='x', level=0)
-       rho = sim.fields.get("rho_fp", level=0)
-       
+       Bx  = sim.fields.get("Bfield_fp", dir='x', level=0)
+       Jx  = sim.fields.get("current_fp", dir='x', level=0)
+       rho = sim.fields.get("rho_fp",              level=0)
+
        # Get diagnostic field to write to
        hall_term = sim.fields.get("hall_term", dir='x', level=0)
-       
-       # Compute and store (simplified example)
-       # Note: This uses global indexing for simplicity
-       hall_term[...] = (Jx[...] * Bx[...]) / rho[...]
+
+       # Efficient in-place computation using to_xp():
+       # Returns a list of per-FAB device arrays (NumPy on CPU, CuPy on GPU).
+       # No device-to-host copy is performed.
+       for jx_fab, bx_fab, rho_fab, out_fab in zip(
+               Jx.to_xp(copy=False), Bx.to_xp(copy=False),
+               rho.to_xp(copy=False), hall_term.to_xp(copy=False)):
+           # Each *_fab is a local array of shape (nx, ny, nz, ncomp)
+           out_fab[..., 0] = (jx_fab[..., 0] * bx_fab[..., 0]) / rho_fab[..., 0]
+
+       # Alternative: mf[...] = value uses global indexing (allgather over MPI
+       # + device-to-host copy) -- simpler to write but significantly slower,
+       # especially on GPU or with many MPI ranks.
 
 **C++ approach** (copy during kernel execution):
 
@@ -142,67 +152,64 @@ Recompute the Hall term in a Python callback:
    
    @callbacks.callfrombeforediagnostics
    def compute_hall_term():
-       """Compute Hall term: (J - Ji) x B / (ne)"""
+       """Compute Hall term: (J - Ji) x B / (ne)
+
+       Uses to_xp() to operate on per-FAB device arrays in-place,
+       avoiding any device-to-host data transfer.
+       """
        from scipy.constants import elementary_charge as q_e
-       
+
        level = 0
-       
-       # Get magnetic field
-       Bx = sim.fields.get("Bfield_fp", dir='x', level=level)
-       By = sim.fields.get("Bfield_fp", dir='y', level=level)
-       Bz = sim.fields.get("Bfield_fp", dir='z', level=level)
-       
-       # Get plasma current (from Ampere's law)
-       Jx = sim.fields.get("hybrid_current_fp_plasma", dir='x', level=level)
-       Jy = sim.fields.get("hybrid_current_fp_plasma", dir='y', level=level)
-       Jz = sim.fields.get("hybrid_current_fp_plasma", dir='z', level=level)
-       
-       # Get ion current
-       Jix = sim.fields.get("current_fp", dir='x', level=level)
-       Jiy = sim.fields.get("current_fp", dir='y', level=level)
-       Jiz = sim.fields.get("current_fp", dir='z', level=level)
-       
-       # Get charge density
-       rho = sim.fields.get("rho_fp", level=level)
-       
-       # Get data using global indexing
-       bx_data = Bx[...]
-       by_data = By[...]
-       bz_data = Bz[...]
-       
-       jx_data = Jx[...]
-       jy_data = Jy[...]
-       jz_data = Jz[...]
-       
-       jix_data = Jix[...]
-       jiy_data = Jiy[...]
-       jiz_data = Jiz[...]
-       
-       rho_data = rho[...]
-       
-       # Compute electron current: Je = J - Ji
-       jex = jx_data - jix_data
-       jey = jy_data - jiy_data
-       jez = jz_data - jiz_data
-       
-       # Cross product: Je x B
-       je_cross_b_x = jey * bz_data - jez * by_data
-       je_cross_b_y = jez * bx_data - jex * bz_data
-       je_cross_b_z = jex * by_data - jey * bx_data
-       
-       # Electron density (quasi-neutrality: ne = |rho| / q_e)
-       n_floor = 1e6  # Adjust based on your simulation
-       ne = np.maximum(np.abs(rho_data) / q_e, n_floor)
-       
-       # Store Hall term = Je x B / (ne)
+
+       Bx  = sim.fields.get("Bfield_fp",               dir='x', level=level)
+       By  = sim.fields.get("Bfield_fp",               dir='y', level=level)
+       Bz  = sim.fields.get("Bfield_fp",               dir='z', level=level)
+       Jx  = sim.fields.get("hybrid_current_fp_plasma", dir='x', level=level)
+       Jy  = sim.fields.get("hybrid_current_fp_plasma", dir='y', level=level)
+       Jz  = sim.fields.get("hybrid_current_fp_plasma", dir='z', level=level)
+       Jix = sim.fields.get("current_fp",              dir='x', level=level)
+       Jiy = sim.fields.get("current_fp",              dir='y', level=level)
+       Jiz = sim.fields.get("current_fp",              dir='z', level=level)
+       rho = sim.fields.get("rho_fp",                           level=level)
+
        hall_x = sim.fields.get("hall_term", dir='x', level=level)
        hall_y = sim.fields.get("hall_term", dir='y', level=level)
        hall_z = sim.fields.get("hall_term", dir='z', level=level)
-       
-       hall_x[...] = je_cross_b_x / ne
-       hall_y[...] = je_cross_b_y / ne
-       hall_z[...] = je_cross_b_z / ne
-   
+
+       # to_xp() returns per-FAB views (NumPy on CPU, CuPy on GPU).
+       # Iterating over FABs avoids device-to-host copies and MPI allgather.
+       for i, (bx, by, bz,
+               jx, jy, jz,
+               jix, jiy, jiz,
+               rho_f, hx, hy, hz) in enumerate(zip(
+                   Bx.to_xp(copy=False),  By.to_xp(copy=False),  Bz.to_xp(copy=False),
+                   Jx.to_xp(copy=False),  Jy.to_xp(copy=False),  Jz.to_xp(copy=False),
+                   Jix.to_xp(copy=False), Jiy.to_xp(copy=False), Jiz.to_xp(copy=False),
+                   rho.to_xp(copy=False),
+                   hall_x.to_xp(copy=False), hall_y.to_xp(copy=False), hall_z.to_xp(copy=False))):
+
+           # Each array has shape (nx+2*ng, ny+2*ng, nz+2*ng, ncomp)
+           b0 = bx[...,0]; b1 = by[...,0]; b2 = bz[...,0]
+           j0 = jx[...,0]; j1 = jy[...,0]; j2 = jz[...,0]
+           i0 = jix[...,0]; i1 = jiy[...,0]; i2 = jiz[...,0]
+
+           # Electron current: Je = J - Ji
+           je0 = j0 - i0;  je1 = j1 - i1;  je2 = j2 - i2
+
+           # Cross product: Je x B
+           jxb0 = je1 * b2 - je2 * b1
+           jxb1 = je2 * b0 - je0 * b2
+           jxb2 = je0 * b1 - je1 * b0
+
+           # Electron density (quasi-neutrality: ne = |rho| / q_e)
+           xp = np  # replaced by cupy automatically via CuPy's __array_ufunc__
+           n_floor = 1e6  # Adjust based on your simulation
+           ne = xp.maximum(xp.abs(rho_f[...,0]) / q_e, n_floor)
+
+           hx[...,0] = jxb0 / ne
+           hy[...,0] = jxb1 / ne
+           hz[...,0] = jxb2 / ne
+
    sim.step()
 
 **Pros:** No C++ changes needed, flexible, easy to prototype
@@ -308,12 +315,17 @@ Additional Examples
    
    @callbacks.callfromafterstep
    def copy_temp_field():
-       """Copy temporary field data to diagnostic field"""
+       """Copy temporary field data to diagnostic field (device-to-device)"""
+       import amrex.space3d as amr
        temp = sim.fields.get("hybrid_rho_fp_temp", level=0)
        diag = sim.fields.get("rho_temp_diagnostic", level=0)
-       
-       # Copy using ParallelCopy or global indexing
-       diag[...] = temp[...]
+
+       # amr.copy_mfab stays on the device -- no host copy, no MPI allgather.
+       # Use this instead of diag[...] = temp[...] whenever both fields share
+       # the same BoxArray and DistributionMapping.
+       amr.copy_mfab(dst=diag, src=temp,
+                     srccomp=0, dstcomp=0, numcomp=1,
+                     nghost=amr.IntVect(0))
 
 **Example: Compute multiple derived fields efficiently**
 
@@ -321,17 +333,20 @@ Additional Examples
 
    @callbacks.callfrombeforediagnostics
    def compute_all_diagnostics():
-       """Compute multiple derived fields at once"""
-       
-       # Get all needed inputs once
+       """Compute multiple derived fields at once, staying on the device"""
+
        Ex = sim.fields.get("Efield_fp", dir='x', level=0)
        Ey = sim.fields.get("Efield_fp", dir='y', level=0)
        Ez = sim.fields.get("Efield_fp", dir='z', level=0)
-       
-       # Compute E magnitude
        e_mag = sim.fields.get("E_magnitude", level=0)
-       e_mag[...] = np.sqrt(Ex[...]**2 + Ey[...]**2 + Ez[...]**2)
-       
+
+       # to_xp() iterates per FAB -- no host copy, works on CPU and GPU.
+       for ex_f, ey_f, ez_f, out_f in zip(
+               Ex.to_xp(copy=False), Ey.to_xp(copy=False),
+               Ez.to_xp(copy=False), e_mag.to_xp(copy=False)):
+           xp = type(ex_f)  # numpy or cupy
+           out_f[..., 0] = xp.sqrt(ex_f[...,0]**2 + ey_f[...,0]**2 + ez_f[...,0]**2)
+
        # Compute E parallel to B (requires B field too)
        # ... more derived quantities ...
 
@@ -344,6 +359,10 @@ Best Practices
 
    - Use ``callfrombeforediagnostics`` callback (not ``callfromafterstep``)
    - This ensures computation only happens when diagnostics are actually written
+   - Use ``mf.to_xp(copy=False)`` to operate on per-FAB device arrays (NumPy
+     on CPU, CuPy on GPU) without any device-to-host copy or MPI allgather.
+     Reserve ``mf[...]`` (global indexing) for quick prototyping or
+     post-processing scripts where performance is not critical.
 
 3. **Memory:** Diagnostic fields consume memory - only allocate what you need
 

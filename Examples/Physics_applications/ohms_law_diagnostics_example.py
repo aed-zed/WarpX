@@ -38,133 +38,119 @@ sim.add_diagnostic(diag)
 def compute_ohm_law_terms():
     """
     Compute and store individual Ohm's law terms.
-    
+
     This function:
-    1. Gets the required fields (E, B, J, Ji, rho, Pe)
+    1. Gets the required fields (B, J, Ji, rho, Pe)
     2. Computes the Hall term: (J - Ji) x B / (ne)
     3. Computes the pressure gradient term: -grad(Pe) / (ne)
     4. (Optional) Resistivity and hyper-resistivity terms
     5. Stores results in custom MultiFabs for diagnostic output
+
+    The computation iterates over per-FAB device arrays obtained via
+    ``to_xp()``.  On CPU this returns NumPy views; on GPU it returns CuPy
+    views -- in both cases the data stays on the device and no host copy
+    is performed.  The result is written back in-place into the diagnostic
+    MultiFabs without any device-to-host round-trip.
+
+    Note: This is a simplified example.  In a production run you would need
+    to interpolate the Yee-staggered fields to a common nodal staggering
+    before computing cross-products.
     """
-    
+
     level = 0
-    
-    # Get existing fields
-    Ex = sim.fields.get("Efield_fp", dir='x', level=level)
-    Ey = sim.fields.get("Efield_fp", dir='y', level=level)
-    Ez = sim.fields.get("Efield_fp", dir='z', level=level)
-    
-    Bx = sim.fields.get("Bfield_fp", dir='x', level=level)
-    By = sim.fields.get("Bfield_fp", dir='y', level=level)
-    Bz = sim.fields.get("Bfield_fp", dir='z', level=level)
-    
-    # Total current (from Ampere's law: J = curl B / mu0 - J_ext)
-    Jx = sim.fields.get("hybrid_current_fp_plasma", dir='x', level=level)
-    Jy = sim.fields.get("hybrid_current_fp_plasma", dir='y', level=level)
-    Jz = sim.fields.get("hybrid_current_fp_plasma", dir='z', level=level)
-    
-    # Ion current (deposited from ion particles)
-    Jix = sim.fields.get("current_fp", dir='x', level=level)
-    Jiy = sim.fields.get("current_fp", dir='y', level=level)
-    Jiz = sim.fields.get("current_fp", dir='z', level=level)
-    
-    # Charge density and electron pressure
-    rho = sim.fields.get("rho_fp", level=level)
-    Pe = sim.fields.get("hybrid_electron_pressure_fp", level=level)
-    
-    # Get or create custom fields for Ohm's law terms
-    # Note: These should have been allocated in afterInitEsolve callback
-    hall_x = sim.fields.get("hall_term", dir='x', level=level)
-    hall_y = sim.fields.get("hall_term", dir='y', level=level)
-    hall_z = sim.fields.get("hall_term", dir='z', level=level)
-    
-    pressure_x = sim.fields.get("pressure_term", dir='x', level=level)
-    pressure_y = sim.fields.get("pressure_term", dir='y', level=level)
-    pressure_z = sim.fields.get("pressure_term", dir='z', level=level)
-    
-    # ========================================================================
-    # Compute Hall term: (J - Ji) x B / (ne)
-    # ========================================================================
-    # Note: This is a simplified version. In reality, you need to:
-    # 1. Interpolate fields to a common staggering (nodal)
-    # 2. Handle the division by charge density carefully (floor values)
-    # 3. Account for the electron charge (ne = -rho/q_e for quasi-neutrality)
-    
     from scipy.constants import elementary_charge as q_e
-    
-    # Simple version using global indexing (copies data)
-    # For production, iterate over MFIter for better performance
-    
-    # Get all data (this returns numpy arrays via global indexing)
-    bx_data = Bx[...]
-    by_data = By[...]
-    bz_data = Bz[...]
-    
-    jx_data = Jx[...]
-    jy_data = Jy[...]
-    jz_data = Jz[...]
-    
-    jix_data = Jix[...]
-    jiy_data = Jiy[...]
-    jiz_data = Jiz[...]
-    
-    rho_data = rho[...]
-    
-    # Electron current: Je = J - Ji
-    jex = jx_data - jix_data
-    jey = jy_data - jiy_data
-    jez = jz_data - jiz_data
-    
-    # Cross product: Je x B
-    je_cross_b_x = jey * bz_data - jez * by_data
-    je_cross_b_y = jez * bx_data - jex * bz_data
-    je_cross_b_z = jex * by_data - jey * bx_data
-    
-    # Electron density (assuming quasi-neutrality: ne = rho / q_e)
-    # Apply floor to avoid division by zero
-    n_floor = 1e6  # Adjust based on your simulation
-    ne = np.maximum(np.abs(rho_data) / q_e, n_floor)
-    
-    # Hall term = (J - Ji) x B / (ne)
-    hall_term_x = je_cross_b_x / ne
-    hall_term_y = je_cross_b_y / ne
-    hall_term_z = je_cross_b_z / ne
-    
-    # Store in custom MultiFabs
-    hall_x[...] = hall_term_x
-    hall_y[...] = hall_term_y
-    hall_z[...] = hall_term_z
-    
-    # ========================================================================
-    # Compute pressure gradient term: -grad(Pe) / (ne)
-    # ========================================================================
-    # This requires computing finite differences
-    # Simplified version - in production, use proper stencils matching WarpX
-    
-    pe_data = Pe[...]
-    
-    # Compute gradients (2nd order central differences)
-    # Note: You need to handle boundaries properly
-    grad_pe_x = np.gradient(pe_data, axis=0)  # Simplified
-    grad_pe_y = np.gradient(pe_data, axis=1)
-    grad_pe_z = np.gradient(pe_data, axis=2)
-    
-    # Pressure term = -grad(Pe) / (ne)
-    pressure_term_x = -grad_pe_x / ne
-    pressure_term_y = -grad_pe_y / ne
-    pressure_term_z = -grad_pe_z / ne
-    
-    # Store in custom MultiFabs
-    pressure_x[...] = pressure_term_x
-    pressure_y[...] = pressure_term_y
-    pressure_z[...] = pressure_term_z
-    
-    # ========================================================================
+
+    # Retrieve MultiFab handles (no data transfer yet)
+    Bx  = sim.fields.get("Bfield_fp",               dir='x', level=level)
+    By  = sim.fields.get("Bfield_fp",               dir='y', level=level)
+    Bz  = sim.fields.get("Bfield_fp",               dir='z', level=level)
+    Jx  = sim.fields.get("hybrid_current_fp_plasma", dir='x', level=level)
+    Jy  = sim.fields.get("hybrid_current_fp_plasma", dir='y', level=level)
+    Jz  = sim.fields.get("hybrid_current_fp_plasma", dir='z', level=level)
+    Jix = sim.fields.get("current_fp",              dir='x', level=level)
+    Jiy = sim.fields.get("current_fp",              dir='y', level=level)
+    Jiz = sim.fields.get("current_fp",              dir='z', level=level)
+    rho = sim.fields.get("rho_fp",                           level=level)
+    Pe  = sim.fields.get("hybrid_electron_pressure_fp",      level=level)
+
+    hall_x = sim.fields.get("hall_term",     dir='x', level=level)
+    hall_y = sim.fields.get("hall_term",     dir='y', level=level)
+    hall_z = sim.fields.get("hall_term",     dir='z', level=level)
+    pres_x = sim.fields.get("pressure_term", dir='x', level=level)
+    pres_y = sim.fields.get("pressure_term", dir='y', level=level)
+    pres_z = sim.fields.get("pressure_term", dir='z', level=level)
+
+    # -------------------------------------------------------------------------
+    # to_xp() returns a list of per-FAB device arrays (NumPy on CPU, CuPy on
+    # GPU) -- one entry per local AMReX Box.  Using copy=False gives a
+    # zero-copy view directly into the MultiFab memory.
+    # Shape of each array: (nx+2*ng, ny+2*ng, nz+2*ng, ncomp) in Fortran order.
+    # -------------------------------------------------------------------------
+    bx_fabs  = Bx.to_xp(copy=False);  by_fabs  = By.to_xp(copy=False)
+    bz_fabs  = Bz.to_xp(copy=False)
+    jx_fabs  = Jx.to_xp(copy=False);  jy_fabs  = Jy.to_xp(copy=False)
+    jz_fabs  = Jz.to_xp(copy=False)
+    jix_fabs = Jix.to_xp(copy=False); jiy_fabs = Jiy.to_xp(copy=False)
+    jiz_fabs = Jiz.to_xp(copy=False)
+    rho_fabs = rho.to_xp(copy=False)
+    pe_fabs  = Pe.to_xp(copy=False)
+
+    hx_fabs = hall_x.to_xp(copy=False); hy_fabs = hall_y.to_xp(copy=False)
+    hz_fabs = hall_z.to_xp(copy=False)
+    px_fabs = pres_x.to_xp(copy=False); py_fabs = pres_y.to_xp(copy=False)
+    pz_fabs = pres_z.to_xp(copy=False)
+
+    # Iterate over local FABs -- no MPI communication needed
+    for i in range(len(hx_fabs)):
+        bx = bx_fabs[i][..., 0]; by = by_fabs[i][..., 0]; bz = bz_fabs[i][..., 0]
+        jx = jx_fabs[i][..., 0]; jy = jy_fabs[i][..., 0]; jz = jz_fabs[i][..., 0]
+        jix = jix_fabs[i][..., 0]; jiy = jiy_fabs[i][..., 0]; jiz = jiz_fabs[i][..., 0]
+        rho_arr = rho_fabs[i][..., 0]
+        pe_arr  = pe_fabs[i][..., 0]
+
+        # Use the array module of whatever device we are on (numpy or cupy)
+        xp = type(bx)
+        if hasattr(xp, 'get_array_module'):
+            xp = xp.get_array_module(bx)
+        else:
+            xp = np
+
+        # =====================================================================
+        # Hall term: (J - Ji) x B / (ne)
+        # =====================================================================
+        jex = jx - jix;  jey = jy - jiy;  jez = jz - jiz
+
+        je_x_b_x = jey * bz - jez * by
+        je_x_b_y = jez * bx - jex * bz
+        je_x_b_z = jex * by - jey * bx
+
+        n_floor = 1e6  # Adjust based on your simulation
+        ne = xp.maximum(xp.abs(rho_arr) / q_e, n_floor)
+
+        # Write results in-place into the diagnostic MultiFab FABs
+        hx_fabs[i][..., 0] = je_x_b_x / ne
+        hy_fabs[i][..., 0] = je_x_b_y / ne
+        hz_fabs[i][..., 0] = je_x_b_z / ne
+
+        # =====================================================================
+        # Pressure gradient term: -grad(Pe) / (ne)
+        # Simplified 2nd-order central differences -- production runs should
+        # use the same stencil WarpX applies internally.
+        # =====================================================================
+        grad_pe_x = xp.gradient(pe_arr, axis=0)
+        grad_pe_y = xp.gradient(pe_arr, axis=1)
+        grad_pe_z = xp.gradient(pe_arr, axis=2)
+
+        px_fabs[i][..., 0] = -grad_pe_x / ne
+        py_fabs[i][..., 0] = -grad_pe_y / ne
+        pz_fabs[i][..., 0] = -grad_pe_z / ne
+
+    # =========================================================================
     # Optional: Compute resistivity term (eta * J) and hyper-resistivity
-    # ========================================================================
+    # =========================================================================
     # These require access to the resistivity parameters from HybridPICModel
-    # and additional field operations (Laplacian for hyper-resistivity)
-    
+    # and additional field operations (Laplacian for hyper-resistivity).
+
     print(f"Computed Ohm's law terms at step {sim.extension.warpx.getistep(0)}")
 
 
