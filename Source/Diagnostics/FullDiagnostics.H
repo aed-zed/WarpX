@@ -25,6 +25,17 @@ public:
      *     is as many steps before the output interval as the averaging period is long.
      */
     enum struct TimeAverageType {None, Static, Dynamic};
+
+    /** Dynamically add a field from the MultiFabRegister to this diagnostic.
+     *  For scalar fields, one component is added; for vector fields, all three
+     *  directional components are added (field_name + "_x/y/z").
+     *  Must be called after InitData() has run (i.e. from afterInitEsolve or later).
+     *
+     * @param field_name base name of the field in the MultiFabRegister
+     * @param lev the AMR level
+     */
+    void AddFieldToOutput (const std::string& field_name, int lev);
+
 private:
     /** Read user-requested parameters for full diagnostics */
     void ReadParameters ();
