@@ -258,6 +258,11 @@ void init_WarpX (py::module& m)
             },
             "Compute the electric field due to the potential specified on the domain boundaries and embedded boundaries."
         )
+        .def("solve_poisson_efield",
+            [] (WarpX& wx) { wx.SolvePoissonEfield(); },
+            "Deposit charge from all species, solve Poisson with current EB/domain BCs, "
+            "and replace Efield_fp with the result."
+        )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
             "Executes projection based divergence cleaner on loaded Bfield_fp_external."
