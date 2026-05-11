@@ -7,7 +7,7 @@ if(WarpX_EB)
         3  # dims
         2  # nprocs
         PICMI_inputs_3d.py  # inputs
-        OFF  # analysis
+        analysis.py  # analysis
         OFF  # checksum
         OFF  # dependency
     )

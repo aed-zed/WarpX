@@ -33,8 +33,8 @@ macro_weight = 1.0e7
 r_inner = 1.0e-2
 r_outer = 6.0e-2
 eb_implicit = (
-    f"(x*x + y*y - {r_inner}*{r_inner})"
-    f"*(x*x + y*y - {r_outer}*{r_outer})"
+    f"-((x*x + y*y) - {r_inner}*{r_inner})"
+    f"*((x*x + y*y) - {r_outer}*{r_outer})"
 )
 target_potential = -1.0e3  # -1 kV on the inner electrode (cathode)
 potential_expression = f"{target_potential}*(x*x+y*y<3.e-2**2)"
@@ -162,7 +162,14 @@ installafterstep(corrector.correct_field)
 # ---------------------------------------------------------------------------
 sim.step(max_steps)
 
-# Final potential check (used by analysis script)
-delta_phi_final = corrector.compute_potential_difference()
+# Final potential check (written to file for analysis script)
+# Integrate Ex from inner electrode surface to outer electrode surface
+# along +x at y=0. This gives approximately V(r_inner) - V(r_outer) = target - 0.
+delta_phi_final = corrector.compute_potential_difference(
+    x_lo_phys=r_inner, x_hi_phys=r_outer
+)
 print(f"FINAL_DELTA_PHI={delta_phi_final:.6e}")
 print(f"TARGET_DELTA_PHI={target_potential:.6e}")
+with open("poisson_correction_result.txt", "w") as f:
+    f.write(f"FINAL_DELTA_PHI={delta_phi_final:.6e}\n")
+    f.write(f"TARGET_DELTA_PHI={target_potential:.6e}\n")
