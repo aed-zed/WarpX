@@ -796,6 +796,9 @@ public:
     /** Electrostatic solve call */
     void ComputeSpaceChargeField (bool reset_fields);
 
+    /** Deposit charge, solve Poisson with current EB/domain BCs, replace Efield_fp */
+    void SolvePoissonEfield ();
+
     // Magnetostatic Solver Interface
     MagnetostaticSolver::VectorPoissonBoundaryHandler m_vector_poisson_boundary_handler;
     amrex::Real magnetostatic_solver_required_precision = amrex::Real(1.e-11);
