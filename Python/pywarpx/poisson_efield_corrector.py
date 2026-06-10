@@ -94,8 +94,8 @@ class PoissonEfieldCorrector:
         mfr = self._mfr()
         lev = 0
 
-        for comp_name in ("x", "y", "z"):
-            direction = self._Direction(comp_name)
+        for comp in (0, 1, 2):
+            direction = self._Direction(comp)
             ref_mf = mfr.get("Efield_fp", dir=direction, level=lev)
             mfr.alloc_init(
                 "Efield_rot",
@@ -159,8 +159,13 @@ class PoissonEfieldCorrector:
         warpx = self._warpx()
         mfr = self._mfr()
 
+        from pywarpx import geometry  # noqa: PLC0415
+
+        is_rz = geometry.dims == "RZ"
+
         geom_data = warpx.Geom(lev=0).data()
-        Ex_mf = mfr.get("Efield_fp", dir=self._Direction("x"), level=0)
+        # Radial (RZ) or x (Cartesian) is direction 0 in both layouts.
+        Ex_mf = mfr.get("Efield_fp", dir=self._Direction(0), level=0)
         Ex_index_type = Ex_mf.box_array().ix_type()
 
         domain = geom_data.Domain().convert(Ex_index_type)
@@ -180,33 +185,39 @@ class PoissonEfieldCorrector:
         i_lo = max(i_lo, lo[0])
         i_hi = min(i_hi, hi[0])
 
-        mid_y = (hi[1] + lo[1]) // 2
-
-        # Use global numpy indexing to read Ex along the integration path
-        # This performs an MPI allgather internally
-        Ex_slice = Ex_mf[i_lo:i_hi + 1, mid_y, :]
-        integral = float(np.sum(Ex_slice))
-        nz = hi[2] - lo[2] + 1
+        # Use global numpy indexing to read E along the radial integration
+        # path; this performs an MPI allgather internally. Average over the
+        # z direction (axisymmetric in RZ; nominally uniform in Cartesian).
+        if is_rz:
+            # RZ MultiFabs are 2D: [ir, iz]
+            E_slice = Ex_mf[i_lo:i_hi + 1, :]
+            nz = hi[1] - lo[1] + 1
+        else:
+            # 3D MultiFabs are [ix, iy, iz]; sample the radial line at y = 0
+            mid_y = (hi[1] + lo[1]) // 2
+            E_slice = Ex_mf[i_lo:i_hi + 1, mid_y, :]
+            nz = hi[2] - lo[2] + 1
+        integral = float(np.sum(E_slice))
         return (dx / nz) * integral
 
     def _save_current_efield(self):
         """Save copies of current E field components for E_rot computation."""
         mfr = self._mfr()
         self._saved_E = {}
-        for comp_name in ("x", "y", "z"):
-            mf = mfr.get("Efield_fp", dir=self._Direction(comp_name), level=0)
-            self._saved_E[comp_name] = mf.copy()
+        for comp in (0, 1, 2):
+            mf = mfr.get("Efield_fp", dir=self._Direction(comp), level=0)
+            self._saved_E[comp] = mf.copy()
 
     def _compute_e_rot(self):
         """Compute E_rot = E_saved - E_poisson and store in diagnostic MultiFabs."""
         mfr = self._mfr()
 
-        for comp_name in ("x", "y", "z"):
-            direction = self._Direction(comp_name)
+        for comp in (0, 1, 2):
+            direction = self._Direction(comp)
             E_poisson = mfr.get("Efield_fp", dir=direction, level=0)
             E_rot = mfr.get("Efield_rot", dir=direction, level=0)
 
-            E_rot.copymf(self._saved_E[comp_name], 0, 0, 1, 0)
+            E_rot.copymf(self._saved_E[comp], 0, 0, 1, 0)
             E_rot.saxpy(-1.0, E_poisson, 0, 0, 1, 0)
 
         del self._saved_E
