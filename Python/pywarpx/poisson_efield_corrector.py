@@ -12,7 +12,7 @@ a fixed potential difference between electrodes.
 Usage::
 
     from pywarpx.poisson_efield_corrector import PoissonEfieldCorrector
-    from pywarpx.callbacks import installafterstep, installafterInitEsolve
+    from pywarpx.callbacks import installafterEsolve, installafterInitEsolve
 
     corrector = PoissonEfieldCorrector(
         sim=sim,
@@ -22,7 +22,13 @@ Usage::
         diag_name="diag1",
     )
     installafterInitEsolve(corrector.setup_after_init)
-    installafterstep(corrector.correct_field)
+    installafterEsolve(corrector.correct_field)
+
+The correction is installed on ``afterEsolve`` (immediately after the Maxwell
+field solve, inside the step) rather than ``afterstep``. Both produce the same
+field for the next particle gather, but ``afterEsolve`` keeps the corrected
+field as the unambiguous final E^{n+1} of the step, before any diagnostics or
+guard-cell/aux bookkeeping.
 """
 
 
@@ -110,11 +116,15 @@ class PoissonEfieldCorrector:
         self._diagnostics_initialized = True
 
     def correct_field(self):
-        """Called via installafterstep. Applies the Poisson correction every N steps."""
+        """Called via installafterEsolve. Applies the Poisson correction every N steps."""
         warpx = self._warpx()
+        # afterEsolve fires inside the step, before istep is incremented, so
+        # getistep returns the 0-based index of the step that just solved its
+        # fields. Use (step + 1) so corrections land at the end of steps
+        # correction_interval, 2*correction_interval, ... (matching afterstep).
         step = warpx.getistep(lev=0)
 
-        if step % self.correction_interval != 0:
+        if (step + 1) % self.correction_interval != 0:
             return
 
         if self.enable_diagnostics:

@@ -13,7 +13,7 @@ close to the target value.
 from scipy.constants import c, e, m_e
 
 from pywarpx import picmi
-from pywarpx.callbacks import installafterInitEsolve, installafterstep
+from pywarpx.callbacks import installafterEsolve, installafterInitEsolve
 from pywarpx.poisson_efield_corrector import PoissonEfieldCorrector
 
 # ---------------------------------------------------------------------------
@@ -32,8 +32,11 @@ macro_weight = 1.0e7
 # Embedded boundary: concentric cylinders (inner cathode, outer anode)
 r_inner = 1.0e-2
 r_outer = 6.0e-2
+# WarpX EB convention: negative = simulation (fluid) region, positive = inside
+# the solid. Product of the two ring factors is negative only in the gap
+# r_inner < r < r_outer, which is the plasma region between the electrodes.
 eb_implicit = (
-    f"-((x*x + y*y) - {r_inner}*{r_inner})"
+    f"((x*x + y*y) - {r_inner}*{r_inner})"
     f"*((x*x + y*y) - {r_outer}*{r_outer})"
 )
 target_potential = -1.0e3  # -1 kV on the inner electrode (cathode)
@@ -155,7 +158,7 @@ corrector = PoissonEfieldCorrector(
 )
 
 installafterInitEsolve(corrector.setup_after_init)
-installafterstep(corrector.correct_field)
+installafterEsolve(corrector.correct_field)
 
 # ---------------------------------------------------------------------------
 # Run
