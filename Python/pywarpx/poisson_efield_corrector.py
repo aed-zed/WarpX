@@ -49,9 +49,9 @@ class PoissonEfieldCorrector:
     potential_expression : str
         EB potential expression (same syntax as picmi.EmbeddedBoundary potential).
     enable_diagnostics : bool, optional
-        If True, register E_rot diagnostic MultiFabs and print Delta-V.
+        If True, register the Efield_correction diagnostic MultiFabs and print Delta-V.
     diag_name : str, optional
-        Name of the FullDiagnostics to add E_rot fields to. Required if
+        Name of the FullDiagnostics to add Efield_correction fields to. Required if
         enable_diagnostics is True.
     """
 
@@ -85,7 +85,7 @@ class PoissonEfieldCorrector:
     def setup_after_init(self):
         """Called via installafterInitEsolve after the initial field solve.
 
-        Sets up diagnostic MultiFabs for E_rot if requested.
+        Sets up the Efield_correction diagnostic MultiFabs if requested.
         """
         if not self.enable_diagnostics:
             return
@@ -98,7 +98,7 @@ class PoissonEfieldCorrector:
             direction = self._Direction(comp)
             ref_mf = mfr.get("Efield_fp", dir=direction, level=lev)
             mfr.alloc_init(
-                "Efield_rot",
+                "Efield_correction",
                 direction,
                 lev,
                 ref_mf.box_array(),
@@ -111,7 +111,7 @@ class PoissonEfieldCorrector:
             )
 
         if self.diag_name is not None:
-            warpx.add_field_to_diagnostic(self.diag_name, "Efield_rot", lev)
+            warpx.add_field_to_diagnostic(self.diag_name, "Efield_correction", lev)
 
         self._diagnostics_initialized = True
 
@@ -134,7 +134,7 @@ class PoissonEfieldCorrector:
         warpx.solve_poisson_efield()
 
         if self.enable_diagnostics and self._diagnostics_initialized:
-            self._compute_e_rot()
+            self._compute_correction_field()
 
         if self.enable_diagnostics:
             delta_phi = self.compute_potential_difference()
@@ -201,23 +201,32 @@ class PoissonEfieldCorrector:
         return (dx / nz) * integral
 
     def _save_current_efield(self):
-        """Save copies of current E field components for E_rot computation."""
+        """Save copies of current E field components for the correction-field diagnostic."""
         mfr = self._mfr()
         self._saved_E = {}
         for comp in (0, 1, 2):
             mf = mfr.get("Efield_fp", dir=self._Direction(comp), level=0)
             self._saved_E[comp] = mf.copy()
 
-    def _compute_e_rot(self):
-        """Compute E_rot = E_saved - E_poisson and store in diagnostic MultiFabs."""
+    def _compute_correction_field(self):
+        """Store E_saved - E_after in the ``Efield_correction`` diagnostic MultiFabs.
+
+        The C++ correction re-solves the irrotational (poloidal) field and, in
+        RZ, preserves E_theta (see report Section 10). This quantity is therefore
+        the field change applied this step -- the poloidal drift that was
+        *removed*, and ~0 in the azimuthal component in RZ -- i.e. how much
+        correction was applied, not the rotational field (which is preserved in
+        E itself). Hence the name ``Efield_correction`` rather than the
+        historical ``Efield_rot``.
+        """
         mfr = self._mfr()
 
         for comp in (0, 1, 2):
             direction = self._Direction(comp)
-            E_poisson = mfr.get("Efield_fp", dir=direction, level=0)
-            E_rot = mfr.get("Efield_rot", dir=direction, level=0)
+            E_after = mfr.get("Efield_fp", dir=direction, level=0)
+            corr_mf = mfr.get("Efield_correction", dir=direction, level=0)
 
-            E_rot.copymf(self._saved_E[comp], 0, 0, 1, 0)
-            E_rot.saxpy(-1.0, E_poisson, 0, 0, 1, 0)
+            corr_mf.copymf(self._saved_E[comp], 0, 0, 1, 0)
+            corr_mf.saxpy(-1.0, E_after, 0, 0, 1, 0)
 
         del self._saved_E
