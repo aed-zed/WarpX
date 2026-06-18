@@ -4,7 +4,7 @@ Analysis script for the Poisson E-field correction test.
 
 Verifies that:
 1. The simulation completed and produced diagnostic output.
-2. The Efield_rot diagnostic fields are present (Poisson correction ran).
+2. The Efield_correction diagnostic fields are present (Poisson correction ran).
 3. The electrode potential difference is maintained near the target value
    (the core purpose of the correction).
 4. The E-field has the physically expected magnitude in the gap between
@@ -34,16 +34,16 @@ def main():
     assert os.path.isdir(diag_dir), f"Diagnostic output not found: {diag_dir}"
     print(f"Diagnostic directory found: {diag_dir}")
 
-    # Check that the E_rot fields are written (proves the Poisson
+    # Check that the Efield_correction fields are written (proves the Poisson
     # correction callback executed and registered diagnostic fields)
     header_file = os.path.join(diag_dir, "Header")
     assert os.path.isfile(header_file), "Header file not found"
     with open(header_file) as f:
         header_text = f.read()
-    assert "Efield_rot_x" in header_text, "Efield_rot_x not in diagnostic"
-    assert "Efield_rot_y" in header_text, "Efield_rot_y not in diagnostic"
-    assert "Efield_rot_z" in header_text, "Efield_rot_z not in diagnostic"
-    print("E_rot diagnostic fields are present")
+    assert "Efield_correction_x" in header_text, "Efield_correction_x not in diagnostic"
+    assert "Efield_correction_y" in header_text, "Efield_correction_y not in diagnostic"
+    assert "Efield_correction_z" in header_text, "Efield_correction_z not in diagnostic"
+    print("Efield_correction diagnostic fields are present")
 
     # Check the reduced diagnostic PN file exists
     pn_file = "diags/reducedfiles/PN.txt"
