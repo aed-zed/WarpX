@@ -611,6 +611,42 @@ ElectrostaticSolver::computePhi_withoutEB (
     bool const is_solver_igf_on_lev0 =
         WarpX::poisson_solver_id == PoissonSolverAlgo::IntegratedGreenFunction;
 
+    struct HomogeneousDomainBoundaryHandler
+    {
+        amrex::Array<amrex::LinOpBCType, AMREX_SPACEDIM> lobc;
+        amrex::Array<amrex::LinOpBCType, AMREX_SPACEDIM> hibc;
+    };
+
+    HomogeneousDomainBoundaryHandler homogeneous_bc;
+
+#if defined(WARPX_DIM_RZ)
+    homogeneous_bc.lobc = {
+        AMREX_D_DECL(
+            amrex::LinOpBCType::Neumann,
+            amrex::LinOpBCType::Dirichlet,
+            amrex::LinOpBCType::Dirichlet
+        )
+    };
+
+    homogeneous_bc.hibc = {
+        AMREX_D_DECL(
+            amrex::LinOpBCType::Dirichlet,
+            amrex::LinOpBCType::Dirichlet,
+            amrex::LinOpBCType::Dirichlet
+        )
+    };
+#else
+    homogeneous_bc.lobc = {
+        AMREX_D_DECL(
+            amrex::LinOpBCType::Dirichlet,
+            amrex::LinOpBCType::Dirichlet,
+            amrex::LinOpBCType::Dirichlet
+        )
+    };
+
+    homogeneous_bc.hibc = homogeneous_bc.lobc;
+#endif
+
     ablastr::fields::computePhi(
         sorted_rho,
         sorted_phi,
@@ -627,6 +663,8 @@ ElectrostaticSolver::computePhi_withoutEB (
         is_igf_2d,
         /* eb_enabled = */ false,
         WarpX::do_single_precision_comms,
-        warpx.refRatio()
+        warpx.refRatio(),
+        /* post_phi_calculation = */ std::nullopt,
+        /* boundary_handler = */ homogeneous_bc
     );
 }
