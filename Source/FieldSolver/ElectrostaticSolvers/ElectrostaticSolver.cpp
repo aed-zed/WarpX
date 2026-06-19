@@ -611,13 +611,7 @@ ElectrostaticSolver::computePhi_withoutEB (
     bool const is_solver_igf_on_lev0 =
         WarpX::poisson_solver_id == PoissonSolverAlgo::IntegratedGreenFunction;
 
-    struct HomogeneousDomainBoundaryHandler
-    {
-        amrex::Array<amrex::LinOpBCType, AMREX_SPACEDIM> lobc;
-        amrex::Array<amrex::LinOpBCType, AMREX_SPACEDIM> hibc;
-    };
-
-    HomogeneousDomainBoundaryHandler homogeneous_bc;
+    PoissonBoundaryHandler homogeneous_bc;
 
 #if defined(WARPX_DIM_RZ)
     homogeneous_bc.lobc = {
