@@ -10,7 +10,9 @@
 
 #include "EmbeddedBoundary/Enabled.H"
 #include "Fields.H"
+#include "FieldSolver/FiniteDifferenceSolver/FiniteDifferenceSolver.H"
 #include "Particles/MultiParticleContainer.H"
+#include "Utils/WarpXConst.H"
 #include "WarpX.H"
 
 #include <ablastr/profiler/ProfilerWrapper.H>
@@ -154,5 +156,140 @@ void WarpX::SolvePoissonEfield ()
                       es.self_fields_max_iters, es.self_fields_verbosity,
                       es.is_igf_2d_slices);
         es.computeE(Efield_fp, amrex::GetVecOfPtrs(phi), beta);
+    }
+}
+
+void WarpX::SolvePoissonEfieldHomogeneousClean ()
+{
+    WARPX_PROFILE("WarpX::SolvePoissonEfieldHomogeneousClean");
+
+    using ablastr::fields::Direction;
+    using ablastr::fields::MultiLevelVectorField;
+    using warpx::fields::FieldType;
+
+    auto& es = GetElectrostaticSolver();
+    const int nlevs = max_level + 1;
+
+    // This homogeneous clean removes exactly the Gauss-law residual
+    // div(E) - rho/eps0, which is also the source of the hyperbolic div(E)
+    // cleaning field F; enabling both double-corrects Gauss's law.
+    if (WarpX::do_dive_cleaning) {
+        ablastr::warn_manager::WMRecordWarning(
+            "Poisson E-field correction",
+            "SolvePoissonEfieldHomogeneousClean and div(E) cleaning "
+            "(warpx.do_dive_cleaning) both act on the Gauss-law residual "
+            "div(E) - rho/eps0; enabling both double-corrects. Disable one.",
+            ablastr::warn_manager::WarnPriority::low);
+    }
+
+    // Allocate temporary rho, phi and divE MultiFabs (all nodal).
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho(nlevs);
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> phi(nlevs);
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> divE(nlevs);
+    const amrex::IntVect ng = get_ng_depos_rho();
+    for (int lev = 0; lev < nlevs; lev++) {
+        amrex::BoxArray nba = boxArray(lev);
+        nba.surroundingNodes();
+        rho[lev]  = std::make_unique<amrex::MultiFab>(nba, DistributionMap(lev), 1, ng);
+        rho[lev]->setVal(0._rt);
+        phi[lev]  = std::make_unique<amrex::MultiFab>(nba, DistributionMap(lev), 1, 1);
+        phi[lev]->setVal(0._rt);
+        divE[lev] = std::make_unique<amrex::MultiFab>(nba, DistributionMap(lev), 1, 0);
+        divE[lev]->setVal(0._rt);
+    }
+
+    // Deposit charge from all species and synchronize (same path as SolvePoissonEfield).
+    mypc->DepositCharge(amrex::GetVecOfPtrs(rho), 0.0_rt);
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_buf(nlevs);
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_cp(nlevs);
+    SyncRho(amrex::GetVecOfPtrs(rho),
+            amrex::GetVecOfPtrs(rho_cp),
+            amrex::GetVecOfPtrs(rho_buf));
+#ifndef WARPX_DIM_RZ
+    for (int lev = 0; lev < nlevs; lev++) {
+        ApplyRhofieldBoundary(lev, rho[lev].get(), PatchType::fine);
+    }
+#endif
+
+    // Build the homogeneous-clean source rho_eff = rho - eps0 * div(E_fp).
+    // computePhi then solves nabla^2 psi = -rho_eff/eps0 = div(E_fp) - rho/eps0,
+    // i.e. psi is the potential of the present field's Gauss-law residual.
+    // div(E) is taken of Efield_fp directly (WarpX::ComputeDivE uses Efield_aux).
+    for (int lev = 0; lev < nlevs; lev++) {
+        const ablastr::fields::VectorField Efield_fp_lev =
+            m_fields.get_alldirs(FieldType::Efield_fp, lev);
+        m_fdtd_solver_fp[lev]->ComputeDivE(Efield_fp_lev, *divE[lev]);
+        amrex::MultiFab::Saxpy(*rho[lev], -PhysConst::epsilon_0, *divE[lev], 0, 0, 1, 0);
+    }
+
+    // Save E_n, then zero the components we will re-solve. In RZ the axisymmetric
+    // gradient has no theta component, so E_theta (comp 1) is left untouched.
+    MultiLevelVectorField Efield_fp =
+        m_fields.get_mr_levels_alldirs(FieldType::Efield_fp, max_level);
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> Esaved(nlevs);
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+#ifdef WARPX_DIM_RZ
+            if (comp == 1) { continue; }
+#endif
+            amrex::MultiFab& mf = *Efield_fp[lev][comp];
+            Esaved[lev][comp] = std::make_unique<amrex::MultiFab>(
+                mf.boxArray(), mf.DistributionMap(), 1, mf.nGrowVect());
+            amrex::MultiFab::Copy(*Esaved[lev][comp], mf, 0, 0, 1, mf.nGrowVect());
+            mf.setVal(0._rt);
+        }
+    }
+
+    // Use homogeneous boundary potentials (EB and domain) for the clean,
+    // saving and restoring the user's potential strings around the solve.
+    auto& bh = es.m_poisson_boundary_handler;
+    const std::string s_eb  = bh->potential_eb_str;
+    const std::string s_xlo = bh->potential_xlo_str;
+    const std::string s_xhi = bh->potential_xhi_str;
+    const std::string s_ylo = bh->potential_ylo_str;
+    const std::string s_yhi = bh->potential_yhi_str;
+    const std::string s_zlo = bh->potential_zlo_str;
+    const std::string s_zhi = bh->potential_zhi_str;
+    bh->potential_xlo_str = "0"; bh->potential_xhi_str = "0";
+    bh->potential_ylo_str = "0"; bh->potential_yhi_str = "0";
+    bh->potential_zlo_str = "0"; bh->potential_zhi_str = "0";
+    bh->BuildParsers();
+    bh->setPotentialEB("0");
+
+    es.setPhiBC(amrex::GetVecOfPtrs(phi), gett_new(0));
+
+    // Solve for psi and write -grad(psi) into the (zeroed) Efield_fp.
+    const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
+    if (EB::enabled()) {
+        es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+                      beta, es.self_fields_required_precision,
+                      es.self_fields_absolute_tolerance,
+                      es.self_fields_max_iters, es.self_fields_verbosity,
+                      es.is_igf_2d_slices, Efield_fp);
+    } else {
+        es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+                      beta, es.self_fields_required_precision,
+                      es.self_fields_absolute_tolerance,
+                      es.self_fields_max_iters, es.self_fields_verbosity,
+                      es.is_igf_2d_slices);
+        es.computeE(Efield_fp, amrex::GetVecOfPtrs(phi), beta);
+    }
+
+    // Restore the user's boundary potentials.
+    bh->potential_xlo_str = s_xlo; bh->potential_xhi_str = s_xhi;
+    bh->potential_ylo_str = s_ylo; bh->potential_yhi_str = s_yhi;
+    bh->potential_zlo_str = s_zlo; bh->potential_zhi_str = s_zhi;
+    bh->BuildParsers();
+    bh->setPotentialEB(s_eb);
+
+    // Add E_n back: Efield_fp = E_n - grad(psi). Cleans Gauss, preserves curl.
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+#ifdef WARPX_DIM_RZ
+            if (comp == 1) { continue; }
+#endif
+            amrex::MultiFab::Add(*Efield_fp[lev][comp], *Esaved[lev][comp],
+                                 0, 0, 1, Esaved[lev][comp]->nGrowVect());
+        }
     }
 }

@@ -263,6 +263,12 @@ void init_WarpX (py::module& m)
             "Deposit charge from all species, solve Poisson with current EB/domain BCs, "
             "and replace Efield_fp with the result."
         )
+        .def("clean_efield_gauss_homogeneous",
+            [] (WarpX& wx) { wx.SolvePoissonEfieldHomogeneousClean(); },
+            "Homogeneous Boris/Marder Gauss clean of Efield_fp: subtract grad(psi) with "
+            "nabla^2 psi = div(E) - rho/eps0 and psi = 0 on all boundaries. Cleans Gauss's "
+            "law and preserves curl(E); does not reset the electrode potential."
+        )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
             "Executes projection based divergence cleaner on loaded Bfield_fp_external."

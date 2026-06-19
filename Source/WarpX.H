@@ -814,6 +814,18 @@ public:
     /** Deposit charge, solve Poisson with current EB/domain BCs, replace Efield_fp */
     void SolvePoissonEfield ();
 
+    /** Homogeneous Boris/Marder Gauss clean of Efield_fp.
+     *
+     * Subtracts a pure gradient grad(psi) from Efield_fp, where
+     * nabla^2 psi = div(E) - rho/eps0 with psi = 0 on all (EB and domain)
+     * boundaries. This removes the Gauss-law residual of the present field and
+     * preserves curl(E) exactly (subtracting a gradient cannot change the curl).
+     * It does NOT reset the electrode potential -- the inter-electrode potential
+     * lives in the harmonic part, which a homogeneous-gauge clean cannot touch
+     * (see implementation report Section 13); pair it with the harmonic bias for
+     * the potential reset. */
+    void SolvePoissonEfieldHomogeneousClean ();
+
     // Magnetostatic Solver Interface
     MagnetostaticSolver::VectorPoissonBoundaryHandler m_vector_poisson_boundary_handler;
     amrex::Real magnetostatic_solver_required_precision = amrex::Real(1.e-11);
