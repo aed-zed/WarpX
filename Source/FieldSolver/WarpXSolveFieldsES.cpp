@@ -242,8 +242,8 @@ void WarpX::SolvePoissonEfield ()
     // the electrode potential a second time.
         es.computePhi_EBhomogeneous(amrex::GetVecOfPtrs(rho_correction),
                                     amrex::GetVecOfPtrs(phi_correction_tmp),
-                                    beta, 1.e-4_rt,
-                                    0._rt,
+                                    beta, es.self_fields_required_precision,
+                                    es.self_fields_absolute_tolerance,
                                     es.self_fields_max_iters, es.self_fields_verbosity,
                                     es.is_igf_2d_slices,
                                     E_irrot_drift);
