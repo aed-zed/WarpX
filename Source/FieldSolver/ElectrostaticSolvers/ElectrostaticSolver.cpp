@@ -625,10 +625,10 @@ ElectrostaticSolver::computePhi_withoutEB (
         WarpX::grid_type,
         is_solver_igf_on_lev0,
         is_igf_2d,
-        // /* eb_enabled = */ false,
+        /* eb_enabled = */ false,
         WarpX::do_single_precision_comms,
         warpx.refRatio(),
-        // /* post_phi_calculation = */ std::nullopt,
+        /* post_phi_calculation = */ std::nullopt,
         // /* m_poisson_boundary_handler = */ std::nullopt_t
     );
 }
