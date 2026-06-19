@@ -13,6 +13,26 @@ if(WarpX_EB)
     )
 
     add_warpx_test(
+        test_3d_poisson_efield_correction_harmonic_bias  # name
+        3  # dims
+        2  # nprocs
+        PICMI_inputs_3d_harmonic_bias.py  # inputs
+        analysis_harmonic_bias.py  # analysis
+        OFF  # checksum
+        OFF  # dependency
+    )
+
+    add_warpx_test(
+        test_3d_poisson_efield_correction_combined  # name
+        3  # dims
+        2  # nprocs
+        PICMI_inputs_3d_combined.py  # inputs
+        analysis_harmonic_bias.py  # analysis
+        OFF  # checksum
+        OFF  # dependency
+    )
+
+    add_warpx_test(
         test_rz_poisson_efield_correction  # name
         RZ  # dims
         2  # nprocs
