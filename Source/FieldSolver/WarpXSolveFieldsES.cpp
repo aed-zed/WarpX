@@ -77,6 +77,43 @@ void WarpX::SolvePoissonEfield ()
             "double-corrects Gauss's law. Disable one.",
             ablastr::warn_manager::WarnPriority::low);
     }
+    
+    // Allocate temporary rho and phi MultiFabs
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho(nlevs);
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> phi(nlevs);
+    const amrex::IntVect ng = get_ng_depos_rho();
+    for (int lev = 0; lev < nlevs; lev++) {
+        amrex::BoxArray nba = boxArray(lev);
+        nba.surroundingNodes();
+        rho[lev] = std::make_unique<amrex::MultiFab>(
+            nba, DistributionMap(lev), 1, ng);
+        rho[lev]->setVal(0.);
+        phi[lev] = std::make_unique<amrex::MultiFab>(
+            nba, DistributionMap(lev), 1, 1);
+        phi[lev]->setVal(0.);
+    }
+
+    // Deposit charge from all particle species
+    mypc->DepositCharge(amrex::GetVecOfPtrs(rho), 0.0_rt);
+
+    // Sync rho: apply filter, MPI exchange, interpolate across MR levels
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_buf(nlevs);
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_cp(nlevs);
+    SyncRho(amrex::GetVecOfPtrs(rho),
+            amrex::GetVecOfPtrs(rho_cp),
+            amrex::GetVecOfPtrs(rho_buf));
+
+#ifndef WARPX_DIM_RZ
+    for (int lev = 0; lev < nlevs; lev++) {
+        ApplyRhofieldBoundary(lev, rho[lev].get(), PatchType::fine);
+    }
+#endif
+
+    // Set boundary potentials (electrode values V_k).
+    es.setPhiBC(amrex::GetVecOfPtrs(phi), gett_new(0));
+
+    MultiLevelVectorField Efield_fp =
+        m_fields.get_mr_levels_alldirs(FieldType::Efield_fp, max_level);
 
     // Save the original grid electric field as E_n.
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_n_storage(nlevs);
@@ -140,43 +177,6 @@ void WarpX::SolvePoissonEfield ()
             E_rot_n[lev][comp] = E_rot_n_storage[lev][comp].get();
         }
     }
-    
-    // Allocate temporary rho and phi MultiFabs
-    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho(nlevs);
-    amrex::Vector<std::unique_ptr<amrex::MultiFab>> phi(nlevs);
-    const amrex::IntVect ng = get_ng_depos_rho();
-    for (int lev = 0; lev < nlevs; lev++) {
-        amrex::BoxArray nba = boxArray(lev);
-        nba.surroundingNodes();
-        rho[lev] = std::make_unique<amrex::MultiFab>(
-            nba, DistributionMap(lev), 1, ng);
-        rho[lev]->setVal(0.);
-        phi[lev] = std::make_unique<amrex::MultiFab>(
-            nba, DistributionMap(lev), 1, 1);
-        phi[lev]->setVal(0.);
-    }
-
-    // Deposit charge from all particle species
-    mypc->DepositCharge(amrex::GetVecOfPtrs(rho), 0.0_rt);
-
-    // Sync rho: apply filter, MPI exchange, interpolate across MR levels
-    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_buf(nlevs);
-    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_cp(nlevs);
-    SyncRho(amrex::GetVecOfPtrs(rho),
-            amrex::GetVecOfPtrs(rho_cp),
-            amrex::GetVecOfPtrs(rho_buf));
-
-#ifndef WARPX_DIM_RZ
-    for (int lev = 0; lev < nlevs; lev++) {
-        ApplyRhofieldBoundary(lev, rho[lev].get(), PatchType::fine);
-    }
-#endif
-
-    // Set boundary potentials (electrode values V_k).
-    es.setPhiBC(amrex::GetVecOfPtrs(phi), gett_new(0));
-
-    MultiLevelVectorField Efield_fp =
-        m_fields.get_mr_levels_alldirs(FieldType::Efield_fp, max_level);
 
     // Solve Poisson and compute E_irrot_n.
     const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
