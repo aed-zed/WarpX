@@ -95,10 +95,10 @@ void WarpX::SolvePoissonEfield ()
         amrex::BoxArray nba = boxArray(lev);
         nba.surroundingNodes();
         rho[lev] = std::make_unique<amrex::MultiFab>(
-            nba, DistributionMap(lev), 1, ng);
+            nba, DistributionMap(lev), WarpX::ncomps, ng);
         rho[lev]->setVal(0.);
         phi[lev] = std::make_unique<amrex::MultiFab>(
-            nba, DistributionMap(lev), 1, 1);
+            nba, DistributionMap(lev), WarpX::ncomps, 1);
         phi[lev]->setVal(0.);
     }
 
@@ -233,10 +233,10 @@ void WarpX::SolvePoissonEfield ()
         amrex::BoxArray nba = boxArray(lev);
         nba.surroundingNodes();
         rho_correction[lev] = std::make_unique<amrex::MultiFab>(
-            nba, DistributionMap(lev), 1, ng);
+            nba, DistributionMap(lev), WarpX::ncomps, ng);
         rho_correction[lev]->setVal(0.);
         phi_correction_tmp[lev] = std::make_unique<amrex::MultiFab>(
-            nba, DistributionMap(lev), 1, 1);
+            nba, DistributionMap(lev), WarpX::ncomps, 1);
         phi_correction_tmp[lev]->setVal(0.);
     }
 
@@ -272,7 +272,7 @@ void WarpX::SolvePoissonEfield ()
     // Solve for phi_correction_tmp with EB geometry, but with homogeneous EB
     // Dirichlet data. This keeps the correction solve EB-aware without applying
     // the electrode potential a second time.
-        es.computePhi_EBhomogeneous(amrex::GetVecOfPtrs(rho_correction),
+        es.computePhi(amrex::GetVecOfPtrs(rho_correction),
                                     amrex::GetVecOfPtrs(phi_correction_tmp),
                                     beta, es.self_fields_required_precision,
                                     es.self_fields_absolute_tolerance,
