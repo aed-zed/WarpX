@@ -585,3 +585,106 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
     // Compute the corresponding electric field, from the potential phi.
     computeE( Efield_fp, amrex::GetVecOfPtrs(phi), beta );
 }
+
+void
+ElectrostaticSolver::computePhi_withoutEB (
+    ablastr::fields::MultiLevelScalarField const& rho,
+    ablastr::fields::MultiLevelScalarField const& phi,
+    std::array<Real, 3> const beta,
+    Real const required_precision,
+    Real absolute_tolerance,
+    int const max_iters,
+    int const verbosity,
+    bool const is_igf_2d,
+    std::optional<ablastr::fields::MultiLevelVectorField> efield
+) const
+{
+    // create a vector to our fields, sorted by level
+    amrex::Vector<amrex::MultiFab *> sorted_rho;
+    amrex::Vector<amrex::MultiFab *> sorted_phi;
+    for (int lev = 0; lev < num_levels; ++lev) {
+        sorted_rho.emplace_back(rho[lev]);
+        sorted_phi.emplace_back(phi[lev]);
+    }
+
+    auto & warpx = WarpX::GetInstance();
+
+    std::optional<EBCalcEfromPhiPerLevel> post_phi_calculation;
+#ifdef AMREX_USE_EB
+    // TODO: double check no overhead occurs on "m_eb_enabled == false"
+    std::optional<amrex::Vector<amrex::EBFArrayBoxFactory const *> > eb_farray_box_factory;
+#else
+    std::optional<amrex::Vector<amrex::FArrayBoxFactory const *> > const eb_farray_box_factory;
+#endif
+    if (EB::enabled() && efield.has_value())
+    {
+        // EB: use AMReX to directly calculate the electric field since with EB's the
+        // simple finite difference scheme in WarpX::computeE sometimes fails
+
+        // TODO: maybe make this a helper function
+        amrex::Vector<amrex::Array<amrex::MultiFab *, AMREX_SPACEDIM>> e_field;
+        for (int lev = 0; lev < num_levels; ++lev) {
+            e_field.push_back(
+#if defined(WARPX_DIM_1D_Z)
+                amrex::Array<amrex::MultiFab*, 1>{
+                    efield.value()[lev][2]
+                }
+#elif defined(WARPX_DIM_RCYLINDER) || defined(WARPX_DIM_RSPHERE)
+                amrex::Array<amrex::MultiFab*, 1>{
+                    efield.value()[lev][0]
+                }
+#elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
+                amrex::Array<amrex::MultiFab*, 2>{
+                    efield.value()[lev][0], efield.value()[lev][2]
+                }
+#elif defined(WARPX_DIM_3D)
+                amrex::Array<amrex::MultiFab *, 3>{
+                    efield.value()[lev][0], efield.value()[lev][1], efield.value()[lev][2]
+                }
+#endif
+            );
+        }
+        post_phi_calculation = EBCalcEfromPhiPerLevel(e_field);
+    }
+
+#ifdef AMREX_USE_EB
+    if (EB::enabled())
+    {
+        amrex::Vector<
+            amrex::EBFArrayBoxFactory const *
+        > factories;
+        for (int lev = 0; lev < num_levels; ++lev) {
+            factories.push_back(&warpx.fieldEBFactory(lev));
+        }
+        eb_farray_box_factory = factories;
+    }
+#endif
+
+    bool const is_solver_igf_on_lev0 =
+        WarpX::poisson_solver_id == PoissonSolverAlgo::IntegratedGreenFunction;
+
+    ablastr::fields::computePhi(
+        sorted_rho,
+        sorted_phi,
+        beta,
+        required_precision,
+        absolute_tolerance,
+        max_iters,
+        verbosity,
+        warpx.Geom(),
+        warpx.DistributionMap(),
+        warpx.boxArray(),
+        WarpX::grid_type,
+        is_solver_igf_on_lev0,
+        is_igf_2d,
+        EB::enabled(),
+        WarpX::do_single_precision_comms,
+        warpx.refRatio(),
+        post_phi_calculation,
+        *m_poisson_boundary_handler,
+        warpx.gett_new(0),
+        eb_farray_box_factory
+    );
+
+}
+
