@@ -103,7 +103,7 @@ class PoissonEfieldCorrector:
                 lev,
                 ref_mf.box_array(),
                 ref_mf.dm(),
-                ref.mf.n_comp,
+                ref_mf.n_comp,
                 ref_mf.n_grow_vect,
                 0.0,
                 True,
