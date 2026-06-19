@@ -627,6 +627,6 @@ ElectrostaticSolver::computePhi_withoutEB (
         is_igf_2d,
         /* eb_enabled = */ false,
         WarpX::do_single_precision_comms,
-        warpx.refRatio(),
+        warpx.refRatio()
     );
 }
