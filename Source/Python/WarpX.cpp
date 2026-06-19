@@ -254,6 +254,13 @@ void init_WarpX (py::module& m)
             },
             "Compute the electric field due to the potential specified on the domain boundaries and embedded boundaries."
         )
+        .def("modify_electrostatic_precision",
+            [] (WarpX& wx, amrex::Real precision) {
+                wx.GetElectrostaticSolver().self_fields_required_precision = precision ;
+            },            
+            py::arg("precision"),
+            "Set the relative precision for the electrostatic self-field solver."
+        )
         .def("solve_poisson_efield",
             [] (WarpX& wx) { wx.SolvePoissonEfield(); },
             "Deposit charge from all species, solve Poisson with current EB/domain BCs, "

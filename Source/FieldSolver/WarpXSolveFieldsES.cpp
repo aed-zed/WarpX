@@ -237,10 +237,12 @@ void WarpX::SolvePoissonEfield ()
 #endif
 
     // Solve for phi_correction_tmp without EB, even when EB is enabled globally.
+                            // beta, es.self_fields_required_precision,
+                            // es.self_fields_absolute_tolerance,
     es.computePhi_withoutEB(amrex::GetVecOfPtrs(rho_correction),
                             amrex::GetVecOfPtrs(phi_correction_tmp),
-                            beta, es.self_fields_required_precision,
-                            es.self_fields_absolute_tolerance,
+                            beta, 1.e-4_rt,
+                            0._rt,
                             es.self_fields_max_iters, es.self_fields_verbosity,
                             es.is_igf_2d_slices);
 
