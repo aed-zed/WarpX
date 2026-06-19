@@ -628,7 +628,8 @@ ElectrostaticSolver::computePhi_withoutEB (
         /* eb_enabled = */ false,
         WarpX::do_single_precision_comms,
         warpx.refRatio(),
-        /* post_phi_calculation = */ std::nullopt,
-        /* m_poisson_boundary_handler = */ std::nullopt_t
     );
+    
+        // /* post_phi_calculation = */ std::nullopt,
+        // /* m_poisson_boundary_handler = */ std::nullopt
 }
