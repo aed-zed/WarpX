@@ -249,6 +249,15 @@ void WarpX::SolvePoissonEfield ()
         rho_correction[lev]->mult(ablastr::constant::SI::epsilon_0);
     }
 
+    debug_checkpoint("Syncing rho field boundary");
+
+    // Sync rho_correction before using it as the source for the second Poisson solve.
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_correction_buf(nlevs);
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_correction_cp(nlevs);
+    SyncRho(amrex::GetVecOfPtrs(rho_correction),
+            amrex::GetVecOfPtrs(rho_correction_cp),
+            amrex::GetVecOfPtrs(rho_correction_buf));
+
     debug_checkpoint("Apply rho field boundary");
 
 #ifndef WARPX_DIM_RZ
