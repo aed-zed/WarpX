@@ -222,21 +222,23 @@ void WarpX::SolvePoissonEfieldHomogeneousClean ()
         amrex::MultiFab::Saxpy(*rho[lev], -PhysConst::epsilon_0, *divE[lev], 0, 0, 1, 0);
     }
 
-    // Save E_n, then zero the components we will re-solve. In RZ the axisymmetric
-    // gradient has no theta component, so E_theta (comp 1) is left untouched.
+    // Accumulate -grad(psi) into a temporary field, then subtract that gradient
+    // from the live field: Efield_fp <- Efield_fp - grad(psi). A temp avoids a
+    // full-field copy of E_n, leaves Efield_fp untouched until the final add,
+    // and needs no RZ special case (the EB solve writes only r,z, so the temp's
+    // theta component stays zero).
     MultiLevelVectorField Efield_fp =
         m_fields.get_mr_levels_alldirs(FieldType::Efield_fp, max_level);
-    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> Esaved(nlevs);
+
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> Egrad_owner(nlevs);
+    MultiLevelVectorField Egrad(nlevs);
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
-#ifdef WARPX_DIM_RZ
-            if (comp == 1) { continue; }
-#endif
-            amrex::MultiFab& mf = *Efield_fp[lev][comp];
-            Esaved[lev][comp] = std::make_unique<amrex::MultiFab>(
-                mf.boxArray(), mf.DistributionMap(), 1, mf.nGrowVect());
-            amrex::MultiFab::Copy(*Esaved[lev][comp], mf, 0, 0, 1, mf.nGrowVect());
-            mf.setVal(0._rt);
+            const amrex::MultiFab& ref = *Efield_fp[lev][comp];
+            Egrad_owner[lev][comp] = std::make_unique<amrex::MultiFab>(
+                ref.boxArray(), ref.DistributionMap(), 1, ref.nGrowVect());
+            Egrad_owner[lev][comp]->setVal(0._rt);
+            Egrad[lev][comp] = Egrad_owner[lev][comp].get();
         }
     }
 
@@ -258,21 +260,21 @@ void WarpX::SolvePoissonEfieldHomogeneousClean ()
 
     es.setPhiBC(amrex::GetVecOfPtrs(phi), gett_new(0));
 
-    // Solve for psi and write -grad(psi) into the (zeroed) Efield_fp.
+    // Compute -grad(psi) into Egrad (EB path overwrites it; non-EB adds to zero).
     const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
     if (EB::enabled()) {
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
                       es.self_fields_absolute_tolerance,
                       es.self_fields_max_iters, es.self_fields_verbosity,
-                      es.is_igf_2d_slices, Efield_fp);
+                      es.is_igf_2d_slices, Egrad);
     } else {
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
                       es.self_fields_absolute_tolerance,
                       es.self_fields_max_iters, es.self_fields_verbosity,
                       es.is_igf_2d_slices);
-        es.computeE(Efield_fp, amrex::GetVecOfPtrs(phi), beta);
+        es.computeE(Egrad, amrex::GetVecOfPtrs(phi), beta);
     }
 
     // Restore the user's boundary potentials.
@@ -282,14 +284,11 @@ void WarpX::SolvePoissonEfieldHomogeneousClean ()
     bh->BuildParsers();
     bh->setPotentialEB(s_eb);
 
-    // Add E_n back: Efield_fp = E_n - grad(psi). Cleans Gauss, preserves curl.
+    // Efield_fp <- Efield_fp - grad(psi). Cleans Gauss, preserves curl.
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
-#ifdef WARPX_DIM_RZ
-            if (comp == 1) { continue; }
-#endif
-            amrex::MultiFab::Add(*Efield_fp[lev][comp], *Esaved[lev][comp],
-                                 0, 0, 1, Esaved[lev][comp]->nGrowVect());
+            amrex::MultiFab::Add(*Efield_fp[lev][comp], *Egrad_owner[lev][comp],
+                                 0, 0, 1, Egrad_owner[lev][comp]->nGrowVect());
         }
     }
 }
