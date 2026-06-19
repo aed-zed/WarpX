@@ -251,7 +251,7 @@ void WarpX::SolvePoissonEfield ()
 
     debug_checkpoint("Syncing rho field boundary");
 
-    // Sync rho_correction before using it as the source for the second Poisson solve.
+    // Sync rho_correction before using it as the source for the second Poisson solve. test
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_correction_buf(nlevs);
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_correction_cp(nlevs);
     SyncRho(amrex::GetVecOfPtrs(rho_correction),
