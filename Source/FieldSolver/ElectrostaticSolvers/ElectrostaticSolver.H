@@ -108,6 +108,18 @@ public:
         int verbosity,
         bool is_igf_2d_slices
     ) const;
+    
+    void computePhi_EBhomogeneous (
+        ablastr::fields::MultiLevelScalarField const& rho,
+        ablastr::fields::MultiLevelScalarField const& phi,
+        std::array<amrex::Real, 3> beta,
+        amrex::Real required_precision,
+        amrex::Real absolute_tolerance,
+        int max_iters,
+        int verbosity,
+        bool is_igf_2d_slices,
+        ablastr::fields::MultiLevelVectorField const& efield
+    ) const;
 
     /**
      * \brief Compute the electric field that corresponds to `phi`, and
