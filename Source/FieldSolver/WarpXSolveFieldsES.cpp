@@ -61,6 +61,16 @@ void WarpX::SolvePoissonEfield ()
         amrex::Print() << msg << "\n";
     };
     amrex::IntVect const no_grow = amrex::IntVect(AMREX_D_DECL(0, 0, 0));
+    auto sync_vector_field = [&] (
+        ablastr::fields::MultiLevelVectorField const& field
+    )
+    {
+        for (int lev = 0; lev < nlevs; lev++) {
+            for (int comp = 0; comp < 3; comp++) {
+                field[lev][comp]->FillBoundaryAndSync(Geom(lev).periodicity());
+            }
+        }
+    };
 
     // The correction subtracts a pure gradient from E (see implementation
     // report, Section 10). This is only consistent on a STAGGERED (Yee) grid:
@@ -124,6 +134,8 @@ void WarpX::SolvePoissonEfield ()
 
     MultiLevelVectorField Efield_fp =
         m_fields.get_mr_levels_alldirs(FieldType::Efield_fp, max_level);
+
+    sync_vector_field(Efield_fp);
 
     debug_checkpoint("Allocating Fields");
 
@@ -210,6 +222,7 @@ void WarpX::SolvePoissonEfield ()
         es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
     }
 
+    sync_vector_field(E_irrot_n);
     debug_checkpoint("after E_irrot_n computing E_diff");
 
     // Compute E_diff = E_n - E_irrot_n.
@@ -287,18 +300,16 @@ void WarpX::SolvePoissonEfield ()
                                     es.is_igf_2d_slices,
                                     E_irrot_drift);
     } else {
-                                // beta, es.self_fields_required_precision,
-                                // es.self_fields_absolute_tolerance,
-        es.computePhi_withoutEB(amrex::GetVecOfPtrs(rho_correction),
-                                amrex::GetVecOfPtrs(phi_correction_tmp),
-                                beta, 1.e-4_rt,
-                                0._rt,
-                                es.self_fields_max_iters, es.self_fields_verbosity,
-                                es.is_igf_2d_slices);
+        es.computePhi(amrex::GetVecOfPtrs(rho_correction), amrex::GetVecOfPtrs(phi_correction_tmp),
+                      beta, es.self_fields_required_precision,
+                      es.self_fields_absolute_tolerance,
+                      es.self_fields_max_iters, es.self_fields_verbosity,
+                      es.is_igf_2d_slices);
         // Compute E_irrot_drift = -grad(phi_correction_tmp) into a temporary field.
         es.computeE(E_irrot_drift, amrex::GetVecOfPtrs(phi_correction_tmp), beta);
     }
 
+    sync_vector_field(E_irrot_drift);
     debug_checkpoint("Computing E_rot_n");
 
     // Compute E_rot_n = (E_n - E_irrot_n) - E_irrot_drift.
@@ -314,6 +325,7 @@ void WarpX::SolvePoissonEfield ()
         }
     }
 
+    sync_vector_field(E_rot_n);
     debug_checkpoint("Replacing Efield");
 
     // Replace the grid electric field with E_irrot_n + E_rot_n.
@@ -328,4 +340,6 @@ void WarpX::SolvePoissonEfield ()
             Efield_fp[lev][comp]->FillBoundary(Geom(lev).periodicity());
         }
     }
+    
+    sync_vector_field(Efield_fp);
 }
