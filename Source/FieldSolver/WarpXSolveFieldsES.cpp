@@ -221,7 +221,7 @@ void WarpX::SolvePoissonEfield ()
                       es.is_igf_2d_slices);
         es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
     }
-
+    amrex::Gpu::synchronize();
     sync_vector_field(E_irrot_n);
     debug_checkpoint("after E_irrot_n computing E_diff");
 
@@ -308,7 +308,7 @@ void WarpX::SolvePoissonEfield ()
         // Compute E_irrot_drift = -grad(phi_correction_tmp) into a temporary field.
         es.computeE(E_irrot_drift, amrex::GetVecOfPtrs(phi_correction_tmp), beta);
     }
-
+    amrex::Gpu::synchronize();
     sync_vector_field(E_irrot_drift);
     debug_checkpoint("Computing E_rot_n");
 

@@ -798,7 +798,7 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
     print_eb_handler_probe(
         "computePhi_EBhomogeneous: homogeneous copy before setPotentialEB",
         homogeneous_bc);
-    homogeneous_bc.setPotentialEB("1.e-30");
+    homogeneous_bc.setPotentialEB("0.");
 
     print_eb_handler_probe(
         "computePhi_EBhomogeneous: homogeneous copy after setPotentialEB",
