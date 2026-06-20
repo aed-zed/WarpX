@@ -709,15 +709,13 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         auto const plo = warpx.Geom(0).ProbLoArray();
         auto const phi = warpx.Geom(0).ProbHiArray();
 
-        amrex::Real const x = amrex::Real(0.5) * (plo[0] + phi[0]);
-
 #if defined(WARPX_DIM_3D)
-        amrex::Real const y = amrex::Real(0.5) * (plo[1] + phi[1]);
-        amrex::Real const z = amrex::Real(0.5) * (plo[2] + phi[2]);
-#elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
-        amrex::Real const z = amrex::Real(0.5) * (plo[1] + phi[1]);
+        amrex::Real const x_probe = 1.e-3_rt;
+        amrex::Real const y_probe = 0._rt;
+        amrex::Real const z_probe = 0.442_rt;
 #else
-        amrex::Real const z = amrex::Real(0.5) * (plo[0] + phi[0]);
+        amrex::Real const x_probe = 1.e-3_rt;
+        amrex::Real const z_probe = 0.442_rt;
 #endif
 
         amrex::Print() << label << "\n";
@@ -796,6 +794,7 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         *m_poisson_boundary_handler);
         
     PoissonBoundaryHandler homogeneous_bc = *m_poisson_boundary_handler;
+    homogeneous_bc.phi_EB_only_t = true;
     print_eb_handler_probe(
         "computePhi_EBhomogeneous: homogeneous copy before setPotentialEB",
         homogeneous_bc);
