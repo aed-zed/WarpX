@@ -286,9 +286,6 @@ void WarpX::SolvePoissonEfield ()
                     << lev << " = "
                     << phi_correction_tmp[lev]->norm0() << "\n";
     }
-    for (int lev = 0; lev < nlevs; lev++) {
-        rho_correction[lev]->setVal(0.);
-    }
 
     if (EB::enabled()) {
     // Solve for phi_correction_tmp with EB geometry, but with homogeneous EB
