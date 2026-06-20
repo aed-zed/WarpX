@@ -371,7 +371,7 @@ computePhi (
                         
                         amrex::Print() << "ablastr::computePhi: EB Dirichlet callable branch\n";
                         amrex::Print() << "  potential_eb_str = " << boundary_handler.potential_eb_str << "\n";
-                        amrex::Print() << "  potential_eb_t(t) = " << boundary_handler.getPhiEB(current_time.value()) << "\n";
+                        // amrex::Print() << "  potential_eb_t(t) = " << boundary_handler.getPhiEB(current_time.value()) << "\n";
 
                         linop_nodelap->setEBDirichlet(boundary_handler.getPhiEB(current_time.value()));
                     }
