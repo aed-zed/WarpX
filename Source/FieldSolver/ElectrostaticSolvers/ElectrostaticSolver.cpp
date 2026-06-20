@@ -677,6 +677,15 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
     ablastr::fields::MultiLevelVectorField const& efield
 ) const
 {
+    auto debug_checkpoint = [] (char const* msg)
+    {
+        amrex::Gpu::synchronize();
+        amrex::ParallelDescriptor::Barrier();
+        amrex::Print() << msg << "\n";
+    };
+
+    debug_checkpoint("computePhi_EBhomogeneous: entry");
+
     // create a vector to our fields, sorted by level
     amrex::Vector<amrex::MultiFab *> sorted_rho;
     amrex::Vector<amrex::MultiFab *> sorted_phi;
@@ -684,10 +693,16 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         sorted_rho.emplace_back(rho[lev]);
         sorted_phi.emplace_back(phi[lev]);
     }
+    
+    debug_checkpoint("computePhi_EBhomogeneous: after sorted fields");
+
 
     auto & warpx = WarpX::GetInstance();
 
     std::optional<EBCalcEfromPhiPerLevel> post_phi_calculation;
+    
+    debug_checkpoint("computePhi_EBhomogeneous: after post phi calculation");
+
 #ifdef AMREX_USE_EB
     std::optional<amrex::Vector<amrex::EBFArrayBoxFactory const *> > eb_farray_box_factory;
 #else
@@ -717,6 +732,9 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         );
     }
     post_phi_calculation = EBCalcEfromPhiPerLevel(e_field);
+    
+    debug_checkpoint("computePhi_EBhomogeneous: after post phi calculation2");
+
 
 #ifdef AMREX_USE_EB
     if (EB::enabled())
@@ -730,14 +748,22 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         eb_farray_box_factory = factories;
     }
 #endif
+    
+    debug_checkpoint("computePhi_EBhomogeneous: after EBFactory");
+
 
     PoissonBoundaryHandler homogeneous_bc;
     homogeneous_bc.lobc = m_poisson_boundary_handler->lobc;
     homogeneous_bc.hibc = m_poisson_boundary_handler->hibc;
     homogeneous_bc.setPotentialEB("0");
+    
+    debug_checkpoint("computePhi_EBhomogeneous: after homogeneous_bc");
+
 
     bool const is_solver_igf_on_lev0 =
         WarpX::poisson_solver_id == PoissonSolverAlgo::IntegratedGreenFunction;
+
+    debug_checkpoint("computePhi_EBhomogeneous: before ablastr computePhi");
 
     ablastr::fields::computePhi(
         sorted_rho,
@@ -761,4 +787,5 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         warpx.gett_new(0),
         eb_farray_box_factory
     );
+    debug_checkpoint("computePhi_EBhomogeneous: after ablastr computePhi");
 }

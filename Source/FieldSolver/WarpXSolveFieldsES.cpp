@@ -272,7 +272,7 @@ void WarpX::SolvePoissonEfield ()
     // Solve for phi_correction_tmp with EB geometry, but with homogeneous EB
     // Dirichlet data. This keeps the correction solve EB-aware without applying
     // the electrode potential a second time.
-        es.computePhi(amrex::GetVecOfPtrs(rho_correction),
+        es.computePhi_EBhomogeneous(amrex::GetVecOfPtrs(rho_correction),
                                     amrex::GetVecOfPtrs(phi_correction_tmp),
                                     beta, es.self_fields_required_precision,
                                     es.self_fields_absolute_tolerance,
