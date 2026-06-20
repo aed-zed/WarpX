@@ -710,12 +710,12 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         auto const phi = warpx.Geom(0).ProbHiArray();
 
 #if defined(WARPX_DIM_3D)
-        amrex::Real const x_probe = 1.e-3_rt;
-        amrex::Real const y_probe = 0._rt;
-        amrex::Real const z_probe = 0.442_rt;
+        amrex::Real const x = 1.e-3_rt;
+        amrex::Real const y = 0._rt;
+        amrex::Real const z = 0.442_rt;
 #else
-        amrex::Real const x_probe = 1.e-3_rt;
-        amrex::Real const z_probe = 0.442_rt;
+        amrex::Real const x = 1.e-3_rt;
+        amrex::Real const z = 0.442_rt;
 #endif
 
         amrex::Print() << label << "\n";
