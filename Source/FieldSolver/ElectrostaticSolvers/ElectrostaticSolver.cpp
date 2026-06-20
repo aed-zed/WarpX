@@ -753,7 +753,7 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
 
         
     PoissonBoundaryHandler homogeneous_bc = *m_poisson_boundary_handler;
-    homogeneous_bc.setPotentialEB("0*x + 0*y + 0*z + 0*t");
+    homogeneous_bc.setPotentialEB("0");
     // if (m_poisson_boundary_handler->phi_EB_only_t) {
     //     homogeneous_bc.setPotentialEB("0");
     // } else {
