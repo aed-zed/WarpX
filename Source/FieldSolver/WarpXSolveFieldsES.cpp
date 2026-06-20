@@ -263,13 +263,12 @@ void WarpX::SolvePoissonEfield ()
     }
 
     debug_checkpoint("Syncing rho field boundary");
-
-    // Sync rho_correction before using it as the source for the second Poisson solve. test
-    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_correction_buf(nlevs);
-    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_correction_cp(nlevs);
-    SyncRho(amrex::GetVecOfPtrs(rho_correction),
-            amrex::GetVecOfPtrs(rho_correction_cp),
-            amrex::GetVecOfPtrs(rho_correction_buf));
+    
+    // Make shared nodal values consistent.
+    for (int lev = 0; lev < nlevs; lev++) {
+        rho_correction[lev]->OverrideSync(Geom(lev).periodicity());
+        rho_correction[lev]->FillBoundary(Geom(lev).periodicity());
+    }
 
     debug_checkpoint("Apply rho field boundary");
 
