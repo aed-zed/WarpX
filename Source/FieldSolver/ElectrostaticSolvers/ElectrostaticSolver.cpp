@@ -751,11 +751,13 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
     
     debug_checkpoint("computePhi_EBhomogeneous: after EBFactory");
 
-
-    PoissonBoundaryHandler homogeneous_bc;
-    homogeneous_bc.lobc = m_poisson_boundary_handler->lobc;
-    homogeneous_bc.hibc = m_poisson_boundary_handler->hibc;
-    homogeneous_bc.setPotentialEB("0");
+        
+    PoissonBoundaryHandler homogeneous_bc = *m_poisson_boundary_handler;
+    if (m_poisson_boundary_handler->phi_EB_only_t) {
+        homogeneous_bc.setPotentialEB("0");
+    } else {
+        homogeneous_bc.setPotentialEB("0*x + 0*y + 0*z + 0*t");
+    }
     
     debug_checkpoint("computePhi_EBhomogeneous: after homogeneous_bc");
 
