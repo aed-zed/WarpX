@@ -268,6 +268,12 @@ void WarpX::SolvePoissonEfield ()
 
     debug_checkpoint("Computing E_irrot_drift");
 
+    for (int lev = 0; lev < nlevs; lev++) {
+        amrex::Print() << "phi_correction_tmp norm0 before EB homogeneous solve, lev "
+                    << lev << " = "
+                    << phi_correction_tmp[lev]->norm0() << "\n";
+    }
+
     if (EB::enabled()) {
     // Solve for phi_correction_tmp with EB geometry, but with homogeneous EB
     // Dirichlet data. This keeps the correction solve EB-aware without applying

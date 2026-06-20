@@ -699,6 +699,46 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
 
     auto & warpx = WarpX::GetInstance();
 
+    auto print_eb_handler_probe = [&warpx] (
+        char const* label,
+        PoissonBoundaryHandler const& handler
+    )
+    {
+        amrex::Real const t = warpx.gett_new(0);
+
+        auto const plo = warpx.Geom(0).ProbLoArray();
+        auto const phi = warpx.Geom(0).ProbHiArray();
+
+        amrex::Real const x = amrex::Real(0.5) * (plo[0] + phi[0]);
+
+#if defined(WARPX_DIM_3D)
+        amrex::Real const y = amrex::Real(0.5) * (plo[1] + phi[1]);
+        amrex::Real const z = amrex::Real(0.5) * (plo[2] + phi[2]);
+#elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
+        amrex::Real const z = amrex::Real(0.5) * (plo[1] + phi[1]);
+#else
+        amrex::Real const z = amrex::Real(0.5) * (plo[0] + phi[0]);
+#endif
+
+        amrex::Print() << label << "\n";
+        amrex::Print() << "  potential_eb_str = " << handler.potential_eb_str << "\n";
+        amrex::Print() << "  phi_EB_only_t    = " << handler.phi_EB_only_t << "\n";
+
+        if (handler.phi_EB_only_t) {
+            amrex::Print() << "  potential_eb_t(t) = "
+                           << handler.potential_eb_t(t) << "\n";
+        } else {
+            auto const phi_eb = handler.getPhiEB(t);
+#if defined(WARPX_DIM_3D)
+            amrex::Print() << "  getPhiEB(t)(x,y,z) = "
+                           << phi_eb(x, y, z) << "\n";
+#else
+            amrex::Print() << "  getPhiEB(t)(x,z) = "
+                           << phi_eb(x, z) << "\n";
+#endif
+        }
+    };
+
     std::optional<EBCalcEfromPhiPerLevel> post_phi_calculation;
     
     debug_checkpoint("computePhi_EBhomogeneous: after post phi calculation");
@@ -751,9 +791,24 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
     
     debug_checkpoint("computePhi_EBhomogeneous: after EBFactory");
 
+    print_eb_handler_probe(
+        "computePhi_EBhomogeneous: original handler before copy",
+        *m_poisson_boundary_handler);
         
     PoissonBoundaryHandler homogeneous_bc = *m_poisson_boundary_handler;
-    homogeneous_bc.setPotentialEB("0");
+    print_eb_handler_probe(
+        "computePhi_EBhomogeneous: homogeneous copy before setPotentialEB",
+        homogeneous_bc);
+    homogeneous_bc.setPotentialEB("1.e-30");
+
+    print_eb_handler_probe(
+        "computePhi_EBhomogeneous: homogeneous copy after setPotentialEB",
+        homogeneous_bc);
+
+    print_eb_handler_probe(
+        "computePhi_EBhomogeneous: original handler after copy modified",
+        *m_poisson_boundary_handler);
+
     // if (m_poisson_boundary_handler->phi_EB_only_t) {
     //     homogeneous_bc.setPotentialEB("0");
     // } else {

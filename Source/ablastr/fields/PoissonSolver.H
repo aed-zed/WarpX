@@ -361,8 +361,18 @@ computePhi (
                     // if the EB potential only depends on time, the potential can be passed
                     // as a float instead of a callable
                     if (boundary_handler.phi_EB_only_t) {
+
+                        amrex::Print() << "ablastr::computePhi: EB Dirichlet scalar branch\n";
+                        amrex::Print() << "  potential_eb_str = " << boundary_handler.potential_eb_str << "\n";
+                        amrex::Print() << "  potential_eb_t(t) = " << boundary_handler.potential_eb_t(current_time.value()) << "\n";
+
                         linop_nodelap->setEBDirichlet(boundary_handler.potential_eb_t(current_time.value()));
                     } else {
+                        
+                        amrex::Print() << "ablastr::computePhi: EB Dirichlet callable branch\n";
+                        amrex::Print() << "  potential_eb_str = " << boundary_handler.potential_eb_str << "\n";
+                        amrex::Print() << "  potential_eb_t(t) = " << boundary_handler.getPhiEB(current_time.value()) << "\n";
+
                         linop_nodelap->setEBDirichlet(boundary_handler.getPhiEB(current_time.value()));
                     }
                 } else
