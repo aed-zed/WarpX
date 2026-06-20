@@ -60,6 +60,7 @@ void WarpX::SolvePoissonEfield ()
         amrex::ParallelDescriptor::Barrier();
         amrex::Print() << msg << "\n";
     };
+    amrex::IntVect const no_grow = amrex::IntVect(AMREX_D_DECL(0, 0, 0));
 
     // The correction subtracts a pure gradient from E (see implementation
     // report, Section 10). This is only consistent on a STAGGERED (Yee) grid:
@@ -174,7 +175,7 @@ void WarpX::SolvePoissonEfield ()
             amrex::MultiFab::Copy(*E_n_storage[lev][comp],
                                   *Efield_fp[lev][comp],
                                   0, 0, Efield_fp[lev][comp]->nComp(),
-                                  Efield_fp[lev][comp]->nGrowVect());
+                                  no_grow);
 
             E_irrot_n_storage[lev][comp]->setVal(0.);
             E_diff_storage[lev][comp]->setVal(0.);
@@ -218,7 +219,7 @@ void WarpX::SolvePoissonEfield ()
                                      1._rt, *E_n[lev][comp], 0,
                                     -1._rt, *E_irrot_n[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
-                                     Efield_fp[lev][comp]->nGrowVect());
+                                     no_grow);
 
             E_diff[lev][comp]->FillBoundary(Geom(lev).periodicity());
         }
@@ -307,7 +308,7 @@ void WarpX::SolvePoissonEfield ()
                                      1._rt, *E_diff[lev][comp], 0,
                                     -1._rt, *E_irrot_drift[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
-                                     Efield_fp[lev][comp]->nGrowVect());
+                                     no_grow);
 
             E_rot_n[lev][comp]->FillBoundary(Geom(lev).periodicity());
         }
@@ -322,7 +323,7 @@ void WarpX::SolvePoissonEfield ()
                                      1._rt, *E_irrot_n[lev][comp], 0,
                                      1._rt, *E_rot_n[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
-                                     Efield_fp[lev][comp]->nGrowVect());
+                                     no_grow);
 
             Efield_fp[lev][comp]->FillBoundary(Geom(lev).periodicity());
         }
