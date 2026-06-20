@@ -233,11 +233,10 @@ void WarpX::SolvePoissonEfield ()
                                     -1._rt, *E_irrot_n[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
                                      no_grow);
-
-            E_diff[lev][comp]->FillBoundary(Geom(lev).periodicity());
         }
     }
 
+    sync_vector_field(E_diff);
     debug_checkpoint("Allocating temp rho and phi fields");
 
     // Allocate temporary rho_correction and phi_correction_tmp MultiFabs.
@@ -286,6 +285,9 @@ void WarpX::SolvePoissonEfield ()
         amrex::Print() << "phi_correction_tmp norm0 before EB homogeneous solve, lev "
                     << lev << " = "
                     << phi_correction_tmp[lev]->norm0() << "\n";
+    }
+    for (int lev = 0; lev < nlevs; lev++) {
+        rho_correction[lev]->setVal(0.);
     }
 
     if (EB::enabled()) {
