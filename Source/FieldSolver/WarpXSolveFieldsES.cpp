@@ -54,12 +54,6 @@ void WarpX::SolvePoissonEfield ()
     auto& es = GetElectrostaticSolver();
     const int nlevs = max_level + 1;
 
-    auto debug_checkpoint = [] (char const* msg)
-    {
-        amrex::Gpu::synchronize();
-        amrex::ParallelDescriptor::Barrier();
-        amrex::Print() << msg << "\n";
-    };
     amrex::IntVect const no_grow = amrex::IntVect(AMREX_D_DECL(0, 0, 0));
     auto sync_vector_field = [&] (
         ablastr::fields::MultiLevelVectorField const& field
@@ -137,8 +131,6 @@ void WarpX::SolvePoissonEfield ()
 
     sync_vector_field(Efield_fp);
 
-    debug_checkpoint("Allocating Fields");
-
     // Save the original grid electric field as E_n.
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_n_storage(nlevs);
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_irrot_n_storage(nlevs);
@@ -202,8 +194,6 @@ void WarpX::SolvePoissonEfield ()
         }
     }
 
-    debug_checkpoint("Computing E_irrot_n");
-
     // Solve Poisson and compute E_irrot_n.
     const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
     if (EB::enabled()) {
@@ -221,9 +211,7 @@ void WarpX::SolvePoissonEfield ()
                       es.is_igf_2d_slices);
         es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
     }
-    amrex::Gpu::synchronize();
     sync_vector_field(E_irrot_n);
-    debug_checkpoint("after E_irrot_n computing E_diff");
 
     // Compute E_diff = E_n - E_irrot_n.
     for (int lev = 0; lev < nlevs; lev++) {
@@ -237,7 +225,6 @@ void WarpX::SolvePoissonEfield ()
     }
 
     sync_vector_field(E_diff);
-    debug_checkpoint("Allocating temp rho and phi fields");
 
     // Allocate temporary rho_correction and phi_correction_tmp MultiFabs.
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_correction(nlevs);
@@ -253,16 +240,12 @@ void WarpX::SolvePoissonEfield ()
         phi_correction_tmp[lev]->setVal(0.);
     }
 
-    debug_checkpoint("Computing rho_correction");
-
     // Compute rho_correction = epsilon_0 * div(E_n - E_irrot_n).
     for (int lev = 0; lev < nlevs; lev++) {
         get_pointer_fdtd_solver_fp(lev)->ComputeDivE(E_diff[lev],
                                                      *rho_correction[lev]);
         rho_correction[lev]->mult(ablastr::constant::SI::epsilon_0);
     }
-
-    debug_checkpoint("Syncing rho field boundary");
     
     // Make shared nodal values consistent.
     for (int lev = 0; lev < nlevs; lev++) {
@@ -270,21 +253,11 @@ void WarpX::SolvePoissonEfield ()
         rho_correction[lev]->FillBoundary(Geom(lev).periodicity());
     }
 
-    debug_checkpoint("Apply rho field boundary");
-
 #ifndef WARPX_DIM_RZ
     for (int lev = 0; lev < nlevs; lev++) {
         ApplyRhofieldBoundary(lev, rho_correction[lev].get(), PatchType::fine);
     }
 #endif
-
-    debug_checkpoint("Computing E_irrot_drift");
-
-    for (int lev = 0; lev < nlevs; lev++) {
-        amrex::Print() << "phi_correction_tmp norm0 before EB homogeneous solve, lev "
-                    << lev << " = "
-                    << phi_correction_tmp[lev]->norm0() << "\n";
-    }
 
     if (EB::enabled()) {
     // Solve for phi_correction_tmp with EB geometry, but with homogeneous EB
@@ -306,9 +279,7 @@ void WarpX::SolvePoissonEfield ()
         // Compute E_irrot_drift = -grad(phi_correction_tmp) into a temporary field.
         es.computeE(E_irrot_drift, amrex::GetVecOfPtrs(phi_correction_tmp), beta);
     }
-    amrex::Gpu::synchronize();
     sync_vector_field(E_irrot_drift);
-    debug_checkpoint("Computing E_rot_n");
 
     // Compute E_rot_n = (E_n - E_irrot_n) - E_irrot_drift.
     for (int lev = 0; lev < nlevs; lev++) {
@@ -318,13 +289,10 @@ void WarpX::SolvePoissonEfield ()
                                     -1._rt, *E_irrot_drift[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
                                      no_grow);
-
-            E_rot_n[lev][comp]->FillBoundary(Geom(lev).periodicity());
         }
     }
 
     sync_vector_field(E_rot_n);
-    debug_checkpoint("Replacing Efield");
 
     // Replace the grid electric field with E_irrot_n + E_rot_n.
     for (int lev = 0; lev < nlevs; lev++) {
@@ -334,8 +302,6 @@ void WarpX::SolvePoissonEfield ()
                                      1._rt, *E_rot_n[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
                                      no_grow);
-
-            Efield_fp[lev][comp]->FillBoundary(Geom(lev).periodicity());
         }
     }
     

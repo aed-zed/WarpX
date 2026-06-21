@@ -587,84 +587,6 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
 }
 
 void
-ElectrostaticSolver::computePhi_withoutEB (
-    ablastr::fields::MultiLevelScalarField const& rho,
-    ablastr::fields::MultiLevelScalarField const& phi,
-    std::array<Real, 3> const beta,
-    Real const required_precision,
-    Real absolute_tolerance,
-    int const max_iters,
-    int const verbosity,
-    bool const is_igf_2d
-) const
-{
-    // create a vector to our fields, sorted by level
-    amrex::Vector<amrex::MultiFab *> sorted_rho;
-    amrex::Vector<amrex::MultiFab *> sorted_phi;
-    for (int lev = 0; lev < num_levels; ++lev) {
-        sorted_rho.emplace_back(rho[lev]);
-        sorted_phi.emplace_back(phi[lev]);
-    }
-
-    auto & warpx = WarpX::GetInstance();
-
-    bool const is_solver_igf_on_lev0 =
-        WarpX::poisson_solver_id == PoissonSolverAlgo::IntegratedGreenFunction;
-
-    PoissonBoundaryHandler homogeneous_bc;
-
-#if defined(WARPX_DIM_RZ)
-    homogeneous_bc.lobc = {
-        AMREX_D_DECL(
-            amrex::LinOpBCType::Neumann,
-            amrex::LinOpBCType::Dirichlet,
-            amrex::LinOpBCType::Dirichlet
-        )
-    };
-
-    homogeneous_bc.hibc = {
-        AMREX_D_DECL(
-            amrex::LinOpBCType::Dirichlet,
-            amrex::LinOpBCType::Dirichlet,
-            amrex::LinOpBCType::Dirichlet
-        )
-    };
-#else
-    homogeneous_bc.lobc = {
-        AMREX_D_DECL(
-            amrex::LinOpBCType::Dirichlet,
-            amrex::LinOpBCType::Dirichlet,
-            amrex::LinOpBCType::Dirichlet
-        )
-    };
-
-    homogeneous_bc.hibc = homogeneous_bc.lobc;
-#endif
-
-    ablastr::fields::computePhi(
-        sorted_rho,
-        sorted_phi,
-        beta,
-        required_precision,
-        absolute_tolerance,
-        max_iters,
-        verbosity,
-        warpx.Geom(),
-        warpx.DistributionMap(),
-        warpx.boxArray(),
-        WarpX::grid_type,
-        is_solver_igf_on_lev0,
-        is_igf_2d,
-        /* eb_enabled = */ false,
-        WarpX::do_single_precision_comms,
-        warpx.refRatio(),
-        /* post_phi_calculation = */ std::nullopt,
-        /* boundary_handler = */ homogeneous_bc
-    );
-}
-
-
-void
 ElectrostaticSolver::computePhi_EBhomogeneous (
     ablastr::fields::MultiLevelScalarField const& rho,
     ablastr::fields::MultiLevelScalarField const& phi,
@@ -677,15 +599,6 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
     ablastr::fields::MultiLevelVectorField const& efield
 ) const
 {
-    auto debug_checkpoint = [] (char const* msg)
-    {
-        amrex::Gpu::synchronize();
-        amrex::ParallelDescriptor::Barrier();
-        amrex::Print() << msg << "\n";
-    };
-
-    debug_checkpoint("computePhi_EBhomogeneous: entry");
-
     // create a vector to our fields, sorted by level
     amrex::Vector<amrex::MultiFab *> sorted_rho;
     amrex::Vector<amrex::MultiFab *> sorted_phi;
@@ -693,53 +606,10 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         sorted_rho.emplace_back(rho[lev]);
         sorted_phi.emplace_back(phi[lev]);
     }
-    
-    debug_checkpoint("computePhi_EBhomogeneous: after sorted fields");
-
 
     auto & warpx = WarpX::GetInstance();
 
-    auto print_eb_handler_probe = [&warpx] (
-        char const* label,
-        PoissonBoundaryHandler const& handler
-    )
-    {
-        amrex::Real const t = warpx.gett_new(0);
-
-        auto const plo = warpx.Geom(0).ProbLoArray();
-        auto const phi = warpx.Geom(0).ProbHiArray();
-
-#if defined(WARPX_DIM_3D)
-        amrex::Real const x = 1.e-3_rt;
-        amrex::Real const y = 0._rt;
-        amrex::Real const z = 0.442_rt;
-#else
-        amrex::Real const x = 1.e-3_rt;
-        amrex::Real const z = 0.442_rt;
-#endif
-
-        amrex::Print() << label << "\n";
-        amrex::Print() << "  potential_eb_str = " << handler.potential_eb_str << "\n";
-        amrex::Print() << "  phi_EB_only_t    = " << handler.phi_EB_only_t << "\n";
-
-        if (handler.phi_EB_only_t) {
-            amrex::Print() << "  potential_eb_t(t) = "
-                           << handler.potential_eb_t(t) << "\n";
-        } else {
-            auto const phi_eb = handler.getPhiEB(t);
-#if defined(WARPX_DIM_3D)
-            amrex::Print() << "  getPhiEB(t)(x,y,z) = "
-                           << phi_eb(x, y, z) << "\n";
-#else
-            amrex::Print() << "  getPhiEB(t)(x,z) = "
-                           << phi_eb(x, z) << "\n";
-#endif
-        }
-    };
-
     std::optional<EBCalcEfromPhiPerLevel> post_phi_calculation;
-    
-    debug_checkpoint("computePhi_EBhomogeneous: after post phi calculation");
 
 #ifdef AMREX_USE_EB
     std::optional<amrex::Vector<amrex::EBFArrayBoxFactory const *> > eb_farray_box_factory;
@@ -770,9 +640,6 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         );
     }
     post_phi_calculation = EBCalcEfromPhiPerLevel(e_field);
-    
-    debug_checkpoint("computePhi_EBhomogeneous: after post phi calculation2");
-
 
 #ifdef AMREX_USE_EB
     if (EB::enabled())
@@ -786,41 +653,13 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         eb_farray_box_factory = factories;
     }
 #endif
-    
-    debug_checkpoint("computePhi_EBhomogeneous: after EBFactory");
 
-    print_eb_handler_probe(
-        "computePhi_EBhomogeneous: original handler before copy",
-        *m_poisson_boundary_handler);
-        
     PoissonBoundaryHandler homogeneous_bc = *m_poisson_boundary_handler;
     homogeneous_bc.phi_EB_only_t = true;
-    print_eb_handler_probe(
-        "computePhi_EBhomogeneous: homogeneous copy before setPotentialEB",
-        homogeneous_bc);
     homogeneous_bc.setPotentialEB("0.");
-
-    print_eb_handler_probe(
-        "computePhi_EBhomogeneous: homogeneous copy after setPotentialEB",
-        homogeneous_bc);
-
-    print_eb_handler_probe(
-        "computePhi_EBhomogeneous: original handler after copy modified",
-        *m_poisson_boundary_handler);
-
-    // if (m_poisson_boundary_handler->phi_EB_only_t) {
-    //     homogeneous_bc.setPotentialEB("0");
-    // } else {
-    //     homogeneous_bc.setPotentialEB("0*x + 0*y + 0*z + 0*t");
-    // }
-    
-    debug_checkpoint("computePhi_EBhomogeneous: after homogeneous_bc");
-
 
     bool const is_solver_igf_on_lev0 =
         WarpX::poisson_solver_id == PoissonSolverAlgo::IntegratedGreenFunction;
-
-    debug_checkpoint("computePhi_EBhomogeneous: before ablastr computePhi");
 
     ablastr::fields::computePhi(
         sorted_rho,
@@ -844,5 +683,4 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
         warpx.gett_new(0),
         eb_farray_box_factory
     );
-    debug_checkpoint("computePhi_EBhomogeneous: after ablastr computePhi");
 }
