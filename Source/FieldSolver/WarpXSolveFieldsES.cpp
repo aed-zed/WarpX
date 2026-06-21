@@ -279,7 +279,6 @@ void WarpX::SolvePoissonEfield ()
         // Compute E_irrot_drift = -grad(phi_correction_tmp) into a temporary field.
         es.computeE(E_irrot_drift, amrex::GetVecOfPtrs(phi_correction_tmp), beta);
     }
-    sync_vector_field(E_irrot_drift);
 
     // Compute E_rot_n = (E_n - E_irrot_n) - E_irrot_drift.
     for (int lev = 0; lev < nlevs; lev++) {
@@ -291,8 +290,6 @@ void WarpX::SolvePoissonEfield ()
                                      no_grow);
         }
     }
-
-    sync_vector_field(E_rot_n);
 
     // Replace the grid electric field with E_irrot_n + E_rot_n.
     for (int lev = 0; lev < nlevs; lev++) {
