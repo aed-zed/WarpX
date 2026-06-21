@@ -129,8 +129,6 @@ void WarpX::SolvePoissonEfield ()
     MultiLevelVectorField Efield_fp =
         m_fields.get_mr_levels_alldirs(FieldType::Efield_fp, max_level);
 
-    sync_vector_field(Efield_fp);
-
     // Save the original grid electric field as E_n.
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_n_storage(nlevs);
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_irrot_n_storage(nlevs);
@@ -211,7 +209,6 @@ void WarpX::SolvePoissonEfield ()
                       es.is_igf_2d_slices);
         es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
     }
-    sync_vector_field(E_irrot_n);
 
     // Compute E_diff = E_n - E_irrot_n.
     for (int lev = 0; lev < nlevs; lev++) {
