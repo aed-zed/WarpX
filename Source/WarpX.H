@@ -789,6 +789,25 @@ public:
 
     void ComputeDivE(amrex::MultiFab& divE, int lev);
 
+    /** Weighted induced charge on the embedded boundary at a given level.
+     *
+     * Returns \f$ \varepsilon_0 \oint w(x,y,z)\, \mathbf{E}\cdot\mathbf{n}\, dS \f$
+     * integrated over the embedded-boundary surface (the induced charge on the
+     * conductors selected by the weighting). 3D + EB only; returns 0 otherwise.
+     * This is the geometry-agnostic measurement used by the EM-mode potential
+     * correction; see the implementation report, Section 15.
+     *
+     * \param[in] Efield the electric field to integrate (e.g. Efield_fp or a
+     *            stored vacuum/unit field), as a level VectorField
+     * \param[in] lev the refinement level
+     * \param[in] weighting_parser optional spatial weighting \f$w(x,y,z)\f$
+     *            (e.g. a single-electrode region mask); nullptr means \f$w=1\f$
+     */
+    amrex::Real ComputeEBChargeWeighted (
+        ablastr::fields::VectorField const & Efield,
+        int lev,
+        amrex::Parser const * weighting_parser = nullptr);
+
     void ProjectionCleanDivB ();
     void CalculateExternalCurlA ();
 

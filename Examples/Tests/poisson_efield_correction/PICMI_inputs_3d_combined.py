@@ -150,6 +150,10 @@ sim.add_diagnostic(PN_diag)
 # ---------------------------------------------------------------------------
 # Combined corrector: homogeneous Gauss clean + harmonic bias
 # ---------------------------------------------------------------------------
+# Phase A: drive the feedback with the geometry-agnostic induced-charge flux
+# (electrode_weighting selects the inner-electrode region); x_lo_phys/x_hi_phys
+# are retained only for the independent line-integral cross-check.
+electrode_region = "(x*x+y*y<3.e-2**2)"
 corrector = HarmonicBiasCorrector(
     sim=sim,
     correction_interval=correction_interval,
@@ -157,6 +161,7 @@ corrector = HarmonicBiasCorrector(
     target_delta_phi=target_potential,
     x_lo_phys=r_inner,
     x_hi_phys=r_outer,
+    electrode_weighting=electrode_region,
     enable_gauss_clean=True,
     verify_curl=True,
     enable_diagnostics=True,
@@ -171,16 +176,20 @@ installafterEsolve(corrector.correct_field)
 # ---------------------------------------------------------------------------
 sim.step(max_steps)
 
-# Final potential check + curl footprint, written for the analysis script.
-delta_phi_final = corrector.compute_potential_difference()
+# Final potential checks (independent line integral + geometry-agnostic flux)
+# and curl footprint, written for the analysis script.
+delta_phi_line = corrector.compute_potential_difference()
+delta_phi_flux = corrector._measure_delta_phi()
 cf = corrector.curl_footprint or {"bulk_rel": float("nan"), "max_rel": float("nan")}
 
-print(f"FINAL_DELTA_PHI={delta_phi_final:.6e}")
+print(f"FINAL_DELTA_PHI={delta_phi_line:.6e}")
+print(f"FINAL_DELTA_PHI_FLUX={delta_phi_flux:.6e}")
 print(f"TARGET_DELTA_PHI={target_potential:.6e}")
 print(f"CURL_BULK_REL={cf['bulk_rel']:.6e}")
 print(f"CURL_MAX_REL={cf['max_rel']:.6e}")
 with open("poisson_correction_result.txt", "w") as f:
-    f.write(f"FINAL_DELTA_PHI={delta_phi_final:.6e}\n")
+    f.write(f"FINAL_DELTA_PHI={delta_phi_line:.6e}\n")
+    f.write(f"FINAL_DELTA_PHI_FLUX={delta_phi_flux:.6e}\n")
     f.write(f"TARGET_DELTA_PHI={target_potential:.6e}\n")
     f.write(f"CURL_BULK_REL={cf['bulk_rel']:.6e}\n")
     f.write(f"CURL_MAX_REL={cf['max_rel']:.6e}\n")
