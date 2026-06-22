@@ -35,6 +35,7 @@
 #include <Particles/ParticleBoundaryBuffer.H>
 #include <AcceleratorLattice/AcceleratorLattice.H>
 #include <Utils/TextMsg.H>
+#include <Utils/Parser/ParserUtils.H>
 #include <Utils/WarpXAlgorithmSelection.H>
 #include <Utils/WarpXConst.H>
 #include <Utils/WarpXProfilerWrapper.H>
@@ -264,6 +265,26 @@ void init_WarpX (py::module& m)
             "Homogeneous Boris/Marder Gauss clean of Efield_fp: subtract grad(psi) with "
             "nabla^2 psi = div(E) - rho/eps0 and psi = 0 on all boundaries. Cleans Gauss's "
             "law and preserves curl(E); does not reset the electrode potential."
+        )
+        .def("compute_eb_charge",
+            [] (WarpX& wx, const std::string& weighting, const std::string& field) {
+                int const lev = 0;
+                ablastr::fields::VectorField E = {
+                    wx.m_fields.get(field, ablastr::fields::Direction{0}, lev),
+                    wx.m_fields.get(field, ablastr::fields::Direction{1}, lev),
+                    wx.m_fields.get(field, ablastr::fields::Direction{2}, lev)
+                };
+                if (weighting.empty() || weighting == "1") {
+                    return wx.ComputeEBChargeWeighted(E, lev, nullptr);
+                }
+                amrex::Parser parser = utils::parser::makeParser(weighting, {"x", "y", "z"});
+                return wx.ComputeEBChargeWeighted(E, lev, &parser);
+            },
+            py::arg("weighting") = "1",
+            py::arg("field") = "Efield_fp",
+            "Induced charge eps0 * oint w(x,y,z) E.n dS over the embedded boundary for the "
+            "named field (default Efield_fp), with an optional spatial weighting w(x,y,z) "
+            "that selects a region/electrode (default w=1, the whole EB). 3D + EB only."
         )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },

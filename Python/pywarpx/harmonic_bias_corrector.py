@@ -115,8 +115,9 @@ class HarmonicBiasCorrector:
         correction_interval,
         potential_expression,
         target_delta_phi,
-        x_lo_phys,
-        x_hi_phys,
+        x_lo_phys=None,
+        x_hi_phys=None,
+        electrode_weighting=None,
         relaxation=1.0,
         enable_gauss_clean=False,
         verify_curl=True,
@@ -130,8 +131,18 @@ class HarmonicBiasCorrector:
         self.correction_interval = correction_interval
         self.potential_expression = potential_expression
         self.target_delta_phi = target_delta_phi
+        # Drift measurement:
+        #  * Flux (geometry-agnostic, 3D): set ``electrode_weighting`` to a
+        #    region expression w(x,y,z) that selects one reference electrode
+        #    (e.g. "(x*x+y*y<3.5e-2**2)"). The effective applied voltage is
+        #    inferred from the induced charge Q = eps0*oint w*E.n over the EB,
+        #    measured against the known vacuum field -- no radii, no symmetry.
+        #  * Line integral (RZ / fallback): provide ``x_lo_phys``/``x_hi_phys``
+        #    and integrate the radial component along x (assumes axisymmetry).
+        # See implementation report Sections 14.5 and 15.
         self.x_lo_phys = x_lo_phys
         self.x_hi_phys = x_hi_phys
+        self.electrode_weighting = electrode_weighting
         self.relaxation = relaxation
         self.enable_gauss_clean = enable_gauss_clean
         self.verify_curl = verify_curl
@@ -140,6 +151,8 @@ class HarmonicBiasCorrector:
 
         self._vacuum_ready = False
         self._phi_vac = None
+        self._q_vac = None  # reference induced charge of E_vac (flux mode)
+        self._use_flux = False  # decided at setup (3D + electrode_weighting)
         self._diagnostics_initialized = False
         # Populated at setup if verify_curl: {"bulk_rel", "max_rel", ...}.
         self.curl_footprint = None
@@ -178,12 +191,38 @@ class HarmonicBiasCorrector:
             self._diagnostics_initialized = True
 
         self._compute_vacuum_field(lev)
-        self._phi_vac = self.compute_potential_difference(field_name="Efield_vacuum")
-        if abs(self._phi_vac) == 0.0:
-            raise RuntimeError(
-                "Vacuum field line integral is zero; cannot normalize the bias. "
-                "Check the EB potential expression and integration bounds."
+
+        # Choose the drift measurement: the geometry-agnostic induced-charge
+        # flux (3D) when an electrode weighting is given, else the axisymmetric
+        # line integral (the only option in RZ, where the flux helper is 3D-only).
+        self._use_flux = (self.electrode_weighting is not None) and not self._is_rz()
+        if self._use_flux:
+            # E_vac is built at the configured electrode potentials, so it
+            # represents an effective voltage equal to target_delta_phi. With
+            # phi_vac = target_delta_phi the per-step feedback reduces to
+            # alpha = relax * (1 - Q[E]/Q[E_vac]) -- no line, no radii.
+            self._phi_vac = self.target_delta_phi
+            self._q_vac = self._warpx().compute_eb_charge(
+                weighting=self.electrode_weighting, field="Efield_vacuum"
             )
+            if abs(self._q_vac) == 0.0:
+                raise RuntimeError(
+                    "Vacuum-field induced charge is zero; cannot normalize the bias. "
+                    "Check the EB potential expression and the electrode_weighting region."
+                )
+        else:
+            if self.x_lo_phys is None or self.x_hi_phys is None:
+                raise ValueError(
+                    "Line-integral measurement requires x_lo_phys and x_hi_phys; "
+                    "or provide electrode_weighting for the geometry-agnostic flux "
+                    "measurement (3D)."
+                )
+            self._phi_vac = self.compute_potential_difference(field_name="Efield_vacuum")
+            if abs(self._phi_vac) == 0.0:
+                raise RuntimeError(
+                    "Vacuum field line integral is zero; cannot normalize the bias. "
+                    "Check the EB potential expression and integration bounds."
+                )
         self._vacuum_ready = True
 
         if self.verify_curl and not self._is_rz():
@@ -268,7 +307,7 @@ class HarmonicBiasCorrector:
         if self.enable_gauss_clean:
             warpx.clean_efield_gauss_homogeneous()
 
-        delta_phi_now = self.compute_potential_difference()
+        delta_phi_now = self._measure_delta_phi()
         alpha = self.relaxation * (self.target_delta_phi - delta_phi_now) / self._phi_vac
         self._apply_bias(alpha)
 
@@ -302,6 +341,21 @@ class HarmonicBiasCorrector:
             corr.saxpy(alpha - 1.0, vac, 0, 0, 1, 0)
 
     # -- measurement ----------------------------------------------------------
+    def _measure_delta_phi(self):
+        """Present effective potential difference of the live ``Efield_fp``.
+
+        Flux mode (geometry-agnostic, 3D): the induced charge is proportional to
+        the effective electrode voltage, so the live voltage is the vacuum-field
+        voltage scaled by the charge ratio, ``phi_vac * Q[E_fp] / Q[E_vac]``.
+        Line-integral mode: the axisymmetric radial integral.
+        """
+        if self._use_flux:
+            q_now = self._warpx().compute_eb_charge(
+                weighting=self.electrode_weighting, field="Efield_fp"
+            )
+            return self._phi_vac * q_now / self._q_vac
+        return self.compute_potential_difference()
+
     def compute_potential_difference(self, field_name="Efield_fp"):
         """Line-integral potential difference of ``field_name`` between the bounds.
 

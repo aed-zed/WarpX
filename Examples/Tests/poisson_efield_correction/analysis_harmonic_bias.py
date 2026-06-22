@@ -85,6 +85,27 @@ def main():
         f"target {target_delta_phi:.1f} V"
     )
 
+    # 4a'. Phase A: when the run used the geometry-agnostic induced-charge flux
+    # to drive the feedback, cross-validate it against the independent
+    # axisymmetric line integral (both should track the target). Only checked
+    # when the run wrote FINAL_DELTA_PHI_FLUX (i.e. ran in flux mode).
+    if "FINAL_DELTA_PHI_FLUX" in results:
+        delta_phi_flux = results["FINAL_DELTA_PHI_FLUX"]
+        flux_err = abs(delta_phi_flux - target_delta_phi) / abs(target_delta_phi)
+        agree = abs(delta_phi_flux - delta_phi) / abs(target_delta_phi)
+        print(
+            f"Flux-based delta_phi = {delta_phi_flux:.1f} V (target rel err {flux_err:.1%}; "
+            f"vs line integral {agree:.1%})"
+        )
+        assert flux_err < 0.15, (
+            f"Flux measurement does not track the target: {delta_phi_flux:.1f} V "
+            f"vs {target_delta_phi:.1f} V"
+        )
+        assert agree < 0.10, (
+            f"Flux and line-integral measurements disagree by {agree:.1%} of target "
+            f"(flux {delta_phi_flux:.1f} V, line {delta_phi:.1f} V)"
+        )
+
     # 4b. The harmonic bias is curl-free in the bulk (rotational field preserved).
     curl_bulk_rel = results["CURL_BULK_REL"]
     curl_max_rel = results.get("CURL_MAX_REL", float("nan"))
