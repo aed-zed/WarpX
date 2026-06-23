@@ -197,6 +197,13 @@ void WarpX::SolvePoissonEfield ()
         }
     }
 
+
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            E_diff[lev][comp]->setVal(0.);
+        }
+    }
+
     sync_vector_field(E_diff);
 
     // Allocate temporary rho_correction and phi_correction_tmp MultiFabs.
@@ -231,9 +238,9 @@ void WarpX::SolvePoissonEfield ()
         ApplyRhofieldBoundary(lev, rho_correction[lev].get(), PatchType::fine);
     }
 #endif
-    for (int lev = 0; lev < nlevs; lev++) {
-        rho_correction[lev]->setVal(0.);
-    }
+    // for (int lev = 0; lev < nlevs; lev++) {
+    //     rho_correction[lev]->setVal(0.);
+    // }
 
     if (EB::enabled()) {
     // Solve for phi_correction_tmp with EB geometry, but with homogeneous EB
