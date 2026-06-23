@@ -130,7 +130,7 @@ void WarpX::SolvePoissonEfield ()
         m_fields.get_mr_levels_alldirs(FieldType::Efield_fp, max_level);
 
     MultiLevelVectorField E_diff_diag =
-        m_fields.get_mr_levels_alldirs(FieldType::E_diff_diag, max_level);
+        m_fields.get_mr_levels_alldirs("E_diff_diag", max_level);
 
     // Allocate temp fields.
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_irrot_n_storage(nlevs);
