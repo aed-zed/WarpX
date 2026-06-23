@@ -231,6 +231,9 @@ void WarpX::SolvePoissonEfield ()
         ApplyRhofieldBoundary(lev, rho_correction[lev].get(), PatchType::fine);
     }
 #endif
+    for (int lev = 0; lev < nlevs; lev++) {
+        rho_correction[lev]->setVal(0.);
+    }
 
     if (EB::enabled()) {
     // Solve for phi_correction_tmp with EB geometry, but with homogeneous EB
