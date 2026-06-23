@@ -257,7 +257,7 @@ void WarpX::SolvePoissonEfield ()
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
             amrex::MultiFab::Saxpy(*Efield_fp[lev][comp],
-                                     -1._rt, *E_irrot_drift[lev][comp], 0,
+                                     1._rt, *E_irrot_drift[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
                                      no_grow);
         }
