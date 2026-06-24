@@ -576,14 +576,43 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
     // beta is zero for boundaries
     const std::array<Real, 3> beta = {0._rt};
 
-    // Compute the potential phi, by solving the Poisson equation
-    computePhi( amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
-                beta, self_fields_required_precision,
-                self_fields_absolute_tolerance, self_fields_max_iters,
-                self_fields_verbosity, is_igf_2d_slices );
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_boundary(num_levels);
+    MultiLevelVectorField E_boundary(num_levels);
+    for (int lev = 0; lev < num_levels; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            E_boundary[lev][comp] = std::make_unique<amrex::MultiFab>(
+                Efield_fp[lev][comp]->boxArray(),
+                Efield_fp[lev][comp]->DistributionMap(),
+                Efield_fp[lev][comp]->nComp(),
+                Efield_fp[lev][comp]->nGrowVect());
+            E_boundary[lev][comp]->setVal(0.);
 
-    // Compute the corresponding electric field, from the potential phi.
-    computeE( Efield_fp, amrex::GetVecOfPtrs(phi), beta );
+    if (EB::enabled()) {
+        // With EB: pass E_irrot_n to computePhi for EB-aware E computation.
+        computePhi( amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+                    beta, self_fields_required_precision,
+                    self_fields_absolute_tolerance, self_fields_max_iters,
+                    self_fields_verbosity, is_igf_2d_slices, E_boundary );
+        for (int lev = 0; lev < num_levels; lev++) {
+            for (int comp = 0; comp < 3; comp++) {
+                amrex::MultiFab::Add(*Efield_fp[lev][comp],
+                                    *E_boundary[lev][comp],
+                                    0, 0,
+                                    Efield_fp[lev][comp]->nComp(),
+                                    amrex::IntVect(AMREX_D_DECL(0, 0, 0)));
+            }
+        }
+    } else {
+        // Compute the potential phi, by solving the Poisson equation
+        computePhi( amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+                    beta, self_fields_required_precision,
+                    self_fields_absolute_tolerance, self_fields_max_iters,
+                    self_fields_verbosity, is_igf_2d_slices );
+
+        // Compute the corresponding electric field, from the potential phi.
+        computeE( Efield_fp, amrex::GetVecOfPtrs(phi), beta );
+    }
+
 }
 
 void

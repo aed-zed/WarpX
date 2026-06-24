@@ -349,20 +349,13 @@ void WarpX::SolvePoissonEfield ()
     // Solve for phi_correction_tmp with EB geometry, but with homogeneous EB
     // Dirichlet data. This keeps the correction solve EB-aware without applying
     // the electrode potential a second time.
-        es.computePhi(amrex::GetVecOfPtrs(rho_correction), amrex::GetVecOfPtrs(phi_correction_tmp),
-                      beta, es.self_fields_required_precision,
-                      es.self_fields_absolute_tolerance,
-                      es.self_fields_max_iters, es.self_fields_verbosity,
-                      es.is_igf_2d_slices);
-        // Compute E_irrot_drift = -grad(phi_correction_tmp) into a temporary field.
-        es.computeE(E_irrot_drift, amrex::GetVecOfPtrs(phi_correction_tmp), beta);
-        // es.computePhi_EBhomogeneous(amrex::GetVecOfPtrs(rho_correction),
-        //                             amrex::GetVecOfPtrs(phi_correction_tmp),
-        //                             beta, es.self_fields_required_precision,
-        //                             es.self_fields_absolute_tolerance,
-        //                             es.self_fields_max_iters, es.self_fields_verbosity,
-        //                             es.is_igf_2d_slices,
-        //                             E_irrot_drift);
+        es.computePhi_EBhomogeneous(amrex::GetVecOfPtrs(rho_correction),
+                                    amrex::GetVecOfPtrs(phi_correction_tmp),
+                                    beta, es.self_fields_required_precision,
+                                    es.self_fields_absolute_tolerance,
+                                    es.self_fields_max_iters, es.self_fields_verbosity,
+                                    es.is_igf_2d_slices,
+                                    E_irrot_drift);
     } else {
         es.computePhi(amrex::GetVecOfPtrs(rho_correction), amrex::GetVecOfPtrs(phi_correction_tmp),
                       beta, es.self_fields_required_precision,
