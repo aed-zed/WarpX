@@ -269,17 +269,17 @@ void WarpX::SolvePoissonEfield ()
     const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
     if (EB::enabled()) {
         // With EB: pass E_irrot_n to computePhi for EB-aware E computation.
-        es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
-                      beta, es.self_fields_required_precision,
-                      es.self_fields_absolute_tolerance,
-                      es.self_fields_max_iters, es.self_fields_verbosity,
-                      es.is_igf_2d_slices);
-        es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
         // es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
         //               beta, es.self_fields_required_precision,
         //               es.self_fields_absolute_tolerance,
         //               es.self_fields_max_iters, es.self_fields_verbosity,
-        //               es.is_igf_2d_slices, E_irrot_n);
+        //               es.is_igf_2d_slices);
+        // es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
+        es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+                      beta, es.self_fields_required_precision,
+                      es.self_fields_absolute_tolerance,
+                      es.self_fields_max_iters, es.self_fields_verbosity,
+                      es.is_igf_2d_slices, E_irrot_n);
     } else {
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
