@@ -24,6 +24,7 @@ void WarpX::ComputeSpaceChargeField (bool const reset_fields)
     WARPX_PROFILE("WarpX::ComputeSpaceChargeField");
     using ablastr::fields::Direction;
     using warpx::fields::FieldType;
+    const int nlevs = max_level + 1;
 
     for (int lev = 0; lev < nlevs; lev++) {
         amrex::Print() << "WarpXSolveFieldsEs ComputeSpaceChargeField: has phi_fp level "
