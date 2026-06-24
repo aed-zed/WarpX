@@ -107,6 +107,15 @@ void WarpX::SolvePoissonEfield ()
         phi[lev]->setVal(0.);
     }
 
+    MultiLevelScalarField phi_fp =m_fields.get_mr_levels(FieldType::phi_fp, max_level);
+
+    for (int lev = 0; lev < nlevs; lev++) {
+        amrex::MultiFab::Copy(*phi[lev],
+                            *phi_fp[lev],
+                            0, 0, phi[lev]->nComp(),
+                            amrex::IntVect(AMREX_D_DECL(0, 0, 0)));
+    }
+
     // Deposit charge from all particle species
     mypc->DepositCharge(amrex::GetVecOfPtrs(rho), 0.0_rt);
 
