@@ -136,4 +136,7 @@ void RelativisticExplicitES::AddSpaceChargeField (
     computeE( Efield_fp, amrex::GetVecOfPtrs(phi), beta );
     computeB( Bfield_fp, amrex::GetVecOfPtrs(phi), beta );
 
+    amrex::Print() << "RelativisticExplicitES.cpp beta: "
+                << beta << "\n";
+
 }

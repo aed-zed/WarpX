@@ -267,7 +267,13 @@ void WarpX::SolvePoissonEfield ()
                       beta, es.self_fields_required_precision,
                       es.self_fields_absolute_tolerance,
                       es.self_fields_max_iters, es.self_fields_verbosity,
-                      es.is_igf_2d_slices, E_irrot_n);
+                      es.is_igf_2d_slices);
+        es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
+        // es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+        //               beta, es.self_fields_required_precision,
+        //               es.self_fields_absolute_tolerance,
+        //               es.self_fields_max_iters, es.self_fields_verbosity,
+        //               es.is_igf_2d_slices, E_irrot_n);
     } else {
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
