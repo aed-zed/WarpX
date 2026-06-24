@@ -555,6 +555,7 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
     WARPX_PROFILE("RelativisticExplicitES::AddBoundaryField");
 
     auto & warpx = WarpX::GetInstance();
+    using ablastr::fields::MultiLevelVectorField;
 
     // Allocate fields for charge and potential
     Vector<std::unique_ptr<MultiFab>> rho(num_levels);
