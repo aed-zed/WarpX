@@ -135,8 +135,10 @@ void RelativisticExplicitES::AddSpaceChargeField (
     // Compute the corresponding electric and magnetic field, from the potential phi
     computeE( Efield_fp, amrex::GetVecOfPtrs(phi), beta );
     computeB( Bfield_fp, amrex::GetVecOfPtrs(phi), beta );
-
-    amrex::Print() << "RelativisticExplicitES.cpp beta: "
-                << beta << "\n";
+    
+    amrex::Print() << "RelativisticExplicitES.cpp beta: ("
+                << beta[0] << ", "
+                << beta[1] << ", "
+                << beta[2] << ")\n";
 
 }
