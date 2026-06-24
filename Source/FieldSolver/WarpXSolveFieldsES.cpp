@@ -25,6 +25,18 @@ void WarpX::ComputeSpaceChargeField (bool const reset_fields)
     using ablastr::fields::Direction;
     using warpx::fields::FieldType;
 
+    for (int lev = 0; lev < nlevs; lev++) {
+        amrex::Print() << "WarpXSolveFieldsEs ComputeSpaceChargeField: has phi_fp level "
+                    << lev << " = "
+                    << m_fields.has(FieldType::phi_fp, lev)
+                    << "\n";
+    }
+
+    for (auto const& name : m_fields.list()) {
+        amrex::Print() << "WarpXSolveFieldsEs ComputeSpaceChargeField registered field: "
+                    << name << "\n";
+    }
+
     if (reset_fields) {
         // Reset all E and B fields to 0, before calculating space-charge fields
         WARPX_PROFILE("WarpX::ComputeSpaceChargeField::reset_fields");
