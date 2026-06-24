@@ -117,11 +117,21 @@ void WarpX::SolvePoissonEfield ()
             amrex::GetVecOfPtrs(rho_cp),
             amrex::GetVecOfPtrs(rho_buf));
 
+    for (int lev = 0; lev < nlevs; lev++) {
+        amrex::Print() << "rho norm0 in corrector, lev " << lev
+                    << " = " << rho[lev]->norm0() << "\n";
+    }
+
 #ifndef WARPX_DIM_RZ
     for (int lev = 0; lev < nlevs; lev++) {
         ApplyRhofieldBoundary(lev, rho[lev].get(), PatchType::fine);
     }
 #endif
+
+    for (int lev = 0; lev < nlevs; lev++) {
+        amrex::Print() << "rho norm0 in corrector, lev " << lev
+                    << " = " << rho[lev]->norm0() << "\n";
+    }
 
     // Set boundary potentials (electrode values V_k).
     es.setPhiBC(amrex::GetVecOfPtrs(phi), gett_new(0));
@@ -132,17 +142,27 @@ void WarpX::SolvePoissonEfield ()
     MultiLevelVectorField E_diff_diag =
         m_fields.get_mr_levels_alldirs("E_diff_diag", max_level);
 
-    // Allocate temp fields.
+    // Save the original grid electric field as E_n.
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_n_storage(nlevs);
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_irrot_n_storage(nlevs);
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_diff_storage(nlevs);
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_irrot_drift_storage(nlevs);
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_rot_n_storage(nlevs);
 
+    MultiLevelVectorField E_n(nlevs);
     MultiLevelVectorField E_irrot_n(nlevs);
     MultiLevelVectorField E_diff(nlevs);
     MultiLevelVectorField E_irrot_drift(nlevs);
+    MultiLevelVectorField E_rot_n(nlevs);
 
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
+            E_n_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
+                Efield_fp[lev][comp]->boxArray(),
+                Efield_fp[lev][comp]->DistributionMap(),
+                Efield_fp[lev][comp]->nComp(),
+                Efield_fp[lev][comp]->nGrowVect());
+
             E_irrot_n_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
                 Efield_fp[lev][comp]->boxArray(),
                 Efield_fp[lev][comp]->DistributionMap(),
@@ -161,13 +181,27 @@ void WarpX::SolvePoissonEfield ()
                 Efield_fp[lev][comp]->nComp(),
                 Efield_fp[lev][comp]->nGrowVect());
 
+            E_rot_n_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
+                Efield_fp[lev][comp]->boxArray(),
+                Efield_fp[lev][comp]->DistributionMap(),
+                Efield_fp[lev][comp]->nComp(),
+                Efield_fp[lev][comp]->nGrowVect());
+
+            amrex::MultiFab::Copy(*E_n_storage[lev][comp],
+                                  *Efield_fp[lev][comp],
+                                  0, 0, Efield_fp[lev][comp]->nComp(),
+                                  no_grow);
+
             E_irrot_n_storage[lev][comp]->setVal(0.);
             E_diff_storage[lev][comp]->setVal(0.);
             E_irrot_drift_storage[lev][comp]->setVal(0.);
+            E_rot_n_storage[lev][comp]->setVal(0.);
 
+            E_n[lev][comp] = E_n_storage[lev][comp].get();
             E_irrot_n[lev][comp] = E_irrot_n_storage[lev][comp].get();
             E_diff[lev][comp] = E_diff_storage[lev][comp].get();
             E_irrot_drift[lev][comp] = E_irrot_drift_storage[lev][comp].get();
+            E_rot_n[lev][comp] = E_rot_n_storage[lev][comp].get();
         }
     }
 
@@ -189,11 +223,11 @@ void WarpX::SolvePoissonEfield ()
         es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
     }
 
-    // Compute E_diff = Efield_fp - E_irrot_n.
+    // Compute E_diff = E_n - E_irrot_n.
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
             amrex::MultiFab::LinComb(*E_diff[lev][comp],
-                                     1._rt, *Efield_fp[lev][comp], 0,
+                                     1._rt, *E_n[lev][comp], 0,
                                     -1._rt, *E_irrot_n[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
                                      no_grow);
@@ -227,7 +261,7 @@ void WarpX::SolvePoissonEfield ()
         phi_correction_tmp[lev]->setVal(0.);
     }
 
-    // Compute rho_correction = epsilon_0 * div(Efield_fp - E_irrot_n).
+    // Compute rho_correction = epsilon_0 * div(E_n - E_irrot_n).
     for (int lev = 0; lev < nlevs; lev++) {
         get_pointer_fdtd_solver_fp(lev)->ComputeDivE(E_diff[lev],
                                                      *rho_correction[lev]);
@@ -245,9 +279,6 @@ void WarpX::SolvePoissonEfield ()
         ApplyRhofieldBoundary(lev, rho_correction[lev].get(), PatchType::fine);
     }
 #endif
-    // for (int lev = 0; lev < nlevs; lev++) {
-    //     rho_correction[lev]->setVal(0.);
-    // }
 
     if (EB::enabled()) {
     // Solve for phi_correction_tmp with EB geometry, but with homogeneous EB
@@ -270,11 +301,23 @@ void WarpX::SolvePoissonEfield ()
         es.computeE(E_irrot_drift, amrex::GetVecOfPtrs(phi_correction_tmp), beta);
     }
 
-    // Replace the grid electric field with Efield_fp - E_irrot_drift.
+    // Compute E_rot_n = (E_n - E_irrot_n) - E_irrot_drift.
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
-            amrex::MultiFab::Saxpy(*Efield_fp[lev][comp],
-                                     -1._rt, *E_irrot_drift[lev][comp], 0,
+            amrex::MultiFab::LinComb(*E_rot_n[lev][comp],
+                                     1._rt, *E_diff[lev][comp], 0,
+                                    -1._rt, *E_irrot_drift[lev][comp], 0,
+                                     0, Efield_fp[lev][comp]->nComp(),
+                                     no_grow);
+        }
+    }
+
+    // Replace the grid electric field with E_irrot_n + E_rot_n.
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            amrex::MultiFab::LinComb(*Efield_fp[lev][comp],
+                                     1._rt, *E_irrot_n[lev][comp], 0,
+                                     1._rt, *E_rot_n[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
                                      no_grow);
         }
