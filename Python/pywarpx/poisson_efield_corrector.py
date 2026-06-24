@@ -130,7 +130,7 @@ class PoissonEfieldCorrector:
         if self.enable_diagnostics:
             self._save_current_efield()
 
-        warpx.set_potential_on_eb(self.potential_expression)
+        # warpx.set_potential_on_eb(self.potential_expression)
         warpx.solve_poisson_efield()
 
         if self.enable_diagnostics and self._diagnostics_initialized:

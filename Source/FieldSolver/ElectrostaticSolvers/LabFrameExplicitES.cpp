@@ -31,6 +31,18 @@ void LabFrameExplicitES::ComputeSpaceChargeField (
     using ablastr::fields::MultiLevelVectorField;
     using warpx::fields::FieldType;
 
+    for (int lev = 0; lev <= max_level; lev++) {
+        amrex::Print() << "LabFrameExplicitES: has phi_fp level "
+                    << lev << " = "
+                    << fields.has(FieldType::phi_fp, lev)
+                    << "\n";
+    }
+
+    for (auto const& name : fields.list()) {
+        amrex::Print() << "LabFrameExplicitES registered field: "
+                    << name << "\n";
+    }
+
     bool const skip_lev0_coarse_patch = true;
 
     const MultiLevelScalarField rho_fp = fields.get_mr_levels(FieldType::rho_fp, max_level);

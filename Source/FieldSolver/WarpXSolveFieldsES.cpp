@@ -54,6 +54,18 @@ void WarpX::SolvePoissonEfield ()
     auto& es = GetElectrostaticSolver();
     const int nlevs = max_level + 1;
 
+    for (int lev = 0; lev < nlevs; lev++) {
+        amrex::Print() << "SolvePoissonEfield: has phi_fp level "
+                    << lev << " = "
+                    << m_fields.has(FieldType::phi_fp, lev)
+                    << "\n";
+    }
+
+    for (auto const& name : m_fields.list()) {
+        amrex::Print() << "SolvePoissonEfield registered field: "
+                    << name << "\n";
+    }
+
     amrex::IntVect const no_grow = amrex::IntVect(AMREX_D_DECL(0, 0, 0));
     auto sync_vector_field = [&] (
         ablastr::fields::MultiLevelVectorField const& field
@@ -107,14 +119,34 @@ void WarpX::SolvePoissonEfield ()
         phi[lev]->setVal(0.);
     }
 
-    MultiLevelScalarField phi_fp =m_fields.get_mr_levels(FieldType::phi_fp, max_level);
-
+    bool has_phi_fp = true;
     for (int lev = 0; lev < nlevs; lev++) {
-        amrex::MultiFab::Copy(*phi[lev],
-                            *phi_fp[lev],
-                            0, 0, phi[lev]->nComp(),
-                            amrex::IntVect(AMREX_D_DECL(0, 0, 0)));
+        has_phi_fp = has_phi_fp && m_fields.has(FieldType::phi_fp, lev);
     }
+
+    if (has_phi_fp) {
+        MultiLevelScalarField phi_fp =
+            m_fields.get_mr_levels(FieldType::phi_fp, max_level);
+
+        for (int lev = 0; lev < nlevs; lev++) {
+            amrex::MultiFab::Copy(*phi[lev],
+                                *phi_fp[lev],
+                                0, 0, phi[lev]->nComp(),
+                                phi[lev]->nGrowVect());
+        }
+    } else {
+        amrex::Print() << "phi_fp is not registered; "
+                    << "cannot seed corrector phi from phi_fp.\n";
+    }
+
+    // MultiLevelScalarField phi_fp =m_fields.get_mr_levels(FieldType::phi_fp, max_level);
+
+    // for (int lev = 0; lev < nlevs; lev++) {
+    //     amrex::MultiFab::Copy(*phi[lev],
+    //                         *phi_fp[lev],
+    //                         0, 0, phi[lev]->nComp(),
+    //                         amrex::IntVect(AMREX_D_DECL(0, 0, 0)));
+    // }
 
     // Deposit charge from all particle species
     mypc->DepositCharge(amrex::GetVecOfPtrs(rho), 0.0_rt);
