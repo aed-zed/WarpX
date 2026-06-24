@@ -576,18 +576,24 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
     // beta is zero for boundaries
     const std::array<Real, 3> beta = {0._rt};
 
-    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_boundary(num_levels);
-    for (int lev = 0; lev < num_levels; lev++) {
-        for (int comp = 0; comp < 3; comp++) {
-            E_boundary[lev][comp] = std::make_unique<amrex::MultiFab>(
-                Efield_fp[lev][comp]->boxArray(),
-                Efield_fp[lev][comp]->DistributionMap(),
-                Efield_fp[lev][comp]->nComp(),
-                Efield_fp[lev][comp]->nGrowVect());
-            E_boundary[lev][comp]->setVal(0.);
-
     if (EB::enabled()) {
-        // With EB: pass E_irrot_n to computePhi for EB-aware E computation.
+        amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_boundary_storage(num_levels);
+        ablastr::fields::MultiLevelVectorField E_boundary(num_levels);
+
+        for (int lev = 0; lev < num_levels; lev++) {
+            for (int comp = 0; comp < 3; comp++) {
+                E_boundary_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
+                    Efield_fp[lev][comp]->boxArray(),
+                    Efield_fp[lev][comp]->DistributionMap(),
+                    Efield_fp[lev][comp]->nComp(),
+                    Efield_fp[lev][comp]->nGrowVect());
+
+                E_boundary_storage[lev][comp]->setVal(0.);
+                E_boundary[lev][comp] = E_boundary_storage[lev][comp].get();
+            }
+        }
+
+        // With EB: pass E_boundary to computePhi for EB-aware E computation.
         computePhi( amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                     beta, self_fields_required_precision,
                     self_fields_absolute_tolerance, self_fields_max_iters,
@@ -595,10 +601,11 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
         for (int lev = 0; lev < num_levels; lev++) {
             for (int comp = 0; comp < 3; comp++) {
                 amrex::MultiFab::Add(*Efield_fp[lev][comp],
-                                    *E_boundary[lev][comp],
-                                    0, 0,
-                                    Efield_fp[lev][comp]->nComp(),
-                                    amrex::IntVect(AMREX_D_DECL(0, 0, 0)));
+                                     *E_boundary[lev][comp],
+                                     0, 0,
+                                     Efield_fp[lev][comp]->nComp(),
+                                     amrex::IntVect(AMREX_D_DECL(0, 0, 0)));
+                Efield_fp[lev][comp]->FillBoundaryAndSync(warpx.Geom(lev).periodicity());
             }
         }
     } else {
@@ -611,7 +618,6 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
         // Compute the corresponding electric field, from the potential phi.
         computeE( Efield_fp, amrex::GetVecOfPtrs(phi), beta );
     }
-
 }
 
 void
