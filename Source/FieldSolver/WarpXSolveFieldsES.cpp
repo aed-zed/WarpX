@@ -196,6 +196,12 @@ void WarpX::SolvePoissonEfield ()
     MultiLevelVectorField E_diff_diag =
         m_fields.get_mr_levels_alldirs("E_diff_diag", max_level);
 
+    MultiLevelVectorField E_irrot_drift_diag =
+        m_fields.get_mr_levels_alldirs("E_irrot_drift_diag", max_level);
+
+    MultiLevelVectorField E_rot_n_diag =
+        m_fields.get_mr_levels_alldirs("E_rot_n_diag", max_level);
+
     // Save the original grid electric field as E_n.
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_n_storage(nlevs);
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> E_irrot_n_storage(nlevs);
@@ -294,6 +300,8 @@ void WarpX::SolvePoissonEfield ()
         }
     }
 
+    sync_vector_field(E_diff);
+
 
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
@@ -301,11 +309,8 @@ void WarpX::SolvePoissonEfield ()
                                   *E_diff[lev][comp],
                                   0, 0, E_diff[lev][comp]->nComp(),
                                   no_grow);
-            // E_diff[lev][comp]->setVal(0.);
         }
     }
-
-    sync_vector_field(E_diff);
 
     // Allocate temporary rho_correction and phi_correction_tmp MultiFabs.
     amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho_correction(nlevs);
@@ -361,6 +366,16 @@ void WarpX::SolvePoissonEfield ()
         es.computeE(E_irrot_drift, amrex::GetVecOfPtrs(phi_correction_tmp), beta);
     }
 
+
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            amrex::MultiFab::Copy(*E_irrot_drift_diag[lev][comp],
+                                  *E_irrot_drift[lev][comp],
+                                  0, 0, E_irrot_drift[lev][comp]->nComp(),
+                                  no_grow);
+        }
+    }
+
     // Compute E_rot_n = (E_n - E_irrot_n) - E_irrot_drift.
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
@@ -369,6 +384,16 @@ void WarpX::SolvePoissonEfield ()
                                     -1._rt, *E_irrot_drift[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
                                      no_grow);
+        }
+    }
+
+
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            amrex::MultiFab::Copy(*E_rot_n_diag[lev][comp],
+                                  *E_rot_n[lev][comp],
+                                  0, 0, E_rot_n[lev][comp]->nComp(),
+                                  no_grow);
         }
     }
 

@@ -31,6 +31,8 @@ void LabFrameExplicitES::ComputeSpaceChargeField (
     using ablastr::fields::MultiLevelVectorField;
     using warpx::fields::FieldType;
 
+    amrex::Print() << "LabFrameExplicitES::ComputeSpaceChargeField" << "\n";
+
     bool const skip_lev0_coarse_patch = true;
 
     const MultiLevelScalarField rho_fp = fields.get_mr_levels(FieldType::rho_fp, max_level);

@@ -41,6 +41,8 @@ void RelativisticExplicitES::ComputeSpaceChargeField (
     using ablastr::fields::MultiLevelVectorField;
     using warpx::fields::FieldType;
 
+    amrex::Print() << "RelativisticExplicitES::ComputeSpaceChargeField" << "\n";
+
     const bool always_run_solve = (WarpX::electrostatic_solver_id == ElectrostaticSolverAlgo::Relativistic);
 
     MultiLevelVectorField Efield_fp = fields.get_mr_levels_alldirs(FieldType::Efield_fp, max_level);
