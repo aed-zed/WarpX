@@ -51,4 +51,14 @@ if(WarpX_EB)
         OFF  # checksum
         OFF  # dependency
     )
+
+    add_warpx_test(
+        test_rz_poisson_efield_correction_harmonic_bias  # name
+        RZ  # dims
+        2  # nprocs
+        PICMI_inputs_rz_harmonic_bias.py  # inputs
+        analysis_rz_harmonic_bias.py  # analysis
+        OFF  # checksum
+        OFF  # dependency
+    )
 endif()

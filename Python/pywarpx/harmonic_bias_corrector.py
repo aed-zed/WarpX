@@ -193,9 +193,10 @@ class HarmonicBiasCorrector:
         self._compute_vacuum_field(lev)
 
         # Choose the drift measurement: the geometry-agnostic induced-charge
-        # flux (3D) when an electrode weighting is given, else the axisymmetric
-        # line integral (the only option in RZ, where the flux helper is 3D-only).
-        self._use_flux = (self.electrode_weighting is not None) and not self._is_rz()
+        # flux when an electrode weighting is given (now available in RZ as well
+        # as 3D -- ComputeEBChargeWeighted has an RZ branch), else fall back to
+        # the axisymmetric line integral (x_lo_phys/x_hi_phys).
+        self._use_flux = self.electrode_weighting is not None
         if self._use_flux:
             # E_vac is built at the configured electrode potentials, so it
             # represents an effective voltage equal to target_delta_phi. With
