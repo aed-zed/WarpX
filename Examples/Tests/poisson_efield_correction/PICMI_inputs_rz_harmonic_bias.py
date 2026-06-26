@@ -12,11 +12,19 @@ add only a gradient / a harmonic (theta-free) field, so E_theta -- the
 device's azimuthal inductive field in RZ -- is left untouched.
 """
 
+import os
+
 from scipy.constants import e, m_e
 
 from pywarpx import picmi
 from pywarpx.callbacks import installafterEsolve, installafterInitEsolve
 from pywarpx.harmonic_bias_corrector import HarmonicBiasCorrector
+
+# Feedback measurement switch (single knob for A/B runs, e.g. on Perlmutter):
+#   POISSON_USE_FLUX=1 (default) -> geometry-agnostic induced-charge flux,
+#   POISSON_USE_FLUX=0           -> the 2024 axisymmetric line integral.
+# Everything else (geometry, clean, bias) is identical between the two.
+use_flux = os.environ.get("POISSON_USE_FLUX", "1") != "0"
 
 # ---------------------------------------------------------------------------
 # Grid / geometry (same concentric-cylinder Orbitron-like setup as the RZ test)
@@ -102,14 +110,16 @@ sim.add_diagnostic(PN_diag)
 # ---------------------------------------------------------------------------
 # Curl-preserving harmonic-bias corrector, flux mode (RZ)
 # ---------------------------------------------------------------------------
+print(f"[RZ harmonic bias] feedback = {'flux' if use_flux else 'line integral'}")
 corrector = HarmonicBiasCorrector(
     sim=sim,
     correction_interval=correction_interval,
     potential_expression=potential_expression,
     target_delta_phi=target_potential,
-    x_lo_phys=r_inner,   # only for the independent line-integral cross-check
-    x_hi_phys=r_outer,
-    electrode_weighting=electrode_region,  # geometry-agnostic flux feedback (RZ)
+    x_lo_phys=r_inner,   # line-integral bounds (used as feedback if use_flux=0,
+    x_hi_phys=r_outer,   # else only for the independent cross-check)
+    # Flux feedback when enabled; None -> line-integral fallback (2024 method).
+    electrode_weighting=electrode_region if use_flux else None,
     enable_gauss_clean=True,
     verify_curl=False,   # the 3D curl footprint is not computed in RZ
     enable_diagnostics=True,
