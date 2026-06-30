@@ -315,9 +315,32 @@ class HarmonicBiasCorrector:
         if self.enable_diagnostics and self._diagnostics_initialized:
             self._store_applied_correction(alpha)
         if self.enable_diagnostics:
+            # Re-measure after the bias (deadbeat at relax=1 -> should sit at
+            # target) and report field-magnitude diagnostics. The key tell:
+            # a growing sum|E|^2 while Delta_phi(after) stays pinned at target
+            # is the signature of field accumulating in the frozen EB
+            # (conductor-interior) cells, which the saxpy writes into but the
+            # Maxwell update never touches. max|E_theta| tracks the inductive
+            # field; max|corr_theta| should stay ~0 (the bias is a pure
+            # gradient), confirming E_theta is left untouched by the correction.
+            delta_phi_after = self._measure_delta_phi()
+            fp = self._measure_field_stats("Efield_fp")
+            corr_theta_max = (
+                self._measure_field_stats("Efield_correction")["max"][1]
+                if self._diagnostics_initialized
+                else float("nan")
+            )
             print(
-                f"[HarmonicBias] Step {step}: Delta_phi(before) = "
-                f"{delta_phi_now:.6e}, alpha = {alpha:.6e}"
+                f"[HarmonicBias] Step {step}: "
+                f"Delta_phi(before) = {delta_phi_now:.6e}, "
+                f"Delta_phi(after) = {delta_phi_after:.6e}, "
+                f"target = {self.target_delta_phi:.6e}, alpha = {alpha:.6e}\n"
+                f"               sum|E|^2 = {fp['energy']:.6e}  "
+                f"max|E_r| = {fp['max'][0]:.6e}  "
+                f"max|E_theta| = {fp['max'][1]:.6e}  "
+                f"max|E_z| = {fp['max'][2]:.6e}  "
+                f"max|corr_theta| = {corr_theta_max:.6e}",
+                flush=True,
             )
 
     def _apply_bias(self, alpha):
@@ -396,6 +419,49 @@ class HarmonicBiasCorrector:
             nz = hi[2] - lo[2] + 1
         integral = float(np.sum(E_slice))
         return (dx / nz) * integral
+
+    def _measure_field_stats(self, field_name):
+        """Field-magnitude diagnostics for ``field_name`` over the valid domain.
+
+        Returns ``{"energy": sum|E|^2, "energy_comp": [s_r, s_t, s_z],
+        "max": [max|E_r|, max|E_theta|, max|E_z|]}``.  ``energy`` is an
+        unweighted sum of squares (no eps0/2 and, in RZ, no 2*pi*r volume
+        metric) -- a *relative* field-energy indicator for comparing runs on the
+        same grid, not an absolute energy.  A rising ``energy`` while
+        ``Delta_phi(after)`` stays at target flags field accumulating in the
+        frozen EB cells (the bias saxpy writes into conductor-interior cells the
+        Maxwell update never touches).
+
+        Uses the same global-index slicing as ``compute_potential_difference``;
+        like it, this assumes a single-box / single-rank layout (true for the
+        production GPU runs).  numpy ufuncs dispatch to cupy on device arrays.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        warpx = self._warpx()
+        mfr = self._mfr()
+        is_rz = self._is_rz()
+        geom_data = warpx.Geom(lev=0).data()
+
+        energy_comp = [0.0, 0.0, 0.0]
+        max_comp = [0.0, 0.0, 0.0]
+        for comp in (0, 1, 2):
+            mf = mfr.get(field_name, dir=self._Direction(comp), level=0)
+            idx_type = mf.box_array().ix_type()
+            domain = geom_data.Domain().convert(idx_type)
+            lo = domain.small_end
+            hi = domain.big_end
+            if is_rz:
+                arr = mf[lo[0] : hi[0] + 1, :]
+            else:
+                arr = mf[lo[0] : hi[0] + 1, lo[1] : hi[1] + 1, :]
+            energy_comp[comp] = float(np.sum(arr * arr))
+            max_comp[comp] = float(np.max(np.abs(arr)))
+        return {
+            "energy": energy_comp[0] + energy_comp[1] + energy_comp[2],
+            "energy_comp": energy_comp,
+            "max": max_comp,
+        }
 
     # -- curl-preservation check (3D) ----------------------------------------
     def _measure_curl_footprint(self, field_name, lev):
