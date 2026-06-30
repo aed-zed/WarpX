@@ -99,6 +99,14 @@ class HarmonicBiasCorrector:
         each correction.  This realizes the combined scheme (report Eq. 13.9):
         the clean removes the Gauss-law residual and preserves curl; the bias
         resets the potential.  Default False (bias only).
+    subtract_plasma_charge : bool, optional
+        Flux mode only.  If True, subtract the grounded-plasma image charge
+        ``Q_g`` (one extra grounded Poisson solve per correction) so the feedback
+        uses the bias-induced charge ``Q[E] - Q_g`` instead of the total induced
+        charge.  Necessary when the plasma is not a small perturbation: otherwise
+        flux mode holds the *total* induced charge at the vacuum value and strips
+        real bias as the plasma screens the electrode (``Delta_phi`` drifts to 0).
+        With ``rho ~ 0`` it is a no-op (``Q_g ~ 0``).  Default False.
     verify_curl : bool, optional
         If True (default), measure the discrete curl footprint of the stored
         ``E_vac`` (3D only) at setup and expose it as ``self.curl_footprint``.
@@ -120,6 +128,7 @@ class HarmonicBiasCorrector:
         electrode_weighting=None,
         relaxation=1.0,
         enable_gauss_clean=False,
+        subtract_plasma_charge=False,
         verify_curl=True,
         enable_diagnostics=False,
         diag_name=None,
@@ -145,6 +154,16 @@ class HarmonicBiasCorrector:
         self.electrode_weighting = electrode_weighting
         self.relaxation = relaxation
         self.enable_gauss_clean = enable_gauss_clean
+        # subtract_plasma_charge (flux mode): subtract the grounded-plasma image
+        # charge Q_g (one extra grounded Poisson solve per correction) so the
+        # feedback uses the *bias*-induced charge (Q[E] - Q_g) rather than the
+        # total induced charge. Without this, flux mode holds the TOTAL induced
+        # charge at the vacuum value, which strips real bias as a dense plasma
+        # screens the electrode (Delta_phi drifts to 0). Required when the plasma
+        # is not a small perturbation; with rho ~ 0, Q_g ~ 0 and it is a no-op.
+        # This is the single-electrode analog of MultiElectrodeBiasCorrector's
+        # V = C^{-1}(Q - Q_g). See report Sections 15.3 (Phase A/B).
+        self.subtract_plasma_charge = subtract_plasma_charge
         self.verify_curl = verify_curl
         self.enable_diagnostics = enable_diagnostics
         self.diag_name = diag_name
@@ -152,6 +171,7 @@ class HarmonicBiasCorrector:
         self._vacuum_ready = False
         self._phi_vac = None
         self._q_vac = None  # reference induced charge of E_vac (flux mode)
+        self._last_q_g = 0.0  # last measured grounded-plasma charge (flux mode)
         self._use_flux = False  # decided at setup (3D + electrode_weighting)
         self._diagnostics_initialized = False
         # Populated at setup if verify_curl: {"bulk_rel", "max_rel", ...}.
@@ -323,7 +343,9 @@ class HarmonicBiasCorrector:
             # Maxwell update never touches. max|E_theta| tracks the inductive
             # field; max|corr_theta| should stay ~0 (the bias is a pure
             # gradient), confirming E_theta is left untouched by the correction.
-            delta_phi_after = self._measure_delta_phi()
+            # reuse_plasma_charge: the bias just added does not change the plasma
+            # charge, so avoid a second grounded solve in flux + subtract mode.
+            delta_phi_after = self._measure_delta_phi(reuse_plasma_charge=True)
             fp = self._measure_field_stats("Efield_fp")
             corr_theta_max = (
                 self._measure_field_stats("Efield_correction")["max"][1]
@@ -365,20 +387,59 @@ class HarmonicBiasCorrector:
             corr.saxpy(alpha - 1.0, vac, 0, 0, 1, 0)
 
     # -- measurement ----------------------------------------------------------
-    def _measure_delta_phi(self):
+    def _measure_delta_phi(self, reuse_plasma_charge=False):
         """Present effective potential difference of the live ``Efield_fp``.
 
         Flux mode (geometry-agnostic, 3D): the induced charge is proportional to
         the effective electrode voltage, so the live voltage is the vacuum-field
         voltage scaled by the charge ratio, ``phi_vac * Q[E_fp] / Q[E_vac]``.
+        With ``subtract_plasma_charge`` the bias-induced charge ``Q[E_fp] - Q_g``
+        is used instead of the total ``Q[E_fp]`` -- see ``_measure_grounded_plasma_charge``.
         Line-integral mode: the axisymmetric radial integral.
+
+        ``reuse_plasma_charge=True`` reuses the last measured ``Q_g`` instead of
+        re-solving (used by the post-correction diagnostic, where the bias added
+        between the two measurements does not change the plasma charge).
         """
         if self._use_flux:
             q_now = self._warpx().compute_eb_charge(
                 weighting=self.electrode_weighting, field="Efield_fp"
             )
+            if self.subtract_plasma_charge:
+                if not reuse_plasma_charge:
+                    self._last_q_g = self._measure_grounded_plasma_charge()
+                q_now = q_now - self._last_q_g
             return self._phi_vac * q_now / self._q_vac
         return self.compute_potential_difference()
+
+    def _measure_grounded_plasma_charge(self):
+        """Grounded-electrode induced charge Q_g (the plasma's image charge).
+
+        Solves Poisson at the current instant with all electrodes grounded
+        (bias removed) and returns the induced charge over the electrode region.
+        Subtracting it from the live induced charge isolates the bias-attributable
+        charge (linear superposition).  Saves and restores the live E-field and
+        the EB potential string so the run is untouched; costs one Poisson solve.
+        """
+        mfr = self._mfr()
+        warpx = self._warpx()
+        saved = {}
+        for comp in (0, 1, 2):
+            saved[comp] = mfr.get("Efield_fp", dir=self._Direction(comp), level=0).copy()
+
+        warpx.set_potential_on_eb("0.0")
+        warpx.solve_poisson_efield()
+        q_g = warpx.compute_eb_charge(
+            weighting=self.electrode_weighting, field="Efield_fp"
+        )
+
+        # Restore the configured EB potential and the live E-field.
+        warpx.set_potential_on_eb(self.potential_expression)
+        for comp in (0, 1, 2):
+            mfr.get("Efield_fp", dir=self._Direction(comp), level=0).copymf(
+                saved[comp], 0, 0, 1, 0
+            )
+        return q_g
 
     def compute_potential_difference(self, field_name="Efield_fp"):
         """Line-integral potential difference of ``field_name`` between the bounds.
