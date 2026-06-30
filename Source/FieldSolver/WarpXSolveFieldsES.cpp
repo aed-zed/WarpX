@@ -53,7 +53,66 @@ void WarpX::ComputeSpaceChargeField (bool const reset_fields)
         m_fields, *mypc, myfl.get(), max_level );
 }
 
+void WarpX::ComputeVacuumEfield ()
+{
+    WARPX_PROFILE("WarpX::ComputeVacuumEfield");
 
+    using ablastr::fields::MultiLevelScalarField;
+    using ablastr::fields::MultiLevelVectorField;
+
+    auto& es = GetElectrostaticSolver();
+    const int nlevs = max_level + 1;
+    const amrex::IntVect ng = get_ng_depos_rho();
+
+    // Allocate temporary rho=0 and phi fields.
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> rho(nlevs);
+    amrex::Vector<std::unique_ptr<amrex::MultiFab>> phi(nlevs);
+    for (int lev = 0; lev < nlevs; lev++) {
+        amrex::BoxArray nba = boxArray(lev);
+        nba.surroundingNodes();
+        rho[lev] = std::make_unique<amrex::MultiFab>(
+            nba, DistributionMap(lev), WarpX::ncomps, ng);
+        rho[lev]->setVal(0.);
+        phi[lev] = std::make_unique<amrex::MultiFab>(
+            nba, DistributionMap(lev), WarpX::ncomps, 1);
+        phi[lev]->setVal(0.);
+    }
+
+    // Apply the real electrode/domain potential BCs.
+    es.setPhiBC(amrex::GetVecOfPtrs(phi), gett_new(0));
+
+    // E_vac must have been allocated from Python.
+    MultiLevelVectorField E_vac =
+        m_fields.get_mr_levels_alldirs("E_vac", max_level);
+
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            E_vac[lev][comp]->setVal(0.);
+        }
+    }
+
+    const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
+    if (EB::enabled()) {
+        es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+                      beta, es.self_fields_required_precision,
+                      es.self_fields_absolute_tolerance,
+                      es.self_fields_max_iters, es.self_fields_verbosity,
+                      es.is_igf_2d_slices, E_vac);
+    } else {
+        es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+                      beta, es.self_fields_required_precision,
+                      es.self_fields_absolute_tolerance,
+                      es.self_fields_max_iters, es.self_fields_verbosity,
+                      es.is_igf_2d_slices);
+        es.computeE(E_vac, amrex::GetVecOfPtrs(phi), beta);
+    }
+
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            E_vac[lev][comp]->FillBoundaryAndSync(Geom(lev).periodicity());
+        }
+    }
+}
 
 void WarpX::SolvePoissonEfield ()
 {
@@ -366,16 +425,6 @@ void WarpX::SolvePoissonEfield ()
         es.computeE(E_irrot_drift, amrex::GetVecOfPtrs(phi_correction_tmp), beta);
     }
 
-
-    for (int lev = 0; lev < nlevs; lev++) {
-        for (int comp = 0; comp < 3; comp++) {
-            amrex::MultiFab::Copy(*E_irrot_drift_diag[lev][comp],
-                                  *E_irrot_drift[lev][comp],
-                                  0, 0, E_irrot_drift[lev][comp]->nComp(),
-                                  no_grow);
-        }
-    }
-
     // Compute E_rot_n = (E_n - E_irrot_n) - E_irrot_drift.
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
@@ -384,6 +433,64 @@ void WarpX::SolvePoissonEfield ()
                                     -1._rt, *E_irrot_drift[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
                                      no_grow);
+        }
+    }
+
+    bool has_E_vac = true;
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            has_E_vac = has_E_vac &&
+                m_fields.has("E_vac", Direction{comp}, lev);
+        }
+    }
+
+    if (has_E_vac) {
+        MultiLevelVectorField E_vac =
+            m_fields.get_mr_levels_alldirs("E_vac", max_level);
+
+        amrex::Real alpha_num = 0._rt;
+        amrex::Real alpha_den = 0._rt;
+
+        for (int lev = 0; lev < nlevs; lev++) {
+            for (int comp = 0; comp < 3; comp++) {
+                alpha_num += amrex::MultiFab::Dot(*E_rot_n[lev][comp], 0, *E_vac[lev][comp], 0, Efield_fp[lev][comp]->nComp(), 0);
+                alpha_den += amrex::MultiFab::Dot(*E_vac[lev][comp], 0, *E_vac[lev][comp], 0, Efield_fp[lev][comp]->nComp(), 0);
+            }
+        }
+
+        amrex::Real alpha = 0._rt;
+        if (alpha_den > 0._rt) {
+            alpha = alpha_num / alpha_den;
+        }
+
+        amrex::Print() << "[PoissonCorrector] harmonic alpha = "
+                    << alpha << "\n";
+                    
+        for (int lev = 0; lev < nlevs; lev++) {
+            for (int comp = 0; comp < 3; comp++) {
+                amrex::MultiFab::Saxpy(*E_irrot_drift[lev][comp],
+                                    alpha, *E_vac[lev][comp],
+                                    0, 0, Efield_fp[lev][comp]->nComp(),
+                                    no_grow);
+
+                amrex::MultiFab::Saxpy(*E_rot_n[lev][comp],
+                                    -alpha, *E_vac[lev][comp],
+                                    0, 0, Efield_fp[lev][comp]->nComp(),
+                                    no_grow);
+            }
+        }
+    } else {
+        amrex::Print() << "[PoissonCorrector] E_vac is not registered; "
+                    << "skipping harmonic projection.\n";
+    }
+
+
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            amrex::MultiFab::Copy(*E_irrot_drift_diag[lev][comp],
+                                  *E_irrot_drift[lev][comp],
+                                  0, 0, E_irrot_drift[lev][comp]->nComp(),
+                                  no_grow);
         }
     }
 

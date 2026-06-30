@@ -266,6 +266,10 @@ void init_WarpX (py::module& m)
             "Deposit charge from all species, solve Poisson with current EB/domain BCs, "
             "and replace Efield_fp with the result."
         )
+        .def("compute_vacuum_efield", 
+            [] (WarpX& wx) { wx.ComputeVacuumEfield(); },
+            "Compute Vacuum Efield from just electrode contribution"
+        )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
             "Executes projection based divergence cleaner on loaded Bfield_fp_external."
