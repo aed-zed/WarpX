@@ -487,23 +487,43 @@ void WarpX::SolvePoissonEfield_w_A ()
         }
     };
 
-    auto make_unit_eb_update = [] (
-        ablastr::fields::VectorField const& field
+    auto apply_eb_update_mask = [&] (
+        ablastr::fields::VectorField const& field,
+        std::array<std::unique_ptr<amrex::iMultiFab>, 3> const& eb_update,
+        int const lev
     )
     {
-        std::array<std::unique_ptr<amrex::iMultiFab>, 3> eb_update;
+        if (!EB::enabled()) { return; }
 
         for (int comp = 0; comp < 3; comp++) {
-            eb_update[comp] = std::make_unique<amrex::iMultiFab>(
-                field[comp]->boxArray(),
-                field[comp]->DistributionMap(),
-                1,
-                field[comp]->nGrowVect());
+    #ifdef AMREX_USE_OMP
+    #pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+    #endif
+            for (amrex::MFIter mfi(*field[comp], amrex::TilingIfNotGPU());
+                mfi.isValid(); ++mfi)
+            {
+                amrex::Array4<amrex::Real> const& field_arr =
+                    field[comp]->array(mfi);
 
-            eb_update[comp]->setVal(1);
+                amrex::Array4<int const> const& update_arr =
+                    eb_update[comp]->const_array(mfi);
+
+                amrex::Box const bx =
+                    mfi.growntilebox(field[comp]->ixType().toIntVect());
+
+                int const ncomp = field[comp]->nComp();
+
+                amrex::ParallelFor(bx, ncomp,
+                    [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
+                    {
+                        if (update_arr(i, j, k, n) == 0) {
+                            field_arr(i, j, k, n) = 0._rt;
+                        }
+                    });
+            }
+
+            field[comp]->FillBoundaryAndSync(Geom(lev).periodicity());
         }
-
-        return eb_update;
     };
 
     auto print_vec_norms = [&] (
@@ -817,6 +837,7 @@ void WarpX::SolvePoissonEfield_w_A ()
         // auto eb_update_B = make_unit_eb_update(curl_Ediff[lev]);
         get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_Ediff[lev], E_diff[lev], m_eb_update_B[lev], lev);
         print_vec_norms("curl_Ediff before /mu0", curl_Ediff);
+        apply_eb_update_mask(curl_Ediff[lev], m_eb_update_B[lev], lev);
     }
 
     sync_vector_field(curl_Ediff);
@@ -908,20 +929,18 @@ void WarpX::SolvePoissonEfield_w_A ()
     sync_vector_field(A_vec);
     print_vec_norms("A_vec after vector Poisson", A_vec);
 
-    // // Recover E_rot_n = curl(A).
-    // // CalculateCurrentAmpere gives J = curl(B) / mu0. Treat A_vec as the
-    // // B-like input, then multiply the result by mu0 to get curl(A).
-    // for (int lev = 0; lev < nlevs; lev++) {
-    //     auto eb_update_B = make_unit_eb_update(curl_A[lev]);
-    //     get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_A[lev], A_vec[lev], eb_update_B, lev);
-    // }
-
+    for (int lev = 0; lev < nlevs; lev++) {
+        apply_eb_update_mask(curl_A[lev], m_eb_update_B[lev], lev);
+    }
     sync_vector_field(curl_A);
     print_vec_norms("curl_A B-like before E interpolation", curl_A);
 
     // Center curl(A) from B-like staggering onto the Efield_fp staggering.
     interpolate_vector_field(curl_A, E_rot_n);
 
+    for (int lev = 0; lev < nlevs; lev++) {
+        apply_eb_update_mask(E_rot_n[lev], m_eb_update_E[lev], lev);
+    }
     sync_vector_field(E_rot_n);
     print_vec_norms("E_rot_n after curl_A interpolation", E_rot_n);
 
