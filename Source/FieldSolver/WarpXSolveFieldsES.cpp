@@ -470,7 +470,7 @@ void WarpX::SolvePoissonEfield_w_A ()
     auto& es = GetElectrostaticSolver();
     const int nlevs = max_level + 1;
     constexpr int correction_verbosity = 1;
-    constexpr int vector_poisson_verbosity = 4;
+    constexpr int vector_poisson_verbosity = 2;
     constexpr int vector_poisson_max_iters = 2000;
     const amrex::Real vector_poisson_required_precision = 1.e-12_rt;
     const amrex::Real vector_poisson_absolute_tolerance = 1.e-30_rt;
