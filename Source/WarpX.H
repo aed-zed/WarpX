@@ -798,6 +798,7 @@ public:
 
     /** Deposit charge, solve Poisson with current EB/domain BCs, replace Efield_fp */
     void SolvePoissonEfield ();
+    void SolvePoissonEfield_w_A ();
     void ComputeVacuumEfield ();
 
     // Magnetostatic Solver Interface

@@ -266,6 +266,11 @@ void init_WarpX (py::module& m)
             "Deposit charge from all species, solve Poisson with current EB/domain BCs, "
             "and replace Efield_fp with the result."
         )
+        .def("solve_poisson_efield_w_A",
+            [] (WarpX& wx) { wx.SolvePoissonEfield_w_A(); },
+            "Deposit charge from all species, solve Poisson with current EB/domain BCs, "
+            "Compute E_rot from residual, and replace Efield_fp with the result."
+        )
         .def("compute_vacuum_efield", 
             [] (WarpX& wx) { wx.ComputeVacuumEfield(); },
             "Compute Vacuum Efield from just electrode contribution"

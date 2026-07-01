@@ -62,6 +62,7 @@ class PoissonEfieldCorrector:
         potential_expression,
         enable_diagnostics=False,
         diag_name=None,
+        calculate_vector_potential=False,
     ):
         self.sim = sim
         self.correction_interval = correction_interval
@@ -92,23 +93,24 @@ class PoissonEfieldCorrector:
         mfr = self._mfr()
         lev = 0
 
-        for comp in (0, 1, 2):
-            direction = self._Direction(comp)
-            ref_mf = mfr.get("Efield_fp", dir=direction, level=lev)
-            mfr.alloc_init(
-                "E_vac",
-                direction,
-                lev,
-                ref_mf.box_array(),
-                ref_mf.dm(),
-                ref_mf.n_comp,
-                ref_mf.n_grow_vect,
-                0.0,
-                True,
-                True,
-            )
-            
-        warpx.compute_vacuum_efield()
+        if not self.calculate_vector_potential:
+            for comp in (0, 1, 2):
+                direction = self._Direction(comp)
+                ref_mf = mfr.get("Efield_fp", dir=direction, level=lev)
+                mfr.alloc_init(
+                    "E_vac",
+                    direction,
+                    lev,
+                    ref_mf.box_array(),
+                    ref_mf.dm(),
+                    ref_mf.n_comp,
+                    ref_mf.n_grow_vect,
+                    0.0,
+                    True,
+                    True,
+                )
+                
+            warpx.compute_vacuum_efield()
 
         if not self.enable_diagnostics:
             return
@@ -150,14 +152,18 @@ class PoissonEfieldCorrector:
             self._save_current_efield()
 
         # warpx.set_potential_on_eb(self.potential_expression)
-        warpx.solve_poisson_efield()
+        # warpx.solve_poisson_efield()
+        if self.calculate_vector_potential:
+            warpx.solve_poisson_efield_w_A()
+        else:
+            warpx.solve_poisson_efield()
 
         if self.enable_diagnostics and self._diagnostics_initialized:
             self._compute_correction_field()
 
         if self.enable_diagnostics:
             delta_phi = self.compute_potential_difference()
-            print(f"[PoissonCorrector] Step {step}: Delta_phi = {delta_phi:.6e}")
+            print(f"[PoissonCorrector] Step {step + 1}: Delta_phi = {delta_phi:.8f}")
 
     def compute_potential_difference(self, x_lo_phys=None, x_hi_phys=None):
         """Compute potential difference by integrating Ex along x at y=0.
