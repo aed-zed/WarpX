@@ -105,6 +105,17 @@ sim = picmi.Simulation(
     # double-free, so it is omitted here for the local CPU test.
 )
 
+# Field dumps (E + the eb_covered mask) so the branch-agnostic post-processing
+# tool electrode_potential.py can reconstruct per-electrode phi from the output.
+sim.add_diagnostic(picmi.FieldDiagnostic(
+    name="diag", grid=grid, period=1, data_list=["E"],
+    warpx_format="openpmd", warpx_openpmd_backend="h5", warpx_file_min_digits=10,
+))
+sim.add_diagnostic(picmi.FieldDiagnostic(
+    name="diag_eb_covered", grid=grid, period="0:1:1", data_list=["eb_covered"],
+    warpx_format="openpmd", warpx_openpmd_backend="h5", warpx_file_min_digits=10,
+))
+
 if use_plasma:
     # Cold, net-positive space charge in the gaps -> nonzero Q_g (screening).
     dist = picmi.AnalyticDistribution(
