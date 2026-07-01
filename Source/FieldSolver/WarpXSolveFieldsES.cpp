@@ -703,42 +703,47 @@ void WarpX::SolvePoissonEfield_w_A ()
             factories.push_back(&fieldEBFactory(lev));
         }
         eb_farray_box_factory = std::move(factories);
-
-        ablastr::fields::computeVectorPotential(
-            curl_Ediff,
-            A_vec,
-            es.self_fields_required_precision,
-            es.self_fields_absolute_tolerance,
-            es.self_fields_max_iters,
-            correction_verbosity,
-            Geom(),
-            DistributionMap(),
-            boxArray(),
-            vector_bc,
-            EB::enabled(),
-            WarpX::do_single_precision_comms,
-            refRatio(),
-            std::nullopt,
-            gett_new(0),
-            eb_farray_box_factory);
-    } else
-#endif
-    {
-        ablastr::fields::computeVectorPotential(
-            curl_Ediff,
-            A_vec,
-            es.self_fields_required_precision,
-            es.self_fields_absolute_tolerance,
-            es.self_fields_max_iters,
-            correction_verbosity,
-            Geom(),
-            DistributionMap(),
-            boxArray(),
-            vector_bc,
-            false,
-            WarpX::do_single_precision_comms,
-            refRatio());
     }
+
+    ablastr::fields::computeVectorPotential<
+        MagnetostaticSolver::VectorPoissonBoundaryHandler,
+        std::nullopt_t,
+        amrex::EBFArrayBoxFactory>(
+        curl_Ediff,
+        A_vec,
+        es.self_fields_required_precision,
+        es.self_fields_absolute_tolerance,
+        es.self_fields_max_iters,
+        correction_verbosity,
+        Geom(),
+        DistributionMap(),
+        boxArray(),
+        vector_bc,
+        EB::enabled(),
+        WarpX::do_single_precision_comms,
+        refRatio(),
+        std::nullopt,
+        std::nullopt,
+        gett_new(0),
+        eb_farray_box_factory
+    );
+#else
+    ablastr::fields::computeVectorPotential(
+        curl_Ediff,
+        A_vec,
+        es.self_fields_required_precision,
+        es.self_fields_absolute_tolerance,
+        es.self_fields_max_iters,
+        correction_verbosity,
+        Geom(),
+        DistributionMap(),
+        boxArray(),
+        vector_bc,
+        false,
+        WarpX::do_single_precision_comms,
+        refRatio()
+    );
+#endif
 
     sync_vector_field(A_vec);
 
