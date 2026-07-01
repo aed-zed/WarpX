@@ -845,6 +845,12 @@ void WarpX::SolvePoissonEfield_w_A ()
         }
     }
 
+    using VectorPotentialPostCalc =
+        std::optional<MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel>;
+    VectorPotentialPostCalc post_A_calculation =
+        MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel(
+            curl_A, grad_buf_e_stag, grad_buf_b_stag);
+
 #ifdef AMREX_USE_EB
     std::optional<amrex::Vector<amrex::EBFArrayBoxFactory const*>> eb_farray_box_factory;
     if (EB::enabled()) {
@@ -856,15 +862,9 @@ void WarpX::SolvePoissonEfield_w_A ()
         eb_farray_box_factory = std::move(factories);
     }
 
-    std::optional<MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel>
-        post_A_calculation = MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel(
-            curl_A, grad_buf_e_stag, grad_buf_b_stag);
-
-    print_vec_norms("A_vec before vector Poisson", A_vec);
-
     ablastr::fields::computeVectorPotential<
         MagnetostaticSolver::VectorPoissonBoundaryHandler,
-        MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel,
+        VectorPotentialPostCalc,
         amrex::EBFArrayBoxFactory>(
         J_pseudo_nodal,
         A_vec,
@@ -886,7 +886,7 @@ void WarpX::SolvePoissonEfield_w_A ()
 #else
     ablastr::fields::computeVectorPotential<
         MagnetostaticSolver::VectorPoissonBoundaryHandler,
-        MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel>(
+        VectorPotentialPostCalc>(
         J_pseudo_nodal,
         A_vec,
         vector_poisson_required_precision,
