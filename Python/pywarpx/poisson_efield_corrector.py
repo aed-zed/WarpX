@@ -94,24 +94,24 @@ class PoissonEfieldCorrector:
         mfr = self._mfr()
         lev = 0
 
-        if not self.calculate_vector_potential:
-            for comp in (0, 1, 2):
-                direction = self._Direction(comp)
-                ref_mf = mfr.get("Efield_fp", dir=direction, level=lev)
-                mfr.alloc_init(
-                    "E_vac",
-                    direction,
-                    lev,
-                    ref_mf.box_array(),
-                    ref_mf.dm(),
-                    ref_mf.n_comp,
-                    ref_mf.n_grow_vect,
-                    0.0,
-                    True,
-                    True,
-                )
-                
-            warpx.compute_vacuum_efield()
+        # if not self.calculate_vector_potential:
+        for comp in (0, 1, 2):
+            direction = self._Direction(comp)
+            ref_mf = mfr.get("Efield_fp", dir=direction, level=lev)
+            mfr.alloc_init(
+                "E_vac",
+                direction,
+                lev,
+                ref_mf.box_array(),
+                ref_mf.dm(),
+                ref_mf.n_comp,
+                ref_mf.n_grow_vect,
+                0.0,
+                True,
+                True,
+            )
+            
+        warpx.compute_vacuum_efield()
 
         if not self.enable_diagnostics:
             return

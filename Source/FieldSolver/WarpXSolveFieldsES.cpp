@@ -946,6 +946,46 @@ void WarpX::SolvePoissonEfield_w_A ()
     sync_vector_field(E_rot_n);
     print_vec_norms("E_rot_n after curl_A interpolation", E_rot_n);
 
+    bool has_E_vac = true;
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            has_E_vac = has_E_vac && m_fields.has("E_vac", Direction{comp}, lev);
+        }
+    }
+
+    if (has_E_vac) {
+        MultiLevelVectorField E_vac = m_fields.get_mr_levels_alldirs("E_vac", max_level);
+        amrex::Real alpha_num = 0._rt;
+        amrex::Real alpha_den = 0._rt;
+        for (int lev = 0; lev < nlevs; lev++) {
+            for (int comp = 0; comp < 3; comp++) {
+                alpha_num += amrex::MultiFab::Dot(*E_rot_n[lev][comp], 0, *E_vac[lev][comp], 0, E_rot_n[lev][comp]->nComp(), 0);
+                alpha_den += amrex::MultiFab::Dot(*E_vac[lev][comp], 0, *E_vac[lev][comp], 0, E_vac[lev][comp]->nComp(), 0);
+            }
+        }
+
+        amrex::ParallelDescriptor::ReduceRealSum(alpha_num);
+        amrex::ParallelDescriptor::ReduceRealSum(alpha_den);
+        
+        amrex::Real alpha = 0._rt;
+        if (alpha_den > 0._rt) {
+            alpha = alpha_num / alpha_den;
+        }
+        amrex::Print() << "[PoissonCorrector] harmonic alpha = " << alpha << "\n";
+                    
+        for (int lev = 0; lev < nlevs; lev++) {
+            for (int comp = 0; comp < 3; comp++) {
+                amrex::MultiFab::Saxpy(*E_rot_n[lev][comp],
+                                    -alpha, *E_vac[lev][comp],
+                                    0, 0, E_rot_n[lev][comp]->nComp(),
+                                    no_grow);
+            }
+        }
+    } else {
+        amrex::Print() << "[PoissonCorrector] E_vac is not registered; " << "skipping harmonic projection.\n";
+    }
+    sync_vector_field(E_rot_n);
+
     // E_irrot_drift is now whatever remains after removing the direct
     // rotational projection.
     for (int lev = 0; lev < nlevs; lev++) {
