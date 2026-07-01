@@ -112,9 +112,9 @@ class ReferencePotentialDiagnostic:
         warpx.solve_poisson_efield()
 
         # 3) reconstruct phi from the clean (gradient) solved Er, then write.
-        phi, meta = self._reconstruct_phi(lev)
+        phi, er, meta = self._reconstruct_phi(lev)
         if self._rank() == 0:
-            self._write(step + 1, phi, meta)
+            self._write(step + 1, phi, er, meta)
 
         # 4) restore the live E-field so the EM run is untouched.
         for comp in (0, 1, 2):
@@ -124,35 +124,43 @@ class ReferencePotentialDiagnostic:
 
     # -- reconstruction -------------------------------------------------------
     def _reconstruct_phi(self, lev):
-        """phi(z,r) = int_r^{r_anode} Er dr' from the freshly solved (gradient) Er."""
+        """phi(z,r) = int_r^{r_anode} Er dr' from the freshly solved (gradient) Er.
+
+        In-sim pyAMReX indexes RZ fields as [r, z] (axis 0 = r), and geom
+        CellSize()/ProbLo() are likewise (r, z)-ordered -- unlike the openPMD
+        output, which is [z, r]. We integrate along r (axis 0) and transpose the
+        result to [z, r] so the written phi/Er match electrode_potential.py and
+        the openPMD layout for a direct comparison. Returns (phi_zr, Er_zr, meta).
+        """
         import numpy as np  # noqa: PLC0415
 
         warpx = self._warpx()
         mfr = self._mfr()
         geom = warpx.Geom(lev=lev).data()
-        dz, dr = (geom.CellSize()[i] for i in range(2))
-        z0, r0 = (geom.ProbLo()[i] for i in range(2))
+        dr, dz = geom.CellSize()[0], geom.CellSize()[1]
+        r0, z0 = geom.ProbLo()[0], geom.ProbLo()[1]
 
         Er_mf = mfr.get("Efield_fp", dir=self._Direction(0), level=lev)
         domain = geom.Domain().convert(Er_mf.box_array().ix_type())
         lo, hi = domain.small_end, domain.big_end
         if self._is_rz():
-            arr = Er_mf[lo[0] : hi[0] + 1, :]
+            arr = Er_mf[lo[0] : hi[0] + 1, :]          # [r, z]
         else:
             mid_y = (hi[1] + lo[1]) // 2
-            arr = Er_mf[lo[0] : hi[0] + 1, mid_y, :]
+            arr = Er_mf[lo[0] : hi[0] + 1, mid_y, :]   # [x, z]
         # to host numpy (arr may be a cupy device array on GPU)
-        Er = arr.get() if hasattr(arr, "get") else np.asarray(arr)
-        # Er is [z, r]; suffix-cumsum along r, referenced to the anode radius.
-        nr = Er.shape[-1]
+        Er = arr.get() if hasattr(arr, "get") else np.asarray(arr)   # [r, z]
+        nr = Er.shape[0]
         r_centers = r0 + (np.arange(nr) + 0.5) * dr
         ir_anode = int(np.clip(np.searchsorted(r_centers, self.anode_radius), 0, nr - 1))
-        suffix = np.cumsum((Er * dr)[..., ::-1], axis=-1)[..., ::-1]
-        phi = suffix - suffix[..., [ir_anode]]
+        # phi(r) = int_r^{r_anode} Er dr' -- integrate along r (axis 0)
+        suffix = np.cumsum((Er * dr)[::-1, :], axis=0)[::-1, :]
+        phi_rz = suffix - suffix[[ir_anode], :]        # [r, z]
+        phi = phi_rz.T                                 # [z, r]  (match openPMD / electrode_potential)
         meta = {"dz": float(dz), "dr": float(dr), "z0": float(z0), "r0": float(r0)}
-        return phi, meta
+        return phi, Er.T, meta                         # phi[z,r], Er[z,r], meta
 
-    def _write(self, step, phi, meta):
+    def _write(self, step, phi, er, meta):
         import h5py  # noqa: PLC0415
 
         os.makedirs(self.out_dir, exist_ok=True)
@@ -160,8 +168,10 @@ class ReferencePotentialDiagnostic:
         with h5py.File(path, "w") as h:
             h.attrs["label"] = self.label
             h.attrs["step"] = step
-            h.attrs["gridSpacing"] = [meta["dz"], meta["dr"]]
-            h.attrs["gridGlobalOffset"] = [meta["z0"], meta["r0"]]
+            h.attrs["gridSpacing"] = [meta["dz"], meta["dr"]]     # [dz, dr] (openPMD order)
+            h.attrs["gridGlobalOffset"] = [meta["z0"], meta["r0"]]  # [z0, r0]
             h.attrs["anode_radius"] = self.anode_radius
-            h.create_dataset("phi", data=phi, compression="gzip")
+            h.create_dataset("phi", data=phi, compression="gzip")   # [z, r]
+            # raw solved Er, so phi can be re-derived in post if needed
+            h.create_dataset("Er_reference", data=er, compression="gzip")  # [z, r]
         print(f"[{self.label}] wrote {path}", flush=True)
