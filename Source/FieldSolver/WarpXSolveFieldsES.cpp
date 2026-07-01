@@ -20,6 +20,8 @@
 #include <ablastr/fields/VectorPoissonSolver.H>
 #include <ablastr/constant.H>
 
+#include "Parallelization/WarpXComm_K.H"
+
 #ifdef AMREX_USE_EB
 #   include <AMReX_EBFArrayBox.H>
 #endif
@@ -523,6 +525,62 @@ void WarpX::SolvePoissonEfield_w_A ()
         }
     };
 
+    auto interpolate_vector_field = [&] (
+        ablastr::fields::MultiLevelVectorField const& src,
+        ablastr::fields::MultiLevelVectorField const& dst
+    )
+    {
+        for (int lev = 0; lev < nlevs; lev++) {
+            for (int comp = 0; comp < 3; comp++) {
+                dst[lev][comp]->setVal(0.);
+
+                amrex::IntVect const dst_stag =
+                    dst[lev][comp]->ixType().toIntVect();
+                amrex::IntVect const src_stag =
+                    src[lev][comp]->ixType().toIntVect();
+
+                int const fg_nox = WarpX::field_centering_nox;
+                int const fg_noy = WarpX::field_centering_noy;
+                int const fg_noz = WarpX::field_centering_noz;
+
+                amrex::Real const* stencil_coeffs_x =
+                    WarpX::device_field_centering_stencil_coeffs_x.data();
+                amrex::Real const* stencil_coeffs_y =
+                    WarpX::device_field_centering_stencil_coeffs_y.data();
+                amrex::Real const* stencil_coeffs_z =
+                    WarpX::device_field_centering_stencil_coeffs_z.data();
+
+    #ifdef AMREX_USE_OMP
+    #pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+    #endif
+                for (amrex::MFIter mfi(*dst[lev][comp], amrex::TilingIfNotGPU());
+                    mfi.isValid(); ++mfi)
+                {
+                    amrex::Array4<amrex::Real> const& dst_arr =
+                        dst[lev][comp]->array(mfi);
+                    amrex::Array4<amrex::Real const> const& src_arr =
+                        src[lev][comp]->const_array(mfi);
+
+                    amrex::Box const bx = mfi.growntilebox(dst_stag);
+
+                    amrex::ParallelFor(bx,
+                        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                        {
+                            warpx_interp(i, j, k,
+                                        dst_arr, src_arr,
+                                        dst_stag, src_stag,
+                                        fg_nox, fg_noy, fg_noz,
+                                        stencil_coeffs_x,
+                                        stencil_coeffs_y,
+                                        stencil_coeffs_z);
+                        });
+                }
+
+                dst[lev][comp]->FillBoundaryAndSync(Geom(lev).periodicity());
+            }
+        }
+    };
+
     if (WarpX::grid_type == ablastr::utils::enums::GridType::Collocated) {
         ablastr::warn_manager::WMRecordWarning(
             "Poisson E-field correction",
@@ -691,28 +749,45 @@ void WarpX::SolvePoissonEfield_w_A ()
 
     // Allocate temporary curl_Ediff and A MultiFabs.
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> curl_Ediff_storage(nlevs);
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> J_pseudo_nodal_storage(nlevs);
     amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> A_storage(nlevs);
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> curl_A_storage(nlevs);
 
     MultiLevelVectorField curl_Ediff(nlevs);
+    MultiLevelVectorField J_pseudo_nodal(nlevs);
     MultiLevelVectorField A_vec(nlevs);
+    MultiLevelVectorField curl_A(nlevs);
 
     for (int lev = 0; lev < nlevs; lev++) {
+        amrex::BoxArray nba = boxArray(lev);
+        nba.surroundingNodes();
         for (int comp = 0; comp < 3; comp++) {
-            // curl(E_diff) lives on B-like staggering, so allocate from Bfield_fp.
+            // curl(E_diff) is B-like.
             curl_Ediff_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
                 Bfield_fp[lev][comp]->boxArray(),
                 Bfield_fp[lev][comp]->DistributionMap(),
                 Bfield_fp[lev][comp]->nComp(),
                 Bfield_fp[lev][comp]->nGrowVect());
+            // J_pseudo_nodal is the nodal source for MLEBNodeFDLaplacian.
+            J_pseudo_nodal_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
+                nba, DistributionMap(lev), WarpX::ncomps, 1);
+            // A_vec must also be nodal.
             A_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
+                nba, DistributionMap(lev), WarpX::ncomps, 1);
+            // curl(A) is first computed on B-like staggering.
+            curl_A_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
                 Bfield_fp[lev][comp]->boxArray(),
                 Bfield_fp[lev][comp]->DistributionMap(),
                 Bfield_fp[lev][comp]->nComp(),
                 Bfield_fp[lev][comp]->nGrowVect());
             curl_Ediff_storage[lev][comp]->setVal(0.);
+            J_pseudo_nodal_storage[lev][comp]->setVal(0.);
             A_storage[lev][comp]->setVal(0.);
+            curl_A_storage[lev][comp]->setVal(0.);
             curl_Ediff[lev][comp] = curl_Ediff_storage[lev][comp].get();
+            J_pseudo_nodal[lev][comp] = J_pseudo_nodal_storage[lev][comp].get();
             A_vec[lev][comp] = A_storage[lev][comp].get();
+            curl_A[lev][comp] = curl_A_storage[lev][comp].get();
         }
     }
 
@@ -722,15 +797,22 @@ void WarpX::SolvePoissonEfield_w_A ()
         auto eb_update_B = make_unit_eb_update(curl_Ediff[lev]);
         get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_Ediff[lev], E_diff[lev], eb_update_B, lev);
         print_vec_norms("curl_Ediff before /mu0", curl_Ediff);
-        for (int comp = 0; comp < 3; comp++) {
-            // Pseudo-current source for computeVectorPotential.
-            // computeVectorPotential will multiply this by -mu0 internally.
-            curl_Ediff[lev][comp]->mult(1._rt / ablastr::constant::SI::mu0);
-        }
-        print_vec_norms("curl_Ediff after /mu0", curl_Ediff);
     }
 
     sync_vector_field(curl_Ediff);
+    print_vec_norms("curl_Ediff B-like before interp", curl_Ediff);
+
+    // Interpolate B-staggered curl(E_diff) to nodal pseudo-current.
+    interpolate_vector_field(curl_Ediff, J_pseudo_nodal);
+
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            J_pseudo_nodal[lev][comp]->mult(1._rt / ablastr::constant::SI::mu0);
+        }
+    }
+
+    sync_vector_field(J_pseudo_nodal);
+    print_vec_norms("J_pseudo_nodal after interp and /mu0", J_pseudo_nodal);
 
     MagnetostaticSolver::VectorPoissonBoundaryHandler vector_bc;
     vector_bc.defineVectorPotentialBCs();
@@ -752,7 +834,7 @@ void WarpX::SolvePoissonEfield_w_A ()
         MagnetostaticSolver::VectorPoissonBoundaryHandler,
         std::nullopt_t,
         amrex::EBFArrayBoxFactory>(
-        curl_Ediff,
+        J_pseudo_nodal,
         A_vec,
         vector_poisson_required_precision,
         vector_poisson_absolute_tolerance,
@@ -771,7 +853,7 @@ void WarpX::SolvePoissonEfield_w_A ()
     );
 #else
     ablastr::fields::computeVectorPotential(
-        curl_Ediff,
+        J_pseudo_nodal,
         A_vec,
         vector_poisson_required_precision,
         vector_poisson_absolute_tolerance,
@@ -794,14 +876,18 @@ void WarpX::SolvePoissonEfield_w_A ()
     // CalculateCurrentAmpere gives J = curl(B) / mu0. Treat A_vec as the
     // B-like input, then multiply the result by mu0 to get curl(A).
     for (int lev = 0; lev < nlevs; lev++) {
-        auto eb_update_E = make_unit_eb_update(E_rot_n[lev]);
-        get_pointer_fdtd_solver_fp(lev)->CalculateCurrentAmpere(E_rot_n[lev], A_vec[lev], eb_update_E, lev);
-        for (int comp = 0; comp < 3; comp++) {
-            E_rot_n[lev][comp]->mult(ablastr::constant::SI::mu0);
-        }
+        auto eb_update_B = make_unit_eb_update(curl_A[lev]);
+        get_pointer_fdtd_solver_fp(lev)->CalculateCurrentAmpere(curl_A[lev], A_vec[lev], eb_update_B, lev);
     }
 
+    sync_vector_field(curl_A);
+    print_vec_norms("curl_A B-like before E interpolation", curl_A);
+
+    // Center curl(A) from B-like staggering onto the Efield_fp staggering.
+    interpolate_vector_field(curl_A, E_rot_n);
+
     sync_vector_field(E_rot_n);
+    print_vec_norms("E_rot_n after curl_A interpolation", E_rot_n);
 
     // E_irrot_drift is now whatever remains after removing the direct
     // rotational projection.
