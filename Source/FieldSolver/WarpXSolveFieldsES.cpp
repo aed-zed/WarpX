@@ -723,7 +723,6 @@ void WarpX::SolvePoissonEfield_w_A ()
         WarpX::do_single_precision_comms,
         refRatio(),
         std::nullopt,
-        std::nullopt,
         gett_new(0),
         eb_farray_box_factory
     );
