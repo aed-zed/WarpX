@@ -481,6 +481,25 @@ void WarpX::SolvePoissonEfield_w_A ()
         }
     };
 
+    auto make_unit_eb_update = [] (
+        ablastr::fields::VectorField const& field
+    )
+    {
+        std::array<std::unique_ptr<amrex::iMultiFab>, 3> eb_update;
+
+        for (int comp = 0; comp < 3; comp++) {
+            eb_update[comp] = std::make_unique<amrex::iMultiFab>(
+                field[comp]->boxArray(),
+                field[comp]->DistributionMap(),
+                1,
+                field[comp]->nGrowVect());
+
+            eb_update[comp]->setVal(1);
+        }
+
+        return eb_update;
+    };
+
     if (WarpX::grid_type == ablastr::utils::enums::GridType::Collocated) {
         ablastr::warn_manager::WMRecordWarning(
             "Poisson E-field correction",
@@ -674,14 +693,9 @@ void WarpX::SolvePoissonEfield_w_A ()
         }
     }
 
-    // These are only passed to finite-difference curl helpers. The helpers
-    // write into the explicit output fields above. They should not touch
-    // registered Bfield/current fields.
-    std::array<std::unique_ptr<amrex::iMultiFab>, 3> dummy_eb_update_B;
-    std::array<std::unique_ptr<amrex::iMultiFab>, 3> dummy_eb_update_E;
-
     for (int lev = 0; lev < nlevs; lev++) {
-        get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_Ediff[lev], E_diff[lev], dummy_eb_update_B, lev);
+        auto eb_update_B = make_unit_eb_update(curl_Ediff[lev]);
+        get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_Ediff[lev], E_diff[lev], eb_update_B, lev);
         for (int comp = 0; comp < 3; comp++) {
             // Pseudo-current source for computeVectorPotential.
             // computeVectorPotential will multiply this by -mu0 internally.
@@ -747,11 +761,11 @@ void WarpX::SolvePoissonEfield_w_A ()
     sync_vector_field(A_vec);
 
     // Recover E_rot_n = curl(A).
-    //
     // CalculateCurrentAmpere gives J = curl(B) / mu0. Treat A_vec as the
     // B-like input, then multiply the result by mu0 to get curl(A).
     for (int lev = 0; lev < nlevs; lev++) {
-        get_pointer_fdtd_solver_fp(lev)->CalculateCurrentAmpere(E_rot_n[lev], A_vec[lev], dummy_eb_update_E, lev);
+        auto eb_update_E = make_unit_eb_update(E_rot_n[lev]);
+        get_pointer_fdtd_solver_fp(lev)->CalculateCurrentAmpere(E_rot_n[lev], A_vec[lev], eb_update_E, lev);
         for (int comp = 0; comp < 3; comp++) {
             E_rot_n[lev][comp]->mult(ablastr::constant::SI::mu0);
         }
