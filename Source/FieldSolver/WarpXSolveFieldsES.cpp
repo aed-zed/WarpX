@@ -467,7 +467,10 @@ void WarpX::SolvePoissonEfield_w_A ()
 
     auto& es = GetElectrostaticSolver();
     const int nlevs = max_level + 1;
-    constexpr int correction_verbosity = 1;
+    constexpr int vector_poisson_verbosity = 5;
+    constexpr int vector_poisson_max_iters = 2000;
+    const amrex::Real vector_poisson_required_precision = 1.e-12_rt;
+    const amrex::Real vector_poisson_absolute_tolerance = 1.e-30_rt;
 
     amrex::IntVect const no_grow = amrex::IntVect(AMREX_D_DECL(0, 0, 0));
     auto sync_vector_field = [&] (
@@ -498,6 +501,25 @@ void WarpX::SolvePoissonEfield_w_A ()
         }
 
         return eb_update;
+    };
+
+    auto print_vec_norms = [&] (
+        char const* label,
+        ablastr::fields::MultiLevelVectorField const& field
+    )
+    {
+        for (int lev = 0; lev < nlevs; lev++) {
+            for (int comp = 0; comp < 3; comp++) {
+                amrex::Print() << label
+                            << " lev " << lev
+                            << " comp " << comp
+                            << " ixType = "
+                            << field[lev][comp]->ixType().toIntVect()
+                            << " norm0 = "
+                            << field[lev][comp]->norm0()
+                            << "\n";
+            }
+        }
     };
 
     if (WarpX::grid_type == ablastr::utils::enums::GridType::Collocated) {
@@ -693,14 +715,18 @@ void WarpX::SolvePoissonEfield_w_A ()
         }
     }
 
+    print_vec_norms("E_diff before curl", E_diff);
+
     for (int lev = 0; lev < nlevs; lev++) {
         auto eb_update_B = make_unit_eb_update(curl_Ediff[lev]);
         get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_Ediff[lev], E_diff[lev], eb_update_B, lev);
+        print_vec_norms("curl_Ediff before /mu0", curl_Ediff);
         for (int comp = 0; comp < 3; comp++) {
             // Pseudo-current source for computeVectorPotential.
             // computeVectorPotential will multiply this by -mu0 internally.
             curl_Ediff[lev][comp]->mult(1._rt / ablastr::constant::SI::mu0);
         }
+        print_vec_norms("curl_Ediff after /mu0", curl_Ediff);
     }
 
     sync_vector_field(curl_Ediff);
@@ -719,16 +745,18 @@ void WarpX::SolvePoissonEfield_w_A ()
         eb_farray_box_factory = std::move(factories);
     }
 
+    print_vec_norms("A_vec before vector Poisson", A_vec);
+
     ablastr::fields::computeVectorPotential<
         MagnetostaticSolver::VectorPoissonBoundaryHandler,
         std::nullopt_t,
         amrex::EBFArrayBoxFactory>(
         curl_Ediff,
         A_vec,
-        es.self_fields_required_precision,
-        es.self_fields_absolute_tolerance,
-        es.self_fields_max_iters,
-        correction_verbosity,
+        vector_poisson_required_precision,
+        vector_poisson_absolute_tolerance,
+        vector_poisson_max_iters,
+        vector_poisson_verbosity,
         Geom(),
         DistributionMap(),
         boxArray(),
@@ -744,10 +772,10 @@ void WarpX::SolvePoissonEfield_w_A ()
     ablastr::fields::computeVectorPotential(
         curl_Ediff,
         A_vec,
-        es.self_fields_required_precision,
-        es.self_fields_absolute_tolerance,
-        es.self_fields_max_iters,
-        correction_verbosity,
+        vector_poisson_required_precision,
+        vector_poisson_absolute_tolerance,
+        vector_poisson_max_iters,
+        vector_poisson_verbosity,
         Geom(),
         DistributionMap(),
         boxArray(),
@@ -759,6 +787,7 @@ void WarpX::SolvePoissonEfield_w_A ()
 #endif
 
     sync_vector_field(A_vec);
+    print_vec_norms("A_vec after vector Poisson", A_vec);
 
     // Recover E_rot_n = curl(A).
     // CalculateCurrentAmpere gives J = curl(B) / mu0. Treat A_vec as the
