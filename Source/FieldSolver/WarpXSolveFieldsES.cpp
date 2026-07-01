@@ -24,19 +24,6 @@ void WarpX::ComputeSpaceChargeField (bool const reset_fields)
     WARPX_PROFILE("WarpX::ComputeSpaceChargeField");
     using ablastr::fields::Direction;
     using warpx::fields::FieldType;
-    const int nlevs = max_level + 1;
-
-    for (int lev = 0; lev < nlevs; lev++) {
-        amrex::Print() << "WarpXSolveFieldsEs ComputeSpaceChargeField: has phi_fp level "
-                    << lev << " = "
-                    << m_fields.has(FieldType::phi_fp, lev)
-                    << "\n";
-    }
-
-    for (auto const& name : m_fields.list()) {
-        amrex::Print() << "WarpXSolveFieldsEs ComputeSpaceChargeField registered field: "
-                    << name << "\n";
-    }
 
     if (reset_fields) {
         // Reset all E and B fields to 0, before calculating space-charge fields
@@ -125,18 +112,7 @@ void WarpX::SolvePoissonEfield ()
 
     auto& es = GetElectrostaticSolver();
     const int nlevs = max_level + 1;
-
-    for (int lev = 0; lev < nlevs; lev++) {
-        amrex::Print() << "SolvePoissonEfield: has phi_fp level "
-                    << lev << " = "
-                    << m_fields.has(FieldType::phi_fp, lev)
-                    << "\n";
-    }
-
-    for (auto const& name : m_fields.list()) {
-        amrex::Print() << "SolvePoissonEfield registered field: "
-                    << name << "\n";
-    }
+    constexpr int correction_verbosity = 1;
 
     amrex::IntVect const no_grow = amrex::IntVect(AMREX_D_DECL(0, 0, 0));
     auto sync_vector_field = [&] (
@@ -191,35 +167,6 @@ void WarpX::SolvePoissonEfield ()
         phi[lev]->setVal(0.);
     }
 
-    bool has_phi_fp = true;
-    for (int lev = 0; lev < nlevs; lev++) {
-        has_phi_fp = has_phi_fp && m_fields.has(FieldType::phi_fp, lev);
-    }
-
-    if (has_phi_fp) {
-        MultiLevelScalarField phi_fp =
-            m_fields.get_mr_levels(FieldType::phi_fp, max_level);
-
-        for (int lev = 0; lev < nlevs; lev++) {
-            amrex::MultiFab::Copy(*phi[lev],
-                                *phi_fp[lev],
-                                0, 0, phi[lev]->nComp(),
-                                phi[lev]->nGrowVect());
-        }
-    } else {
-        amrex::Print() << "phi_fp is not registered; "
-                    << "cannot seed corrector phi from phi_fp.\n";
-    }
-
-    // MultiLevelScalarField phi_fp =m_fields.get_mr_levels(FieldType::phi_fp, max_level);
-
-    // for (int lev = 0; lev < nlevs; lev++) {
-    //     amrex::MultiFab::Copy(*phi[lev],
-    //                         *phi_fp[lev],
-    //                         0, 0, phi[lev]->nComp(),
-    //                         amrex::IntVect(AMREX_D_DECL(0, 0, 0)));
-    // }
-
     // Deposit charge from all particle species
     mypc->DepositCharge(amrex::GetVecOfPtrs(rho), 0.0_rt);
 
@@ -230,21 +177,11 @@ void WarpX::SolvePoissonEfield ()
             amrex::GetVecOfPtrs(rho_cp),
             amrex::GetVecOfPtrs(rho_buf));
 
-    for (int lev = 0; lev < nlevs; lev++) {
-        amrex::Print() << "rho norm0 in corrector, lev " << lev
-                    << " = " << rho[lev]->norm0() << "\n";
-    }
-
 #ifndef WARPX_DIM_RZ
     for (int lev = 0; lev < nlevs; lev++) {
         ApplyRhofieldBoundary(lev, rho[lev].get(), PatchType::fine);
     }
 #endif
-
-    for (int lev = 0; lev < nlevs; lev++) {
-        amrex::Print() << "rho norm0 in corrector, lev " << lev
-                    << " = " << rho[lev]->norm0() << "\n";
-    }
 
     // Set boundary potentials (electrode values V_k).
     es.setPhiBC(amrex::GetVecOfPtrs(phi), gett_new(0));
@@ -327,23 +264,16 @@ void WarpX::SolvePoissonEfield ()
     // Solve Poisson and compute E_irrot_n.
     const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
     if (EB::enabled()) {
-        // With EB: pass E_irrot_n to computePhi for EB-aware E computation.
-        // es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
-        //               beta, es.self_fields_required_precision,
-        //               es.self_fields_absolute_tolerance,
-        //               es.self_fields_max_iters, es.self_fields_verbosity,
-        //               es.is_igf_2d_slices);
-        // es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
                       es.self_fields_absolute_tolerance,
-                      es.self_fields_max_iters, es.self_fields_verbosity,
+                      es.self_fields_max_iters, correction_verbosity,
                       es.is_igf_2d_slices, E_irrot_n);
     } else {
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
                       es.self_fields_absolute_tolerance,
-                      es.self_fields_max_iters, es.self_fields_verbosity,
+                      es.self_fields_max_iters, correction_verbosity,
                       es.is_igf_2d_slices);
         es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
     }
@@ -412,14 +342,14 @@ void WarpX::SolvePoissonEfield ()
                                     amrex::GetVecOfPtrs(phi_correction_tmp),
                                     beta, es.self_fields_required_precision,
                                     es.self_fields_absolute_tolerance,
-                                    es.self_fields_max_iters, es.self_fields_verbosity,
+                                    es.self_fields_max_iters, correction_verbosity,
                                     es.is_igf_2d_slices,
                                     E_irrot_drift);
     } else {
         es.computePhi(amrex::GetVecOfPtrs(rho_correction), amrex::GetVecOfPtrs(phi_correction_tmp),
                       beta, es.self_fields_required_precision,
                       es.self_fields_absolute_tolerance,
-                      es.self_fields_max_iters, es.self_fields_verbosity,
+                      es.self_fields_max_iters, correction_verbosity,
                       es.is_igf_2d_slices);
         // Compute E_irrot_drift = -grad(phi_correction_tmp) into a temporary field.
         es.computeE(E_irrot_drift, amrex::GetVecOfPtrs(phi_correction_tmp), beta);

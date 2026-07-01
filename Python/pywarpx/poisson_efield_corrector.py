@@ -174,11 +174,10 @@ class PoissonEfieldCorrector:
             Approximate potential difference phi(x_lo) - phi(x_hi).
         """
         import numpy as np  # noqa: PLC0415
-
-        warpx = self._warpx()
-        mfr = self._mfr()
-
         from pywarpx import geometry  # noqa: PLC0415
+        warpx = self._warpx()
+        amr = self._amr()
+        mfr = self._mfr()
 
         is_rz = geometry.dims == "RZ"
 
@@ -186,37 +185,21 @@ class PoissonEfieldCorrector:
         # Radial (RZ) or x (Cartesian) is direction 0 in both layouts.
         Ex_mf = mfr.get("Efield_fp", dir=self._Direction(0), level=0)
         Ex_index_type = Ex_mf.box_array().ix_type()
+        slice_region = geom_data.Domain().convert(Ex_index_type)
 
-        domain = geom_data.Domain().convert(Ex_index_type)
-        lo = domain.small_end
-        hi = domain.big_end
-
-        prob_lo = geom_data.ProbLo()
-        dx = geom_data.CellSize()[0]
-
-        if x_lo_phys is None:
-            x_lo_phys = prob_lo[0] + 0.60 * (geom_data.ProbHi()[0] - prob_lo[0])
-        if x_hi_phys is None:
-            x_hi_phys = prob_lo[0] + 0.95 * (geom_data.ProbHi()[0] - prob_lo[0])
-
-        i_lo = int(round((x_lo_phys - prob_lo[0]) / dx))
-        i_hi = int(round((x_hi_phys - prob_lo[0]) / dx))
-        i_lo = max(i_lo, lo[0])
-        i_hi = min(i_hi, hi[0])
-
-        # Use global numpy indexing to read E along the radial integration
-        # path; this performs an MPI allgather internally. Average over the
-        # z direction (axisymmetric in RZ; nominally uniform in Cartesian).
         if is_rz:
-            # RZ MultiFabs are 2D: [ir, iz]
-            E_slice = Ex_mf[i_lo:i_hi + 1, :]
-            nz = hi[1] - lo[1] + 1
+            integral = Ex_mf.sum_unique( slice_region )
+            nz = slice_region.big_end[1] - slice_region.small_end[1] + 1
+            dx = geom_data.CellSize()[0]
         else:
-            # 3D MultiFabs are [ix, iy, iz]; sample the radial line at y = 0
-            mid_y = (hi[1] + lo[1]) // 2
-            E_slice = Ex_mf[i_lo:i_hi + 1, mid_y, :]
-            nz = hi[2] - lo[2] + 1
-        integral = float(np.sum(E_slice))
+            midpoint_x = (slice_region.big_end[0] + slice_region.small_end[0])//2
+            midpoint_y = (slice_region.big_end[1] + slice_region.small_end[1])//2
+            slice_region.big_end = amr.IntVect([slice_region.big_end[0], midpoint_y, slice_region.big_end[2]])
+            slice_region.small_end = amr.IntVect([midpoint_x, midpoint_y, slice_region.small_end[2]])
+            integral = Ex_mf.sum_unique( slice_region )
+            nz = slice_region.big_end[2] - slice_region.small_end[2] + 1
+            dx = geom_data.CellSize()[0]
+        
         return (dx / nz) * integral
 
     def _save_current_efield(self):
