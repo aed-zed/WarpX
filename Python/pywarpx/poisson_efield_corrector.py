@@ -69,6 +69,7 @@ class PoissonEfieldCorrector:
         self.potential_expression = potential_expression
         self.enable_diagnostics = enable_diagnostics
         self.diag_name = diag_name
+        self.calculate_vector_potential = calculate_vector_potential
         self._diagnostics_initialized = False
 
     def _warpx(self):
