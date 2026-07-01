@@ -470,7 +470,7 @@ void WarpX::SolvePoissonEfield_w_A ()
     auto& es = GetElectrostaticSolver();
     const int nlevs = max_level + 1;
     constexpr int correction_verbosity = 1;
-    constexpr int vector_poisson_verbosity = 5;
+    constexpr int vector_poisson_verbosity = 4;
     constexpr int vector_poisson_max_iters = 2000;
     const amrex::Real vector_poisson_required_precision = 1.e-12_rt;
     const amrex::Real vector_poisson_absolute_tolerance = 1.e-30_rt;
@@ -877,7 +877,7 @@ void WarpX::SolvePoissonEfield_w_A ()
     // B-like input, then multiply the result by mu0 to get curl(A).
     for (int lev = 0; lev < nlevs; lev++) {
         auto eb_update_B = make_unit_eb_update(curl_A[lev]);
-        get_pointer_fdtd_solver_fp(lev)->CalculateCurrentAmpere(curl_A[lev], A_vec[lev], eb_update_B, lev);
+        get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_A[lev], A_vec[lev], eb_update_B, lev);
     }
 
     sync_vector_field(curl_A);
