@@ -20,6 +20,10 @@
 #include <ablastr/fields/VectorPoissonSolver.H>
 #include <ablastr/constant.H>
 
+#ifdef AMREX_USE_EB
+#   include <AMReX_EBFArrayBox.H>
+#endif
+
 
 
 
@@ -693,17 +697,13 @@ void WarpX::SolvePoissonEfield_w_A ()
 #ifdef AMREX_USE_EB
     std::optional<amrex::Vector<amrex::EBFArrayBoxFactory const*>> eb_farray_box_factory;
     if (EB::enabled()) {
-        eb_farray_box_factory = amrex::Vector<amrex::EBFArrayBoxFactory const*>(nlevs);
+        amrex::Vector<amrex::EBFArrayBoxFactory const*> factories;
+        factories.reserve(nlevs);
         for (int lev = 0; lev < nlevs; lev++) {
-            eb_farray_box_factory.value()[lev] =
-                dynamic_cast<amrex::EBFArrayBoxFactory const*>(
-                    &fieldEBFactory(lev));
+            factories.push_back(&fieldEBFactory(lev));
         }
-    }
-#endif
+        eb_farray_box_factory = std::move(factories);
 
-#ifdef AMREX_USE_EB
-    if (EB::enabled()) {
         ablastr::fields::computeVectorPotential(
             curl_Ediff,
             A_vec,
@@ -715,7 +715,7 @@ void WarpX::SolvePoissonEfield_w_A ()
             DistributionMap(),
             boxArray(),
             vector_bc,
-            true,
+            EB::enabled(),
             WarpX::do_single_precision_comms,
             refRatio(),
             std::nullopt,
