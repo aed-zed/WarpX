@@ -757,6 +757,11 @@ void WarpX::SolvePoissonEfield_w_A ()
     MultiLevelVectorField J_pseudo_nodal(nlevs);
     MultiLevelVectorField A_vec(nlevs);
     MultiLevelVectorField curl_A(nlevs);
+    
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> grad_buf_e_stag_storage(nlevs);
+    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> grad_buf_b_stag_storage(nlevs);
+    MultiLevelVectorField grad_buf_e_stag(nlevs);
+    MultiLevelVectorField grad_buf_b_stag(nlevs);
 
     for (int lev = 0; lev < nlevs; lev++) {
         amrex::BoxArray nba = boxArray(lev);
@@ -788,14 +793,29 @@ void WarpX::SolvePoissonEfield_w_A ()
             J_pseudo_nodal[lev][comp] = J_pseudo_nodal_storage[lev][comp].get();
             A_vec[lev][comp] = A_storage[lev][comp].get();
             curl_A[lev][comp] = curl_A_storage[lev][comp].get();
+
+            grad_buf_e_stag_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
+                Efield_fp[lev][comp]->boxArray(),
+                Efield_fp[lev][comp]->DistributionMap(),
+                Efield_fp[lev][comp]->nComp(),
+                Efield_fp[lev][comp]->nGrowVect());
+            grad_buf_b_stag_storage[lev][comp] = std::make_unique<amrex::MultiFab>(
+                Bfield_fp[lev][comp]->boxArray(),
+                Bfield_fp[lev][comp]->DistributionMap(),
+                Bfield_fp[lev][comp]->nComp(),
+                Bfield_fp[lev][comp]->nGrowVect());
+            grad_buf_e_stag_storage[lev][comp]->setVal(0.);
+            grad_buf_b_stag_storage[lev][comp]->setVal(0.);
+            grad_buf_e_stag[lev][comp] = grad_buf_e_stag_storage[lev][comp].get();
+            grad_buf_b_stag[lev][comp] = grad_buf_b_stag_storage[lev][comp].get();            
         }
     }
 
     print_vec_norms("E_diff before curl", E_diff);
 
     for (int lev = 0; lev < nlevs; lev++) {
-        auto eb_update_B = make_unit_eb_update(curl_Ediff[lev]);
-        get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_Ediff[lev], E_diff[lev], eb_update_B, lev);
+        // auto eb_update_B = make_unit_eb_update(curl_Ediff[lev]);
+        get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_Ediff[lev], E_diff[lev], m_eb_update_B[lev], lev);
         print_vec_norms("curl_Ediff before /mu0", curl_Ediff);
     }
 
@@ -817,6 +837,14 @@ void WarpX::SolvePoissonEfield_w_A ()
     MagnetostaticSolver::VectorPoissonBoundaryHandler vector_bc;
     vector_bc.defineVectorPotentialBCs();
 
+    for (int lev = 0; lev < nlevs; lev++) {
+        for (int comp = 0; comp < 3; comp++) {
+            curl_A[lev][comp]->setVal(0.);
+            grad_buf_e_stag[lev][comp]->setVal(0.);
+            grad_buf_b_stag[lev][comp]->setVal(0.);
+        }
+    }
+
 #ifdef AMREX_USE_EB
     std::optional<amrex::Vector<amrex::EBFArrayBoxFactory const*>> eb_farray_box_factory;
     if (EB::enabled()) {
@@ -828,11 +856,15 @@ void WarpX::SolvePoissonEfield_w_A ()
         eb_farray_box_factory = std::move(factories);
     }
 
+    std::optional<MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel>
+        post_A_calculation = MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel(
+            curl_A, grad_buf_e_stag, grad_buf_b_stag);
+
     print_vec_norms("A_vec before vector Poisson", A_vec);
 
     ablastr::fields::computeVectorPotential<
         MagnetostaticSolver::VectorPoissonBoundaryHandler,
-        std::nullopt_t,
+        MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel,
         amrex::EBFArrayBoxFactory>(
         J_pseudo_nodal,
         A_vec,
@@ -847,12 +879,14 @@ void WarpX::SolvePoissonEfield_w_A ()
         EB::enabled(),
         WarpX::do_single_precision_comms,
         refRatio(),
-        std::nullopt,
+        post_A_calculation,
         gett_new(0),
         eb_farray_box_factory
     );
 #else
-    ablastr::fields::computeVectorPotential(
+    ablastr::fields::computeVectorPotential<
+        MagnetostaticSolver::VectorPoissonBoundaryHandler,
+        MagnetostaticSolver::EBCalcBfromVectorPotentialPerLevel>(
         J_pseudo_nodal,
         A_vec,
         vector_poisson_required_precision,
@@ -865,20 +899,22 @@ void WarpX::SolvePoissonEfield_w_A ()
         vector_bc,
         false,
         WarpX::do_single_precision_comms,
-        refRatio()
+        refRatio(),
+        post_A_calculation,
+        gett_new(0)
     );
 #endif
 
     sync_vector_field(A_vec);
     print_vec_norms("A_vec after vector Poisson", A_vec);
 
-    // Recover E_rot_n = curl(A).
-    // CalculateCurrentAmpere gives J = curl(B) / mu0. Treat A_vec as the
-    // B-like input, then multiply the result by mu0 to get curl(A).
-    for (int lev = 0; lev < nlevs; lev++) {
-        auto eb_update_B = make_unit_eb_update(curl_A[lev]);
-        get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_A[lev], A_vec[lev], eb_update_B, lev);
-    }
+    // // Recover E_rot_n = curl(A).
+    // // CalculateCurrentAmpere gives J = curl(B) / mu0. Treat A_vec as the
+    // // B-like input, then multiply the result by mu0 to get curl(A).
+    // for (int lev = 0; lev < nlevs; lev++) {
+    //     auto eb_update_B = make_unit_eb_update(curl_A[lev]);
+    //     get_pointer_fdtd_solver_fp(lev)->ComputeCurlA(curl_A[lev], A_vec[lev], eb_update_B, lev);
+    // }
 
     sync_vector_field(curl_A);
     print_vec_norms("curl_A B-like before E interpolation", curl_A);
