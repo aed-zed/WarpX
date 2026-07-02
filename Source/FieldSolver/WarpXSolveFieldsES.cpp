@@ -475,6 +475,7 @@ void WarpX::SolvePoissonEfield_w_A ()
     const amrex::Real vector_poisson_required_precision = es.self_fields_required_precision;
     // const amrex::Real vector_poisson_required_precision = 1.e-12_rt;
     const amrex::Real vector_poisson_absolute_tolerance = 1.e-30_rt;
+    const amrex::Real vector_corrector_relaxation = 1._rt;
 
 
     amrex::IntVect const no_grow = amrex::IntVect(AMREX_D_DECL(0, 0, 0));
@@ -1014,12 +1015,23 @@ void WarpX::SolvePoissonEfield_w_A ()
         }
     }
 
-    // Replace Efield_fp with E_irrot_n + E_rot_n.
+    // // Replace Efield_fp with E_irrot_n + E_rot_n.
+    // for (int lev = 0; lev < nlevs; lev++) {
+    //     for (int comp = 0; comp < 3; comp++) {
+    //         amrex::MultiFab::LinComb(*Efield_fp[lev][comp],
+    //                                  1._rt, *E_irrot_n[lev][comp], 0,
+    //                                  1._rt, *E_rot_n[lev][comp], 0,
+    //                                  0, Efield_fp[lev][comp]->nComp(),
+    //                                  no_grow);
+    //     }
+    // }
+
+    // Relaxed update: Efield_fp = E_n - lambda * E_irrot_drift.
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
             amrex::MultiFab::LinComb(*Efield_fp[lev][comp],
-                                     1._rt, *E_irrot_n[lev][comp], 0,
-                                     1._rt, *E_rot_n[lev][comp], 0,
+                                     1._rt, *E_n[lev][comp], 0,
+                                     -vector_corrector_relaxation, *E_irrot_drift[lev][comp], 0,
                                      0, Efield_fp[lev][comp]->nComp(),
                                      no_grow);
         }
