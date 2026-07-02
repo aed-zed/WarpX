@@ -475,7 +475,7 @@ void WarpX::SolvePoissonEfield_w_A ()
     const amrex::Real vector_poisson_required_precision = es.self_fields_required_precision;
     // const amrex::Real vector_poisson_required_precision = 1.e-12_rt;
     const amrex::Real vector_poisson_absolute_tolerance = 1.e-30_rt;
-    const amrex::Real vector_corrector_relaxation = 1._rt;
+    const amrex::Real vector_corrector_relaxation = 0.1_rt;
 
 
     amrex::IntVect const no_grow = amrex::IntVect(AMREX_D_DECL(0, 0, 0));
