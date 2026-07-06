@@ -54,6 +54,8 @@ void WarpX::ComputeVacuumEfield ()
 {
     WARPX_PROFILE("WarpX::ComputeVacuumEfield");
 
+    amrex::Print() << "WarpXSolveFieldsES::ComputeVacuumEfield" << "\n";
+
     using ablastr::fields::MultiLevelScalarField;
     using ablastr::fields::MultiLevelVectorField;
 
@@ -90,11 +92,17 @@ void WarpX::ComputeVacuumEfield ()
 
     const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
     if (EB::enabled()) {
+        // es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+        //               beta, es.self_fields_required_precision,
+        //               es.self_fields_absolute_tolerance,
+        //               es.self_fields_max_iters, es.self_fields_verbosity,
+        //               es.is_igf_2d_slices, E_vac);
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
                       es.self_fields_absolute_tolerance,
                       es.self_fields_max_iters, es.self_fields_verbosity,
-                      es.is_igf_2d_slices, E_vac);
+                      es.is_igf_2d_slices);
+        es.computeE(E_vac, amrex::GetVecOfPtrs(phi), beta);
     } else {
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,

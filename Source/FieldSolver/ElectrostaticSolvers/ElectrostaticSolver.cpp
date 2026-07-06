@@ -554,6 +554,8 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
 {
     WARPX_PROFILE("RelativisticExplicitES::AddBoundaryField");
 
+    amrex::Print() << "RelativisticExplicitES::AddBoundaryField" << "\n";
+
     auto & warpx = WarpX::GetInstance();
 
     // Allocate fields for charge and potential
