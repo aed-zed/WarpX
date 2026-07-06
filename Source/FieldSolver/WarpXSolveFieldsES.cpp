@@ -282,11 +282,17 @@ void WarpX::SolvePoissonEfield ()
     // Solve Poisson and compute E_irrot_n.
     const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
     if (EB::enabled()) {
+        // es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+        //               beta, es.self_fields_required_precision,
+        //               es.self_fields_absolute_tolerance,
+        //               es.self_fields_max_iters, correction_verbosity,
+        //               es.is_igf_2d_slices, E_irrot_n);
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
                       es.self_fields_absolute_tolerance,
                       es.self_fields_max_iters, correction_verbosity,
-                      es.is_igf_2d_slices, E_irrot_n);
+                      es.is_igf_2d_slices);
+        es.computeE(E_irrot_n, amrex::GetVecOfPtrs(phi), beta);
     } else {
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
