@@ -640,7 +640,7 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
     int const max_iters,
     int const verbosity,
     bool const is_igf_2d,
-    ablastr::fields::MultiLevelVectorField const& efield
+    std::optional<ablastr::fields::MultiLevelVectorField> efield
 ) const
 {
     // create a vector to our fields, sorted by level
@@ -661,29 +661,32 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
     std::optional<amrex::Vector<amrex::FArrayBoxFactory const *> > const eb_farray_box_factory;
 #endif
 
-    amrex::Vector<amrex::Array<amrex::MultiFab *, AMREX_SPACEDIM>> e_field;
-    for (int lev = 0; lev < num_levels; ++lev) {
-        e_field.push_back(
+    if (EB::enabled() && efield.has_value())
+    {
+        amrex::Vector<amrex::Array<amrex::MultiFab *, AMREX_SPACEDIM>> e_field;
+        for (int lev = 0; lev < num_levels; ++lev) {
+            e_field.push_back(
 #if defined(WARPX_DIM_1D_Z)
-            amrex::Array<amrex::MultiFab*, 1>{
-                efield[lev][2]
-            }
+                amrex::Array<amrex::MultiFab*, 1>{
+                    efield[lev][2]
+                }
 #elif defined(WARPX_DIM_RCYLINDER) || defined(WARPX_DIM_RSPHERE)
-            amrex::Array<amrex::MultiFab*, 1>{
-                efield[lev][0]
-            }
+                amrex::Array<amrex::MultiFab*, 1>{
+                    efield[lev][0]
+                }
 #elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
-            amrex::Array<amrex::MultiFab*, 2>{
-                efield[lev][0], efield[lev][2]
-            }
+                amrex::Array<amrex::MultiFab*, 2>{
+                    efield[lev][0], efield[lev][2]
+                }
 #elif defined(WARPX_DIM_3D)
-            amrex::Array<amrex::MultiFab *, 3>{
-                efield[lev][0], efield[lev][1], efield[lev][2]
-            }
+                amrex::Array<amrex::MultiFab *, 3>{
+                    efield[lev][0], efield[lev][1], efield[lev][2]
+                }
 #endif
-        );
+            );
+        }
+        post_phi_calculation = EBCalcEfromPhiPerLevel(e_field);
     }
-    post_phi_calculation = EBCalcEfromPhiPerLevel(e_field);
 
 #ifdef AMREX_USE_EB
     if (EB::enabled())
