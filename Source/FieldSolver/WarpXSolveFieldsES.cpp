@@ -353,8 +353,7 @@ void WarpX::SolvePoissonEfield ()
                                     beta, es.self_fields_required_precision,
                                     es.self_fields_absolute_tolerance,
                                     es.self_fields_max_iters, correction_verbosity,
-                                    es.is_igf_2d_slices,
-                                    E_irrot_drift);
+                                    es.is_igf_2d_slices, E_irrot_drift);
     } else {
         es.computePhi(amrex::GetVecOfPtrs(rho_correction), amrex::GetVecOfPtrs(phi_correction_tmp),
                       beta, es.self_fields_required_precision,

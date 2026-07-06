@@ -594,10 +594,18 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
         }
 
         // With EB: pass E_boundary to computePhi for EB-aware E computation.
+
+        // computePhi( amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
+        //             beta, self_fields_required_precision,
+        //             self_fields_absolute_tolerance, self_fields_max_iters,
+        //             self_fields_verbosity, is_igf_2d_slices, E_boundary );
+                    
         computePhi( amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                     beta, self_fields_required_precision,
                     self_fields_absolute_tolerance, self_fields_max_iters,
-                    self_fields_verbosity, is_igf_2d_slices, E_boundary );
+                    self_fields_verbosity, is_igf_2d_slices );
+        computeE( E_boundary, amrex::GetVecOfPtrs(phi), beta );
+
         for (int lev = 0; lev < num_levels; lev++) {
             for (int comp = 0; comp < 3; comp++) {
                 amrex::MultiFab::Add(*Efield_fp[lev][comp],
