@@ -668,19 +668,19 @@ ElectrostaticSolver::computePhi_EBhomogeneous (
             e_field.push_back(
 #if defined(WARPX_DIM_1D_Z)
                 amrex::Array<amrex::MultiFab*, 1>{
-                    efield.value()[lev][2]
+                    efield[lev][2]
                 }
 #elif defined(WARPX_DIM_RCYLINDER) || defined(WARPX_DIM_RSPHERE)
                 amrex::Array<amrex::MultiFab*, 1>{
-                    efield.value()[lev][0]
+                    efield[lev][0]
                 }
 #elif defined(WARPX_DIM_XZ) || defined(WARPX_DIM_RZ)
                 amrex::Array<amrex::MultiFab*, 2>{
-                    efield.value()[lev][0], efield.value()[lev][2]
+                    efield[lev][0], efield[lev][2]
                 }
 #elif defined(WARPX_DIM_3D)
                 amrex::Array<amrex::MultiFab *, 3>{
-                    efield.value()[lev][0], efield.value()[lev][1], efield.value()[lev][2]
+                    efield[lev][0], efield[lev][1], efield[lev][2]
                 }
 #endif
             );

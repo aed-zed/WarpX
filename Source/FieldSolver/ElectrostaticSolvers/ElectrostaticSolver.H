@@ -97,17 +97,6 @@ public:
         bool is_igf_2d_slices,
         std::optional<ablastr::fields::MultiLevelVectorField> efield = std::nullopt // only used for EB
     ) const;
-
-    void computePhi_withoutEB (
-        ablastr::fields::MultiLevelScalarField const& rho,
-        ablastr::fields::MultiLevelScalarField const& phi,
-        std::array<amrex::Real, 3> beta,
-        amrex::Real required_precision,
-        amrex::Real absolute_tolerance,
-        int max_iters,
-        int verbosity,
-        bool is_igf_2d_slices
-    ) const;
     
     void computePhi_EBhomogeneous (
         ablastr::fields::MultiLevelScalarField const& rho,
@@ -118,7 +107,7 @@ public:
         int max_iters,
         int verbosity,
         bool is_igf_2d_slices,
-        ablastr::fields::MultiLevelVectorField const& efield
+        std::optional<ablastr::fields::MultiLevelVectorField> efield = std::nullopt // only used for EB
     ) const;
 
     /**
