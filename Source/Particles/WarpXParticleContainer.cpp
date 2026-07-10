@@ -1930,8 +1930,18 @@ WarpXParticleContainer::DepositTotalNGPTemperature (amrex::MultiFab* temperature
                 const auto [ii, jj, kk] = amrex::getParticleCell(p, plo, dxi).dim3();
 
                 amrex::ParticleReal const w  = p.rdata(PIdx::w);
+#if defined(WARPX_DIM_RZ)
+                // In RZ, all theta values are deposited into the same (r,z) cell.
+                // Rotate ux/uy into the local cylindrical basis for this diagnostic only.
+                amrex::ParticleReal const theta = p.rdata(PIdx::theta);
+                amrex::ParticleReal const costheta = std::cos(theta);
+                amrex::ParticleReal const sintheta = std::sin(theta);
+                amrex::ParticleReal const ux =  p.rdata(PIdx::ux)*costheta + p.rdata(PIdx::uy)*sintheta;
+                amrex::ParticleReal const uy = -p.rdata(PIdx::ux)*sintheta + p.rdata(PIdx::uy)*costheta;
+#else
                 amrex::ParticleReal const ux = p.rdata(PIdx::ux);
                 amrex::ParticleReal const uy = p.rdata(PIdx::uy);
+#endif
                 amrex::ParticleReal const uz = p.rdata(PIdx::uz);
                 amrex::Gpu::Atomic::AddNoRet(&sum_array(ii, jj, kk, 0), (amrex::Real)(w));
                 amrex::Gpu::Atomic::AddNoRet(&sum_array(ii, jj, kk, 1), (amrex::Real)(w*ux));
@@ -1985,8 +1995,16 @@ WarpXParticleContainer::DepositTotalNGPTemperature (amrex::MultiFab* temperature
                 const auto [ii, jj, kk] = getParticleCell(p, plo, dxi).dim3();
 
                 const amrex::ParticleReal w  = wp[ip];
+#if defined(WARPX_DIM_RZ)
+                amrex::ParticleReal const theta = p.rdata(PIdx::theta);
+                amrex::ParticleReal const costheta = std::cos(theta);
+                amrex::ParticleReal const sintheta = std::sin(theta);
+                const amrex::ParticleReal ux =  uxp[ip]*costheta + uyp[ip]*sintheta - sum_array(ii, jj, kk, 1);
+                const amrex::ParticleReal uy = -uxp[ip]*sintheta + uyp[ip]*costheta - sum_array(ii, jj, kk, 2);
+#else
                 const amrex::ParticleReal ux = uxp[ip] - sum_array(ii, jj, kk, 1);
                 const amrex::ParticleReal uy = uyp[ip] - sum_array(ii, jj, kk, 2);
+#endif
                 const amrex::ParticleReal uz = uzp[ip] - sum_array(ii, jj, kk, 3);
                 const amrex::Real usq = (amrex::Real)(w*(ux*ux + uy*uy + uz*uz));
                 amrex::Gpu::Atomic::AddNoRet(&temp_array(ii, jj, kk), usq);
@@ -2038,7 +2056,7 @@ WarpXParticleContainer::GetAverageNGPTemperature (int lev)
  * \param number_density Full array of number density
  * \param lev         Level of box that contains particles
  */
-void
+ void
 WarpXParticleContainer::DepositNumberDensity (amrex::MultiFab* number_density, const int lev)
 {
 
