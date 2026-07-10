@@ -1984,6 +1984,9 @@ WarpXParticleContainer::DepositTotalNGPTemperature (amrex::MultiFab* temperature
         amrex::ParticleReal* uxp = pti.GetAttribs(PIdx::ux).dataPtr();
         amrex::ParticleReal* uyp = pti.GetAttribs(PIdx::uy).dataPtr();
         amrex::ParticleReal* uzp = pti.GetAttribs(PIdx::uz).dataPtr();
+#if defined(WARPX_DIM_RZ)
+        amrex::ParticleReal* thetap = pti.GetAttribs(PIdx::theta).dataPtr();
+#endif
 
         amrex::Array4<amrex::Real> const& sum_array = sum_mf.array(pti);
         amrex::Array4<amrex::Real> const& temp_array = temperature->array(pti);
@@ -1996,7 +1999,7 @@ WarpXParticleContainer::DepositTotalNGPTemperature (amrex::MultiFab* temperature
 
                 const amrex::ParticleReal w  = wp[ip];
 #if defined(WARPX_DIM_RZ)
-                amrex::ParticleReal const theta = p.rdata(PIdx::theta);
+                amrex::ParticleReal const theta = thetap[ip];
                 amrex::ParticleReal const costheta = std::cos(theta);
                 amrex::ParticleReal const sintheta = std::sin(theta);
                 const amrex::ParticleReal ux =  uxp[ip]*costheta + uyp[ip]*sintheta - sum_array(ii, jj, kk, 1);
