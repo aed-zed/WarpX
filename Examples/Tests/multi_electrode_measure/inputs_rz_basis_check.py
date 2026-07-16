@@ -51,12 +51,12 @@ grid = picmi.CylindricalGrid(
     upper_boundary_conditions_particles=["absorbing", "periodic"],
     warpx_blocking_factor=8, warpx_max_grid_size=256,
 )
-solver = picmi.ElectromagneticSolver(grid=grid, method="Yee")
+solver = picmi.ElectromagneticSolver(grid=grid, method="Yee", cfl=0.9)
 embedded_boundary = picmi.EmbeddedBoundary(
     implicit_function=eb_implicit, potential=potential_expression,
     cover_multiple_cuts=True)
 
-sim = picmi.Simulation(solver=solver, time_step_size=3.0e-12,
+sim = picmi.Simulation(solver=solver,
                        warpx_embedded_boundary=embedded_boundary,
                        particle_shape="linear", max_steps=0)
 if use_plasma:

@@ -51,7 +51,7 @@ r_mid2 = 0.0375   # between r_m2 and r_o  -> isolates the middle shell
 
 use_plasma = os.environ.get("POISSON_TEST_PLASMA", "1") != "0"
 n0 = 1.0e14    # uniform ion number density [1/m^3] (net positive -> screens)
-dt = 3.0e-12
+cfl = 0.9
 # The measurement is done once at init (afterInitEsolve, before any particle
 # push), so no stepping is required. The screening charge here is a *static*
 # net-charge beam -- pushing it would just make it fly apart, so keep steps at 0
@@ -87,7 +87,7 @@ grid = picmi.CylindricalGrid(
     warpx_blocking_factor=8,
     warpx_max_grid_size=256,
 )
-solver = picmi.ElectromagneticSolver(grid=grid, method="Yee")
+solver = picmi.ElectromagneticSolver(grid=grid, method="Yee", cfl=cfl)
 embedded_boundary = picmi.EmbeddedBoundary(
     implicit_function=eb_implicit,
     potential=potential_expression,
@@ -96,7 +96,6 @@ embedded_boundary = picmi.EmbeddedBoundary(
 
 sim = picmi.Simulation(
     solver=solver,
-    time_step_size=dt,
     warpx_embedded_boundary=embedded_boundary,
     particle_shape="linear",
     max_steps=max_steps,
