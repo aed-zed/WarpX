@@ -41,7 +41,7 @@ void WarpX::ComputeSpaceChargeField (bool const reset_E_field, bool const reset_
         m_fields, *mypc, myfl.get(), max_level );
 }
 
-void WarpX::SolvePoissonEfield ()
+void WarpX::SolvePoissonEfield (bool force_plain_gradient)
 {
     WARPX_PROFILE("WarpX::SolvePoissonEfield");
 
@@ -142,7 +142,7 @@ void WarpX::SolvePoissonEfield ()
 
     // Solve Poisson and compute E (adds -grad(phi) into the zeroed components).
     const std::array<amrex::Real, 3> beta = {0._rt, 0._rt, 0._rt};
-    if (EB::enabled()) {
+    if (EB::enabled() && !force_plain_gradient) {
         // With EB: pass Efield to computePhi for EB-aware E computation.
         es.computePhi(amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
                       beta, es.self_fields_required_precision,
@@ -289,6 +289,49 @@ void WarpX::SolvePoissonEfieldHomogeneousClean ()
         for (int comp = 0; comp < 3; comp++) {
             amrex::MultiFab::Add(*Efield_fp[lev][comp], *Egrad_owner[lev][comp],
                                  0, 0, 1, Egrad_owner[lev][comp]->nGrowVect());
+        }
+    }
+}
+
+void WarpX::SaxpyFieldMasked (
+    const std::string& target_field,
+    const std::string& source_field,
+    amrex::Real alpha,
+    int lev)
+{
+    WARPX_PROFILE("WarpX::SaxpyFieldMasked");
+
+    using ablastr::fields::Direction;
+
+    auto& eb_update_E = GetEBUpdateEFlag();
+
+    for (int comp = 0; comp < 3; comp++) {
+#ifdef WARPX_DIM_RZ
+        if (comp == 1) { continue; }
+#endif
+        auto* target = m_fields.get(target_field, Direction{comp}, lev);
+        const auto* source = m_fields.get(source_field, Direction{comp}, lev);
+        const auto* mask = eb_update_E[lev][comp].get();
+
+        for (amrex::MFIter mfi(*target, amrex::TilingIfNotGPU()); mfi.isValid(); ++mfi) {
+            const amrex::Box& bx = mfi.tilebox(target->ixType().toIntVect());
+            auto const& t_arr = target->array(mfi);
+            auto const& s_arr = source->const_array(mfi);
+
+            if (EB::enabled() && mask) {
+                auto const& m_arr = mask->const_array(mfi);
+                amrex::ParallelFor(bx,
+                    [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+                        if (m_arr(i, j, k) != 0) {
+                            t_arr(i, j, k) += alpha * s_arr(i, j, k);
+                        }
+                    });
+            } else {
+                amrex::ParallelFor(bx,
+                    [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+                        t_arr(i, j, k) += alpha * s_arr(i, j, k);
+                    });
+            }
         }
     }
 }

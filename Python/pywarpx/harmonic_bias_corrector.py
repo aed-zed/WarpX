@@ -381,8 +381,6 @@ class HarmonicBiasCorrector:
             direction = self._Direction(comp)
             corr = mfr.get("Efield_correction", dir=direction, level=0)
             vac = mfr.get("Efield_vacuum", dir=direction, level=0)
-            # corr = alpha * vac, using only copymf + saxpy (as elsewhere):
-            # corr = vac; corr += (alpha - 1) * vac  ->  corr = alpha * vac.
             corr.copymf(vac, 0, 0, 1, 0)
             corr.saxpy(alpha - 1.0, vac, 0, 0, 1, 0)
 

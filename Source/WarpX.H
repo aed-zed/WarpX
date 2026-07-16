@@ -830,8 +830,13 @@ public:
     /** Electrostatic solve call */
     void ComputeSpaceChargeField (bool reset_E_field, bool reset_B_field);
 
-    /** Deposit charge, solve Poisson with current EB/domain BCs, replace Efield_fp */
-    void SolvePoissonEfield ();
+    /** Deposit charge, solve Poisson with current EB/domain BCs, replace Efield_fp.
+     *
+     *  \param[in] force_plain_gradient  If true, use computePhi + computeE even
+     *      when EB is enabled (bypasses the EB-aware E computation inside
+     *      computePhi). Diagnostic use only -- for isolating cut-edge sign
+     *      attribution (report Section 17.3, item 3). */
+    void SolvePoissonEfield (bool force_plain_gradient = false);
 
     /** Homogeneous Boris/Marder Gauss clean of Efield_fp.
      *
@@ -844,6 +849,18 @@ public:
      * (see implementation report Section 13); pair it with the harmonic bias for
      * the potential reset. */
     void SolvePoissonEfieldHomogeneousClean ();
+
+    /** Masked saxpy: target += alpha * source, skipping cells where
+     *  m_eb_update_E == 0 (cut + covered EB cells).
+     *
+     *  Used by the harmonic-bias correctors to add the vacuum field only to
+     *  fully-fluid edges, avoiding the sign-flipped cut-edge values (see
+     *  implementation report, Section 17.3, item 1). */
+    void SaxpyFieldMasked (
+        const std::string& target_field,
+        const std::string& source_field,
+        amrex::Real alpha,
+        int lev);
 
     // Magnetostatic Solver Interface
     MagnetostaticSolver::VectorPoissonBoundaryHandler m_vector_poisson_boundary_handler;
