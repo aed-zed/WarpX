@@ -256,9 +256,14 @@ void init_WarpX (py::module& m)
             "Compute the electric field due to the potential specified on the domain boundaries and embedded boundaries."
         )
         .def("solve_poisson_efield",
-            [] (WarpX& wx) { wx.SolvePoissonEfield(); },
+            [] (WarpX& wx, bool force_plain_gradient) {
+                wx.SolvePoissonEfield(force_plain_gradient);
+            },
+            py::arg("force_plain_gradient") = false,
             "Deposit charge from all species, solve Poisson with current EB/domain BCs, "
-            "and replace Efield_fp with the result."
+            "and replace Efield_fp with the result. force_plain_gradient=True bypasses "
+            "the EB-aware E computation and uses the plain computePhi+computeE path "
+            "(diagnostic for cut-edge sign attribution)."
         )
         .def("clean_efield_gauss_homogeneous",
             [] (WarpX& wx) { wx.SolvePoissonEfieldHomogeneousClean(); },
@@ -285,6 +290,19 @@ void init_WarpX (py::module& m)
             "Induced charge eps0 * oint w(x,y,z) E.n dS over the embedded boundary for the "
             "named field (default Efield_fp), with an optional spatial weighting w(x,y,z) "
             "that selects a region/electrode (default w=1, the whole EB). 3D + EB only."
+        )
+        .def("saxpy_field_masked",
+            [] (WarpX& wx, const std::string& target, const std::string& source,
+                amrex::Real alpha, int lev) {
+                wx.SaxpyFieldMasked(target, source, alpha, lev);
+            },
+            py::arg("target"),
+            py::arg("source"),
+            py::arg("alpha"),
+            py::arg("lev") = 0,
+            "Masked saxpy: target += alpha * source, skipping cells where "
+            "m_eb_update_E == 0 (cut + covered EB cells). Used by the harmonic "
+            "bias correctors to avoid writing sign-flipped cut-edge values."
         )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
