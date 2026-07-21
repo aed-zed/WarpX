@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Generate an interactive HTML visualization from Gauss-box test output.
+"""Generate PNG visualizations from Gauss-box test output.
 
-Reads gauss_data.npz (saved by inputs_3d_gauss_movie.py or
-inputs_3d_gauss_impact.py) and the ChargeOnEB reduced diagnostic files,
-then produces a single self-contained HTML page with:
-  1. Animated Ex field + split density movie (slider + play button)
-  2. Enclosed charge drift plot (Gauss boxes + EB surface integral)
-  3. Static Ex difference panel (final - initial)
+Reads gauss_data.npz (saved by inputs_3d_gauss_movie.py,
+inputs_3d_gauss_impact.py, inputs_3d_gauss_correction.py, or
+inputs_3d_gauss_comparison.py) and the ChargeOnEB / FieldEnergy reduced
+diagnostic files, then saves PNG figures:
+
+  frames/frame_NNNN.png   — Ex + density movie frames
+  charge_drift.png        — Q(t) drift plot
+  ex_difference.png       — Ex(final) - Ex(initial) with symlog colorscale
+  correction_snapshots.png   — (if correction data) Ex before/after variants
+  correction_diffs.png       — (if correction data) difference maps (symlog)
+  field_energy.png           — (if FieldEnergy data) W_E timeline
 
 Usage:
     python analysis_gauss_visualization.py [data_dir]
 
     data_dir: directory containing gauss_data.npz and diags/ (default: cwd)
-
-The HTML is written to <data_dir>/gauss_visualization.html.
 """
 
 import os
@@ -24,9 +27,8 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.colors import SymLogNorm  # noqa: E402
 from matplotlib.patches import Circle, Rectangle  # noqa: E402
-import base64  # noqa: E402
-from io import BytesIO  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Load data
@@ -65,6 +67,55 @@ for s in ("left", "right"):
     for hl in box_labels:
         q[f"{s}_{hl}"] = d[f"q_{s}_{hl}"]
 
+has_correction = "correction_step" in d
+has_periodic = "correction_interval" in d
+corr_format = None  # "two_stage" or "three_variant"
+
+if has_periodic:
+    correction_interval = int(d["correction_interval"])
+    correction_steps_arr = d["correction_steps"]
+    V_before_history = d["V_before_history"]
+    V_after_history = d["V_after_history"]
+    print(f"  Periodic correction every {correction_interval} steps, "
+          f"{len(correction_steps_arr)} corrections applied")
+
+if has_correction:
+    correction_step = int(d["correction_step"])
+
+    if "ex_pre" in d:
+        corr_format = "three_variant"
+        ex_pre = d["ex_pre"]
+        V_pre = d["V_pre"]
+        W_pre = float(d["W_pre"]) if "W_pre" in d else None
+        variants = {}
+        for vname in ("full_bias", "clean_bias", "masked_bias"):
+            vd = {"ex": d[f"ex_{vname}"], "V": d[f"V_{vname}"]}
+            if f"W_{vname}" in d:
+                vd["W"] = float(d[f"W_{vname}"])
+            variants[vname] = vd
+        print(f"  Correction at step {correction_step} (3-variant), "
+              f"V_pre={V_pre}")
+    else:
+        corr_format = "two_stage"
+        ex_pre_clean = d["ex_pre_clean"]
+        ex_post_clean = d["ex_post_clean"]
+        ex_post_bias = d["ex_post_bias"]
+        V_pre_clean = d["V_pre_clean"]
+        V_post_clean = d["V_post_clean"]
+        V_post_bias = d["V_post_bias"]
+        corr_q = {}
+        corr_eb_q = {}
+        for s in ("left", "right"):
+            for stage in ("pre_clean", "post_clean", "post_bias"):
+                k_q = f"q_{s}_close_{stage}"
+                k_eb = f"eb_q_{s}_{stage}"
+                if k_q in d:
+                    corr_q[f"{s}_{stage}"] = float(d[k_q])
+                if k_eb in d:
+                    corr_eb_q[f"{s}_{stage}"] = float(d[k_eb])
+        print(f"  Correction at step {correction_step} (2-stage), "
+              f"V_pre={V_pre_clean}, V_post={V_post_bias}")
+
 n_frames = len(field_steps)
 
 sphere_centers = [
@@ -90,6 +141,21 @@ for s_name in ("left", "right"):
               f"Q_0 = {raw[0, 2]:.4e}, Q_end = {raw[-1, 2]:.4e}")
     else:
         print(f"  ChargeOnEB {s_name}: not found at {fpath}")
+
+# Read FieldEnergy reduced diagnostic
+field_energy_data = None
+fe_path = os.path.join(data_dir, "diags/reducedfiles/field_energy.txt")
+if os.path.exists(fe_path):
+    fe_raw = np.loadtxt(fe_path, comments="#")
+    if fe_raw.ndim == 1:
+        fe_raw = fe_raw.reshape(1, -1)
+    field_energy_data = {
+        "steps": fe_raw[:, 0].astype(int),
+        "time": fe_raw[:, 1],
+        "W_E": fe_raw[:, 2],
+    }
+    print(f"  FieldEnergy: {len(fe_raw)} rows, "
+          f"W_0 = {fe_raw[0, 2]:.6e}, W_end = {fe_raw[-1, 2]:.6e} J")
 
 # ---------------------------------------------------------------------------
 # Coordinate arrays
@@ -140,10 +206,20 @@ def _draw_spheres(ax, cm_scale=1e2):
                 color="white", fontweight="bold", zorder=11)
 
 
+def _save_fig(fig, name):
+    """Save figure to data_dir/<name>.png and close it."""
+    path = os.path.join(data_dir, f"{name}.png")
+    fig.savefig(path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved {path}")
+    return path
+
+
 # ---------------------------------------------------------------------------
 # 1. Build field + density frames
 # ---------------------------------------------------------------------------
-frame_pngs = []
+frames_dir = os.path.join(data_dir, "frames")
+os.makedirs(frames_dir, exist_ok=True)
 n_mid = nx // 2
 
 for i in range(n_frames):
@@ -190,13 +266,11 @@ for i in range(n_frames):
                  fontweight="bold")
     fig.tight_layout(rect=[0, 0, 1, 0.95])
 
-    buf = BytesIO()
-    fig.savefig(buf, format="png", dpi=100, bbox_inches="tight")
+    frame_path = os.path.join(frames_dir, f"frame_{step:04d}.png")
+    fig.savefig(frame_path, dpi=100, bbox_inches="tight")
     plt.close(fig)
-    frame_pngs.append(base64.b64encode(buf.getvalue()).decode())
-    buf.close()
 
-print(f"  Created {len(frame_pngs)} frames")
+print(f"  Saved {n_frames} frames to {frames_dir}/")
 
 # ---------------------------------------------------------------------------
 # 2. Q(t) drift plot
@@ -233,29 +307,62 @@ for idx_s, (s_name, _, _, _, V) in enumerate(sphere_centers):
     t_exit = (half - z_beam_lo) / vz_drift * 1e9
     ax.axvspan(0, t_exit, color="green", alpha=0.06)
 
+    if has_correction:
+        t_corr = correction_step * dt_sim * 1e9
+        ax.axvline(t_corr, color="#d42054", linewidth=1.5, linestyle="--",
+                   zorder=6, label="correction")
+
+    if has_periodic:
+        for cs in correction_steps_arr:
+            ax.axvline(cs * dt_sim * 1e9, color="#d42054", linewidth=0.3,
+                       alpha=0.3, zorder=1)
+
 fig.suptitle("Enclosed charge vs time — Gauss boxes + EB surface integral"
              "   (green = beam in domain)", fontsize=11)
 fig.tight_layout(rect=[0, 0, 1, 0.94])
-
-drift_buf = BytesIO()
-fig.savefig(drift_buf, format="png", dpi=120, bbox_inches="tight")
-plt.close(fig)
-drift_b64 = base64.b64encode(drift_buf.getvalue()).decode()
-drift_buf.close()
+_save_fig(fig, "charge_drift")
 
 # ---------------------------------------------------------------------------
-# 3. E-field difference (final - initial)
+# 2b. Voltage tracking plot (periodic correction only)
+# ---------------------------------------------------------------------------
+if has_periodic:
+    corr_times_ns = correction_steps_arr * dt_sim * 1e9
+
+    fig_v, (ax_vl, ax_vr) = plt.subplots(1, 2, figsize=(14, 5))
+    for ax, idx, name, V_t in [(ax_vl, 0, "left", V_left),
+                                (ax_vr, 1, "right", V_right)]:
+        ax.plot(corr_times_ns, V_before_history[:, idx], "-",
+                color="#c07800", linewidth=1.0, alpha=0.7, label="before corr.")
+        ax.plot(corr_times_ns, V_after_history[:, idx], "-",
+                color="#2b6cb0", linewidth=1.0, alpha=0.7, label="after corr.")
+        ax.axhline(V_t, color="#228b22", linewidth=1.5, linestyle="--",
+                   label=f"target ({V_t:+.0f} V)")
+        t_exit = (half - z_beam_lo) / vz_drift * 1e9
+        ax.axvspan(0, t_exit, color="green", alpha=0.06)
+        ax.set(xlabel="Time [ns]", ylabel="V_eff [V]",
+               title=f"{name} electrode")
+        ax.legend(fontsize=7)
+        ax.grid(True, alpha=0.3)
+
+    fig_v.suptitle(f"Electrode voltages — correction every "
+                   f"{correction_interval} steps", fontsize=11)
+    fig_v.tight_layout(rect=[0, 0, 1, 0.94])
+    _save_fig(fig_v, "voltage_tracking")
+
+# ---------------------------------------------------------------------------
+# 3. E-field difference (final - initial) — symlog colorscale
 # ---------------------------------------------------------------------------
 Ex_diff = field_data[-1] - field_data[0]
-diff_vmax = np.percentile(np.abs(Ex_diff), 99.5)
-if diff_vmax < 1e-10:
-    diff_vmax = max(np.max(np.abs(Ex_diff)), 1.0)
+diff_peak = np.max(np.abs(Ex_diff))
+diff_vmax = max(np.percentile(np.abs(Ex_diff), 99.5), 1.0)
+diff_linthresh = diff_vmax * 0.01
 
 fig_diff, ax_diff = plt.subplots(1, 1, figsize=(8, 6.5))
+norm_diff = SymLogNorm(linthresh=diff_linthresh, vmin=-diff_vmax, vmax=diff_vmax)
 im_diff = ax_diff.pcolormesh(z_n * 1e2, x_cc * 1e2, Ex_diff,
-                             cmap="RdBu_r", vmin=-diff_vmax, vmax=diff_vmax,
+                             cmap="RdBu_r", norm=norm_diff,
                              shading="auto", rasterized=True)
-fig_diff.colorbar(im_diff, ax=ax_diff, label=r"$\Delta E_x$ [V/m]",
+fig_diff.colorbar(im_diff, ax=ax_diff, label=r"$\Delta E_x$ [V/m] (symlog)",
                   shrink=0.85)
 _draw_spheres(ax_diff)
 _draw_boxes(ax_diff)
@@ -265,169 +372,153 @@ ax_diff.set(xlabel="z [cm]", ylabel="x [cm]",
             aspect="equal")
 ax_diff.set_title(
     rf"$E_x$(step {step_f}) $-$ $E_x$(step {step_i})   "
-    rf"(y = 0)   |   peak $|\Delta E_x|$ = {np.max(np.abs(Ex_diff)):.2e} V/m",
+    rf"(y = 0)   |   peak $|\Delta E_x|$ = {diff_peak:.2e} V/m",
     fontsize=10)
 fig_diff.tight_layout()
+_save_fig(fig_diff, "ex_difference")
 
-diff_buf = BytesIO()
-fig_diff.savefig(diff_buf, format="png", dpi=120, bbox_inches="tight")
-plt.close(fig_diff)
-diff_b64 = base64.b64encode(diff_buf.getvalue()).decode()
-diff_buf.close()
 
 # ---------------------------------------------------------------------------
-# 4. Write HTML
+# 4. Correction comparison panels (if correction data present)
 # ---------------------------------------------------------------------------
-frames_js = ",\n".join(f'"{b}"' for b in frame_pngs)
-steps_list = [int(s) for s in field_steps]
+def _corr_snapshot_fig(snap_items, suptitle, filename):
+    """Render a grid of Ex snapshots and save to file."""
+    n = len(snap_items)
+    ncols = min(n, 3)
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5.5 * nrows),
+                             squeeze=False)
+    axes_flat = axes.ravel()
+    snap_vmax = max(np.percentile(np.abs(s[0]), 99.5) for s in snap_items)
+    for ax, (ex, label, V_arr) in zip(axes_flat, snap_items):
+        im = ax.pcolormesh(z_n * 1e2, x_cc * 1e2, ex,
+                           cmap="RdBu_r", vmin=-snap_vmax, vmax=snap_vmax,
+                           shading="auto", rasterized=True)
+        fig.colorbar(im, ax=ax, label=r"$E_x$ [V/m]", shrink=0.85, pad=0.02)
+        _draw_spheres(ax)
+        _draw_boxes(ax)
+        ax.set(xlabel="z [cm]", ylabel="x [cm]",
+               xlim=(-half * 1e2, half * 1e2),
+               ylim=(-half * 1e2, half * 1e2), aspect="equal")
+        v_str = ", ".join(f"{v:+.1f}" for v in V_arr)
+        ax.set_title(f"{label}\nV_eff = [{v_str}] V", fontsize=9)
+    for ax in axes_flat[n:]:
+        ax.set_visible(False)
+    fig.suptitle(suptitle, fontsize=12, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    _save_fig(fig, filename)
 
-html = f"""<title>{title}</title>
-<style>
-  :root {{
-    --bg: #f5f5f0; --fg: #1a1a1a; --card-bg: #fff; --border: #d0d0c8;
-    --label: #555; --accent: #2b6cb0;
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{
-      --bg: #111318; --fg: #c8cad0; --card-bg: #1a1d26; --border: #2e3140;
-      --label: #8890a0; --accent: #5ba3d9;
-    }}
-  }}
-  :root[data-theme="dark"] {{
-    --bg: #111318; --fg: #c8cad0; --card-bg: #1a1d26; --border: #2e3140;
-    --label: #8890a0; --accent: #5ba3d9;
-  }}
-  :root[data-theme="light"] {{
-    --bg: #f5f5f0; --fg: #1a1a1a; --card-bg: #fff; --border: #d0d0c8;
-    --label: #555; --accent: #2b6cb0;
-  }}
-  body {{
-    background: var(--bg); color: var(--fg);
-    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
-    max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem 3rem;
-    line-height: 1.55;
-  }}
-  h1 {{ font-size: 1.35rem; margin: 0 0 0.3rem; letter-spacing: -0.01em; }}
-  h2 {{ font-size: 1.05rem; margin: 1.8rem 0 0.6rem; color: var(--label);
-        text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }}
-  .subtitle {{ color: var(--label); font-size: 0.85rem; margin-bottom: 1.2rem; }}
-  .panel {{
-    background: var(--card-bg); border: 1px solid var(--border);
-    padding: 0.8rem; margin: 0.6rem 0;
-  }}
-  img {{ max-width: 100%; height: auto; display: block; }}
-  .controls {{
-    display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
-    margin-bottom: 0.5rem;
-  }}
-  .controls button {{
-    padding: 0.35rem 0.9rem; cursor: pointer;
-    border: 1px solid var(--border); background: var(--card-bg); color: var(--fg);
-    font-family: inherit; font-size: 0.85rem;
-  }}
-  .controls button:hover {{ border-color: var(--accent); }}
-  .controls button:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 1px; }}
-  input[type=range] {{ flex: 1; min-width: 180px; }}
-  .frame-label {{
-    font-variant-numeric: tabular-nums; font-size: 0.85rem;
-    color: var(--label); min-width: 14ch;
-    font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
-  }}
-  .setup {{ font-size: 0.82rem; color: var(--label); }}
-  .setup strong {{ color: var(--fg); }}
-  .legend-row {{
-    display: flex; gap: 1.2rem; flex-wrap: wrap;
-    font-size: 0.78rem; color: var(--label); margin-top: 0.4rem;
-  }}
-  .legend-swatch {{
-    display: inline-block; width: 18px; height: 3px;
-    vertical-align: middle; margin-right: 4px;
-  }}
-</style>
 
-<h1>{title}</h1>
-<p class="subtitle">{subtitle}</p>
+def _corr_diff_fig(diffs, suptitle, filename):
+    """Render difference maps with symlog and save to file."""
+    n = len(diffs)
+    diff_corr_vmax = max(
+        max(np.percentile(np.abs(dd), 99.5) for dd, _ in diffs), 1e-10)
+    norm = SymLogNorm(linthresh=diff_corr_vmax * 0.01,
+                      vmin=-diff_corr_vmax, vmax=diff_corr_vmax)
+    fig, axes = plt.subplots(1, n, figsize=(6 * n, 5.5))
+    if n == 1:
+        axes = [axes]
+    for ax, (dd, label) in zip(axes, diffs):
+        im = ax.pcolormesh(z_n * 1e2, x_cc * 1e2, dd,
+                           cmap="RdBu_r", norm=norm,
+                           shading="auto", rasterized=True)
+        fig.colorbar(im, ax=ax, label=r"$\Delta E_x$ [V/m] (symlog)",
+                     shrink=0.85, pad=0.02)
+        _draw_spheres(ax)
+        _draw_boxes(ax)
+        ax.set(xlabel="z [cm]", ylabel="x [cm]",
+               xlim=(-half * 1e2, half * 1e2),
+               ylim=(-half * 1e2, half * 1e2), aspect="equal")
+        ax.set_title(f"{label}\npeak |dEx| = {np.max(np.abs(dd)):.2e} V/m",
+                     fontsize=9)
+    fig.suptitle(suptitle, fontsize=12, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
+    _save_fig(fig, filename)
 
-<div class="setup panel">
-  <strong>Geometry:</strong> V<sub>left</sub>&nbsp;=&nbsp;{V_left:+.0f}&thinsp;V,
-  V<sub>right</sub>&nbsp;=&nbsp;{V_right:+.0f}&thinsp;V,
-  R&nbsp;=&nbsp;{R*1e3:.0f}&thinsp;mm, {cells_per_R}&thinsp;cells/R.
-  <strong>Beam:</strong> {beam_desc}.
-  <strong>BCs:</strong> PEC (grounded) on all faces.
-  <br>
-  <strong>Boxes</strong> are closed rectangular Gaussian surfaces around each
-  sphere.
-  <div class="legend-row">
-    <span><span class="legend-swatch" style="background:#2b6cb0"></span>close ({h_boxes[0]*1e3:.0f}&thinsp;mm)</span>
-    <span><span class="legend-swatch" style="background:#c07800;border-top:1px dashed #c07800"></span>mid ({h_boxes[1]*1e3:.0f}&thinsp;mm)</span>
-    <span><span class="legend-swatch" style="background:#228b22;border-top:2px dashed #228b22"></span>far ({h_boxes[2]*1e3:.0f}&thinsp;mm)</span>
-    &mdash; half-widths from sphere center.
-  </div>
-</div>
 
-<h2>Field + Density</h2>
-<div class="panel">
-  <div class="controls">
-    <button id="play-btn" onclick="togglePlay()">&#9654; Play</button>
-    <input type="range" id="slider" min="0" max="{n_frames - 1}" value="0"
-           oninput="showFrame(this.value)">
-    <span class="frame-label" id="frame-label">Step 0</span>
-  </div>
-  <img id="field-img" src="" alt="Field + density frame">
-</div>
+if has_correction and corr_format == "two_stage":
+    _corr_snapshot_fig([
+        (ex_pre_clean, "Before correction", V_pre_clean),
+        (ex_post_clean, "After Gauss clean", V_post_clean),
+        (ex_post_bias, "After harmonic bias", V_post_bias),
+    ], f"E-field correction at step {correction_step}",
+        "correction_snapshots")
 
-<h2>Enclosed Charge Drift</h2>
-<div class="panel">
-  <img src="data:image/png;base64,{drift_b64}" alt="Q(t) drift plot">
-</div>
+    diffs_corr = [
+        (ex_post_clean - ex_pre_clean, "Gauss clean effect"),
+        (ex_post_bias - ex_post_clean, "Harmonic bias effect"),
+    ]
+    _corr_diff_fig(diffs_corr,
+                   "What each correction step changed (symlog)",
+                   "correction_diffs")
 
-<h2>E-field Difference (final &minus; initial)</h2>
-<div class="panel">
-  <img src="data:image/png;base64,{diff_b64}" alt="Ex difference plot">
-  <p style="font-size:0.82rem;color:var(--label);margin:0.5rem 0 0;">
-    Shows E<sub>x</sub>(step {step_f}) &minus; E<sub>x</sub>(step {step_i}) in
-    the y&thinsp;=&thinsp;0 slice. Any permanent drift in the electrode field
-    would appear as a residual pattern near the spheres.
-  </p>
-</div>
+    print(f"  Two-stage correction: "
+          f"V_pre=[{', '.join(f'{v:+.1f}' for v in V_pre_clean)}], "
+          f"V_post=[{', '.join(f'{v:+.1f}' for v in V_post_bias)}], "
+          f"target=[{V_left:+.0f}, {V_right:+.0f}]")
 
-<script>
-const frames = [{frames_js}];
-const steps = {steps_list};
-const dt_ns = {dt_sim * 1e9};
-let playing = false, timer = null, idx = 0;
+elif has_correction and corr_format == "three_variant":
+    variant_labels = [
+        ("full_bias", "Full bias\n(unmasked, no clean)"),
+        ("clean_bias", "Gauss clean\n+ full bias"),
+        ("masked_bias", "Masked bias\n(frozen cells preserved)"),
+    ]
 
-function showFrame(i) {{
-  idx = parseInt(i);
-  document.getElementById("field-img").src = "data:image/png;base64," + frames[idx];
-  document.getElementById("slider").value = idx;
-  const t = (steps[idx] * dt_ns).toFixed(2);
-  document.getElementById("frame-label").textContent =
-    "Step " + steps[idx] + " \\u00b7 t = " + t + " ns";
-}}
+    _corr_snapshot_fig(
+        [(ex_pre, "Before correction", V_pre)] +
+        [(variants[k]["ex"], label, variants[k]["V"])
+         for k, label in variant_labels],
+        f"Correction comparison at step {correction_step}",
+        "correction_snapshots")
 
-function togglePlay() {{
-  playing = !playing;
-  document.getElementById("play-btn").textContent = playing ? "\\u23F8 Pause" : "\\u25B6 Play";
-  if (playing) {{
-    timer = setInterval(() => {{
-      idx = (idx + 1) % frames.length;
-      showFrame(idx);
-    }}, 300);
-  }} else clearInterval(timer);
-}}
+    diffs_corr = [(variants[k]["ex"] - ex_pre, label)
+                  for k, label in variant_labels]
+    _corr_diff_fig(diffs_corr,
+                   "Correction effect (variant - pre-correction, symlog)",
+                   "correction_diffs")
 
-showFrame(0);
-</script>
-"""
-
-html_path = os.path.join(data_dir, "gauss_visualization.html")
-with open(html_path, "w") as f:
-    f.write(html)
-print(f"  Wrote {html_path}")
+    has_energy = W_pre is not None
+    for k, label in variant_labels:
+        V_arr = variants[k]["V"]
+        err_l = abs(V_arr[0] - V_left)
+        err_r = abs(V_arr[1] - V_right)
+        line = (f"  {label.split(chr(10))[0]:30s}  "
+                f"V=[{', '.join(f'{v:+.1f}' for v in V_arr)}]  "
+                f"err=[{err_l:.1f}, {err_r:.1f}] V")
+        if has_energy and "W" in variants[k]:
+            dW = variants[k]["W"] - W_pre
+            dW_pct = dW / W_pre * 100
+            line += f"  dW_E={dW:+.4e} ({dW_pct:+.4f}%)"
+        print(line)
 
 # ---------------------------------------------------------------------------
-# 5. Summary
+# 5. Field energy timeline (if available)
+# ---------------------------------------------------------------------------
+if field_energy_data is not None:
+    fe = field_energy_data
+    W0 = fe["W_E"][0]
+    dW_pct = (fe["W_E"] - W0) / W0 * 100
+
+    fig_we, ax_we = plt.subplots(1, 1, figsize=(10, 4))
+    ax_we.plot(fe["time"] * 1e9, dW_pct, "-", color="#2b6cb0",
+               linewidth=1.5, label=r"$\Delta W_E / W_{E,0}$")
+    if has_correction:
+        t_corr = correction_step * dt_sim * 1e9
+        ax_we.axvline(t_corr, color="#d42054", linewidth=1.5,
+                      linestyle="--", label="correction")
+    t_exit = (half - z_beam_lo) / vz_drift * 1e9
+    ax_we.axvspan(0, t_exit, color="green", alpha=0.06)
+    ax_we.set(xlabel="Time [ns]",
+              ylabel=r"$(W_E - W_{E,0}) / W_{E,0}$ [%]",
+              title="Electric field energy drift")
+    ax_we.legend(fontsize=8)
+    ax_we.grid(True, alpha=0.3)
+    fig_we.tight_layout()
+    _save_fig(fig_we, "field_energy")
+
+# ---------------------------------------------------------------------------
+# 6. Summary
 # ---------------------------------------------------------------------------
 print("\n" + "=" * 100)
 print("SUMMARY")
@@ -451,5 +542,5 @@ for s_name, _, _, _, V in sphere_centers:
         print(f"    EB surface: drift = {drift_eb:.2e}, "
               f"Q0 = {Q0_eb:.4e}, Q_end = {Q_end_eb:.4e}")
 
-print(f"\nPeak |dEx| = {np.max(np.abs(Ex_diff)):.2e} V/m")
-print(f"Output: {html_path}")
+print(f"\nPeak |dEx| = {diff_peak:.2e} V/m")
+print(f"Outputs in {os.path.abspath(data_dir)}/")

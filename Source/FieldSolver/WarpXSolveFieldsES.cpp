@@ -285,10 +285,40 @@ void WarpX::SolvePoissonEfieldHomogeneousClean ()
     bh->setPotentialEB(s_eb);
 
     // Efield_fp <- Efield_fp - grad(psi). Cleans Gauss, preserves curl.
+    // With EBs, skip cells where m_eb_update_E == 0 (staircase-frozen cells)
+    // so the correction only touches cells the FDTD solver can subsequently
+    // update; frozen cells keep their correct electrostatic values.
+    auto& eb_update_E = GetEBUpdateEFlag();
     for (int lev = 0; lev < nlevs; lev++) {
         for (int comp = 0; comp < 3; comp++) {
-            amrex::MultiFab::Add(*Efield_fp[lev][comp], *Egrad_owner[lev][comp],
-                                 0, 0, 1, Egrad_owner[lev][comp]->nGrowVect());
+#ifdef WARPX_DIM_RZ
+            if (comp == 1) { continue; }
+#endif
+            auto* target = Efield_fp[lev][comp];
+            const auto* source = Egrad_owner[lev][comp].get();
+            const auto* mask = (EB::enabled() && !eb_update_E.empty())
+                             ? eb_update_E[lev][comp].get() : nullptr;
+
+            if (mask) {
+                for (amrex::MFIter mfi(*target, amrex::TilingIfNotGPU());
+                     mfi.isValid(); ++mfi)
+                {
+                    const amrex::Box& bx =
+                        mfi.tilebox(target->ixType().toIntVect());
+                    auto const& t_arr = target->array(mfi);
+                    auto const& s_arr = source->const_array(mfi);
+                    auto const& m_arr = mask->const_array(mfi);
+                    amrex::ParallelFor(bx,
+                        [=] AMREX_GPU_DEVICE (int i, int j, int k) {
+                            if (m_arr(i, j, k) != 0) {
+                                t_arr(i, j, k) += s_arr(i, j, k);
+                            }
+                        });
+                }
+            } else {
+                amrex::MultiFab::Add(*target, *source,
+                                     0, 0, 1, source->nGrowVect());
+            }
         }
     }
 }
