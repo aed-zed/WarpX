@@ -427,7 +427,9 @@ int MatrixPC<T,Ops>::Assemble (const T& a_U)
 
                 // Add the Maxwell's piece
                 if (thetaDt > 0.0) {
-                    ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+                    // amrex::For: iterations share the nnz_actual overflow counter
+                    // (no SIMD pragma, see issue #7097)
+                    For(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
                     {
                         int ridx_l = dof_arr(i,j,k,0);
                         if (ridx_l < 0) { return; }
@@ -642,7 +644,9 @@ int MatrixPC<T,Ops>::Assemble (const T& a_U)
                         MM_width[space_dir] = (MM_ncomp[space_dir] - 1)/2;
                     }
 
-                    ParallelFor(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+                    // amrex::For: iterations share the nnz_actual overflow counter
+                    // (no SIMD pragma, see issue #7097)
+                    For(bx, [=] AMREX_GPU_DEVICE (int i, int j, int k)
                     {
                         int ridx_l = dof_arr(i,j,k,0);
                         if (ridx_l < 0) { return; }

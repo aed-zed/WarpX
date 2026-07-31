@@ -583,7 +583,8 @@ void doDirectJandSigmaDeposition ( const GetParticlePosition<PIdx>& GetPosition,
     amrex::IntVect const jz_type = jz_fab.box().type();
 
     // Loop over particles and deposit into jx_fab, jy_fab and jz_fab
-    amrex::ParallelFor(
+    // amrex::For: iterations scatter-add into shared J/Sigma nodes (no SIMD pragma, see issue #7097)
+    amrex::For(
             np_to_deposit,
             [=] AMREX_GPU_DEVICE (long ip) {
             amrex::ParticleReal xp_nph, yp_nph, zp_nph;
@@ -1680,7 +1681,8 @@ void doVillasenorJandSigmaDeposition ( [[maybe_unused]] const amrex::ParticleRea
     const amrex::Real invvol = dinv.x*dinv.y*dinv.z;
 
     // Loop over particles and deposit into Jx_arr, Jy_arr and Jz_arr
-    amrex::ParallelFor(
+    // amrex::For: iterations scatter-add into shared J/Sigma nodes (no SIMD pragma, see issue #7097)
+    amrex::For(
         np_to_deposit,
         [=] AMREX_GPU_DEVICE (long const ip) {
 

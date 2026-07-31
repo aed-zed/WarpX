@@ -538,7 +538,8 @@ public:
 
                 WARPX_PROFILE_VAR("BinaryCollision::doCollisionsWithinTile::findDensityTemperatures::atomics", prof_findDensityTemperatures_atomics);
                 // Loop over particles and compute quantities needed for energy conservation and the collsion parameters
-                amrex::ParallelFor( np1,
+                // amrex::For: iterations scatter-add into shared per-cell sums (no SIMD pragma, see issue #7097)
+                amrex::For( np1,
                     [=] AMREX_GPU_DEVICE (int ip) noexcept
                     {
                         if (correct_energy_momentum) {
@@ -709,7 +710,8 @@ public:
                 amrex::ParticleReal const energy_fraction_max = m_energy_fraction_max;
 
                 WARPX_PROFILE_VAR("BinaryCollision::doCollisionsWithinTile::correctEnergyMomentum", prof_correctEnergyMomentum);
-                amrex::ParallelFor( np1,
+                // amrex::For: iterations scatter-add into shared per-cell sums (no SIMD pragma, see issue #7097)
+                amrex::For( np1,
                     [=] AMREX_GPU_DEVICE (int i1) noexcept
                     {
 
@@ -726,7 +728,8 @@ public:
                     }
                 );
 
-                amrex::ParallelFor( np1,
+                // amrex::For: iterations scatter-add into shared per-cell sums (no SIMD pragma, see issue #7097)
+                amrex::For( np1,
                     [=] AMREX_GPU_DEVICE (int i1) noexcept
                     {
 
@@ -748,7 +751,8 @@ public:
                 amrex::Long* failed_corrections_ptr = failed_corrections.data();
                 amrex::ParticleReal* remaining_energy_ptr = remaining_energy.data();
 
-                amrex::ParallelFor( n_cells,
+                // amrex::For: iterations share the failed-corrections counter (no SIMD pragma, see issue #7097)
+                amrex::For( n_cells,
                     [=] AMREX_GPU_DEVICE (int i_cell) noexcept
                     {
 
@@ -1043,7 +1047,8 @@ public:
 
                 // Loop over particles and compute quantities needed for energy conservation and the collsion parameters
                 WARPX_PROFILE_VAR("BinaryCollision::doCollisionsWithinTile::findDensityTemperatures::atomics", prof_findDensityTemperatures_atomics);
-                amrex::ParallelFor( std::max(np1, np2),
+                // amrex::For: iterations scatter-add into shared per-cell sums (no SIMD pragma, see issue #7097)
+                amrex::For( std::max(np1, np2),
                     [=] AMREX_GPU_DEVICE (int ip) noexcept
                     {
                         if (correct_energy_momentum) {
@@ -1291,7 +1296,8 @@ public:
                 amrex::ParticleReal const energy_fraction_max = m_energy_fraction_max;
 
                 WARPX_PROFILE_VAR("BinaryCollision::doCollisionsWithinTile::correctEnergyMomentum", prof_correctEnergyMomentum);
-                amrex::ParallelFor( std::max(np1, np2),
+                // amrex::For: iterations scatter-add into shared per-cell sums (no SIMD pragma, see issue #7097)
+                amrex::For( std::max(np1, np2),
                     [=] AMREX_GPU_DEVICE (int ip) noexcept
                     {
 
@@ -1357,7 +1363,8 @@ public:
                 amrex::Long* failed_corrections_ptr = failed_corrections.data();
                 amrex::ParticleReal* remaining_energy_ptr = remaining_energy.data();
 
-                amrex::ParallelFor( n_cells,
+                // amrex::For: iterations share the failed-corrections counter (no SIMD pragma, see issue #7097)
+                amrex::For( n_cells,
                     [=] AMREX_GPU_DEVICE (int i_cell) noexcept
                     {
                         // The particles from species1 that are in the cell `i_cell` are

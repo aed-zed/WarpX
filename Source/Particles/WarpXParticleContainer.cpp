@@ -1978,7 +1978,8 @@ WarpXParticleContainer::DepositTotalNGPTemperature (amrex::MultiFab* temperature
         amrex::Array4<amrex::Real> const& sum_array = sum_mf.array(pti);
         amrex::Array4<amrex::Real> const& temp_array = temperature->array(pti);
 
-        amrex::ParallelFor(np,
+        // amrex::For: iterations scatter-add into shared cells (no SIMD pragma, see issue #7097)
+        amrex::For(np,
             [=] AMREX_GPU_DEVICE (long ip) {
                 // Get position in AMReX convention to calculate corresponding index.
                 const auto p = WarpXParticleContainer::ParticleType(ptd, ip);
