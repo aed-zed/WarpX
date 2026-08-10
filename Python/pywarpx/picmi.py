@@ -4701,7 +4701,7 @@ class ReducedDiagnostic(picmistandard.base._ClassWithInit, WarpXDiagnosticBase):
             kw = self._handle_field_probe(**kw)
         elif self.type == "FieldReduction":
             kw = self._handle_field_reduction(**kw)
-        elif self.type == "ChargeOnEB" or "ChargeFluxEB":
+        elif self.type in ("ChargeOnEB", "ChargeFluxEB"):
             kw = self._handle_charge_on_eb(**kw)
         else:
             raise RuntimeError(
