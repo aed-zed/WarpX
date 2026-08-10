@@ -287,7 +287,10 @@ WarpX::ComputeEBChargeWeighted (
         const amrex::Array4<const amrex::Real> & dSy_fraction_arr = eb_area_fraction[1]->array(mfi);
         const amrex::Array4<const amrex::Real> & dSz_fraction_arr = eb_area_fraction[2]->array(mfi);
 
-        amrex::ParallelFor( box,
+        // amrex::For: iterations accumulate into the shared surface integral;
+        // in serial (non-OpenMP) builds HostDevice::Atomic::Add is a plain +=,
+        // which is unsafe under the SIMD pragma of ParallelFor (see issue #7097)
+        amrex::For( box,
             [=] AMREX_GPU_DEVICE (int i, int j, int k) {
 
                 if (eb_flag_arr(i,j,k).isRegular() || eb_flag_arr(i,j,k).isCovered()) { return; }
@@ -382,7 +385,10 @@ WarpX::ComputeEBChargeWeighted (
         const amrex::Array4<const amrex::Real> & dSr_fraction_arr = eb_area_fraction[0]->array(mfi);
         const amrex::Array4<const amrex::Real> & dSz_fraction_arr = eb_area_fraction[1]->array(mfi);
 
-        amrex::ParallelFor( box,
+        // amrex::For: iterations accumulate into the shared surface integral;
+        // in serial (non-OpenMP) builds HostDevice::Atomic::Add is a plain +=,
+        // which is unsafe under the SIMD pragma of ParallelFor (see issue #7097)
+        amrex::For( box,
             [=] AMREX_GPU_DEVICE (int i, int j, int /*k*/) {
 
                 if (eb_flag_arr(i,j,0).isRegular() || eb_flag_arr(i,j,0).isCovered()) { return; }
