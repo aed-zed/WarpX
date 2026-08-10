@@ -723,8 +723,13 @@ void doEsirkepovDepositionShapeN (const GetParticlePosition<PIdx>& GetPosition,
     enum eb_flags : int { has_reduced_shape, no_reduced_shape };
     const int reduce_shape_runtime_flag = (enable_reduced_shape && (depos_order>1))? has_reduced_shape : no_reduced_shape;
 
-    // amrex::For: iterations scatter-add into shared J nodes (no SIMD pragma, see issue #7097)
-    amrex::For( TypeList<CompileTimeOptions<has_reduced_shape,no_reduced_shape>>{},
+    // NOTE: upstream #7100 converts this to amrex::For (iterations scatter-add into
+    // shared J nodes, so the SIMD pragma of ParallelFor is an invalid promise; see
+    // issue #7097). That conversion needs the TypeList/CompileTimeOptions overload of
+    // amrex::For added by AMReX PR #5581, which POST-DATES our pinned AMReX
+    // (26.03-96-gf30ca3d33848). Left as ParallelFor until AMReX is bumped -- see the
+    // commit message of this revert for the exact compile error.
+    amrex::ParallelFor( TypeList<CompileTimeOptions<has_reduced_shape,no_reduced_shape>>{},
         {reduce_shape_runtime_flag},
         np_to_deposit, [=] AMREX_GPU_DEVICE (long ip, auto reduce_shape_control) {
             // --- Get particle quantities

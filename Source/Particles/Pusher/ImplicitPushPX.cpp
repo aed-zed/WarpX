@@ -561,13 +561,16 @@ PhysicalParticleContainer::ImplicitPushXP (WarpXParIter & pti,
     // Using this version of For with compile time options
     // improves performance when qed or external EB are not used by reducing
     // register pressure.
-    // amrex::For: iterations share the unconverged-particles counter
-    // (no SIMD pragma, see issue #7097)
-    amrex::For(amrex::TypeList<amrex::CompileTimeOptions<no_exteb,has_exteb>,
-                               amrex::CompileTimeOptions<no_qed  ,has_qed>>{},
-               {exteb_runtime_flag, qed_runtime_flag},
-               np_to_push, [=] AMREX_GPU_DEVICE (long ip, auto exteb_control,
-                                                 auto qed_control)
+    // NOTE: upstream #7100 converts this to amrex::For (iterations share the
+    // unconverged-particles counter, so the SIMD pragma of ParallelFor is an invalid
+    // promise; see issue #7097). That conversion needs the TypeList/CompileTimeOptions
+    // overload of amrex::For added by AMReX PR #5581, which POST-DATES our pinned AMReX
+    // (26.03-96-gf30ca3d33848). Left as ParallelFor until AMReX is bumped.
+    amrex::ParallelFor(amrex::TypeList<amrex::CompileTimeOptions<no_exteb,has_exteb>,
+                                       amrex::CompileTimeOptions<no_qed  ,has_qed>>{},
+                       {exteb_runtime_flag, qed_runtime_flag},
+                       np_to_push, [=] AMREX_GPU_DEVICE (long ip, auto exteb_control,
+                                                         auto qed_control)
     {
 
         // Skip any particles that require suborbits
@@ -922,14 +925,17 @@ PhysicalParticleContainer::ImplicitPushXPSubOrbits (WarpXParIter& pti,
     // Using this version of For with compile time options
     // improves performance when qed or external EB are not used by reducing
     // register pressure.
-    // amrex::For: iterations scatter-add into shared J/Sigma nodes
-    // (no SIMD pragma, see issue #7097)
-    amrex::For(amrex::TypeList<amrex::CompileTimeOptions<no_exteb,has_exteb>,
-                               amrex::CompileTimeOptions<no_qed  ,has_qed>,
-                               amrex::CompileTimeOptions<order_one, order_two, order_three, order_four >>{},
-               {exteb_runtime_flag, qed_runtime_flag, depos_order_flag},
-               num_unconverged_particles, [=] AMREX_GPU_DEVICE (long i,
-                                                                 auto exteb_control, auto qed_control, auto depos_order_control)
+    // NOTE: upstream #7100 converts this to amrex::For (iterations scatter-add into
+    // shared J/Sigma nodes, so the SIMD pragma of ParallelFor is an invalid promise;
+    // see issue #7097). That conversion needs the TypeList/CompileTimeOptions overload
+    // of amrex::For added by AMReX PR #5581, which POST-DATES our pinned AMReX
+    // (26.03-96-gf30ca3d33848). Left as ParallelFor until AMReX is bumped.
+    amrex::ParallelFor(amrex::TypeList<amrex::CompileTimeOptions<no_exteb,has_exteb>,
+                                       amrex::CompileTimeOptions<no_qed  ,has_qed>,
+                                       amrex::CompileTimeOptions<order_one, order_two, order_three, order_four >>{},
+                       {exteb_runtime_flag, qed_runtime_flag, depos_order_flag},
+                       num_unconverged_particles, [=] AMREX_GPU_DEVICE (long i,
+                                                                        auto exteb_control, auto qed_control, auto depos_order_control)
     {
 
         long ip = unconverged_i[i];
