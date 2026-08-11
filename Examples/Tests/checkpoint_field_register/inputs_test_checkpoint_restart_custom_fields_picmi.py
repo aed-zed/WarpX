@@ -133,11 +133,18 @@ def verify_restored_fields():
         print("="*60 + "\n")
 
 def verify_checkpoint_written():
-    """Verify checkpoint file was written at step 5 (check at step 6)"""
+    """Verify checkpoint file was written at step 5 (check at step 6).
+
+    Fresh run only. The restart leg resumes *from* step 5 and is restored from
+    the base run's directory (a sibling test directory), so it writes no local
+    checkpoint until step 10 -- checking for a local step-5 checkpoint there
+    would always fail. Mirrors the `sim.amr_restart` guard in
+    verify_restored_fields, which is the complementary restart-only check.
+    """
     step = sim.extension.warpx.getistep(lev=0)
-    
+
     # Check after step 5 has completed (at step 6)
-    if step == 6:
+    if not sim.amr_restart and step == 6:
         print("\n" + "="*60)
         print("Verifying checkpoint file contents")
         print("="*60)
