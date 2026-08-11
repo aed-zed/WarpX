@@ -11,6 +11,8 @@
 #include "Fields.H"
 #include "WarpX.H"
 
+#include <ablastr/profiler/ProfilerWrapper.H>
+
 #include <ablastr/fields/MultiFabRegister.H>
 #include <ablastr/warn_manager/WarnManager.H>
 #include "EmbeddedBoundary/Enabled.H"
@@ -153,7 +155,7 @@ ExternalScalarPotential::InitData ()
 void
 ExternalScalarPotential::UpdateExternalElectricField (const amrex::Real t, [[maybe_unused]] const amrex::Real dt)
 {
-    WARPX_PROFILE("ExternalScalarPotential::UpdateExternalElectricField");
+    ABLASTR_PROFILE("ExternalScalarPotential::UpdateExternalElectricField");
 
     // Early return if no external scalar potential fields are configured
     if (m_nFields == 0) { return; }
@@ -225,7 +227,7 @@ ExternalScalarPotential::AddToExternalElectricField (
     int field_index,
     amrex::Real time_scale_factor)
 {
-    WARPX_PROFILE("ExternalScalarPotential::AddToExternalElectricField");
+    ABLASTR_PROFILE("ExternalScalarPotential::AddToExternalElectricField");
 
     auto& warpx = WarpX::GetInstance();
 

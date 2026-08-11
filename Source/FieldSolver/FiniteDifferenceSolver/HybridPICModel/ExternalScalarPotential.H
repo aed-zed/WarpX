@@ -18,7 +18,7 @@
 #include "FieldSolver/ElectrostaticSolvers/ElectrostaticSolver.H"
 #include "Utils/Parser/ParserUtils.H"
 #include "Utils/WarpXConst.H"
-#include "Utils/WarpXProfilerWrapper.H"
+#include <ablastr/profiler/ProfilerWrapper.H>
 
 #include <ablastr/fields/MultiFabRegister.H>
 

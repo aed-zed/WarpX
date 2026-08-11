@@ -13,6 +13,8 @@
 #include "Utils/Parser/ParserUtils.H"
 #include "WarpX.H"
 
+#include <ablastr/profiler/ProfilerWrapper.H>
+
 #include <ablastr/fields/PoissonSolver.H>
 
 
@@ -558,7 +560,7 @@ void ElectrostaticSolver::computeB (
 
 void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorField& Efield_fp) const
 {
-    WARPX_PROFILE("RelativisticExplicitES::AddBoundaryField");
+    ABLASTR_PROFILE("RelativisticExplicitES::AddBoundaryField");
 
     auto & warpx = WarpX::GetInstance();
 

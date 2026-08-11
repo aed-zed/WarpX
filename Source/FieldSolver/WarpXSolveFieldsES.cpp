@@ -43,7 +43,7 @@ void WarpX::ComputeSpaceChargeField (bool const reset_E_field, bool const reset_
 
 void WarpX::SolvePoissonEfield (bool force_plain_gradient)
 {
-    WARPX_PROFILE("WarpX::SolvePoissonEfield");
+    ABLASTR_PROFILE("WarpX::SolvePoissonEfield");
 
     using ablastr::fields::Direction;
     using ablastr::fields::MultiLevelScalarField;
@@ -161,7 +161,7 @@ void WarpX::SolvePoissonEfield (bool force_plain_gradient)
 
 void WarpX::SolvePoissonEfieldHomogeneousClean ()
 {
-    WARPX_PROFILE("WarpX::SolvePoissonEfieldHomogeneousClean");
+    ABLASTR_PROFILE("WarpX::SolvePoissonEfieldHomogeneousClean");
 
     using ablastr::fields::Direction;
     using ablastr::fields::MultiLevelVectorField;
@@ -329,7 +329,7 @@ void WarpX::SaxpyFieldMasked (
     amrex::Real alpha,
     int lev)
 {
-    WARPX_PROFILE("WarpX::SaxpyFieldMasked");
+    ABLASTR_PROFILE("WarpX::SaxpyFieldMasked");
 
     using ablastr::fields::Direction;
 
