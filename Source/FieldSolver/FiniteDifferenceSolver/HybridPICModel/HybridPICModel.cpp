@@ -476,6 +476,8 @@ void HybridPICModel::InitData (const ablastr::fields::MultiFabRegister& fields)
         for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
             m_qdsmc_pc->InitParticles(lev);
         }
+    }
+
     // Initialize external scalar potential (if specified)
     if (m_external_scalar_potential) {
         m_external_scalar_potential->InitData();
@@ -1567,6 +1569,25 @@ void HybridPICModel::AdvanceElectronEnergyQDSMC (amrex::Real const dt) const
 
 
 void HybridPICModel::BfieldEvolve (
+    ablastr::fields::MultiLevelVectorField const& Bfield,
+    ablastr::fields::MultiLevelVectorField const& Efield,
+    ablastr::fields::MultiLevelVectorField const& Jfield,
+    ablastr::fields::MultiLevelScalarField const& rhofield,
+    amrex::Vector<std::array< std::unique_ptr<amrex::iMultiFab>,3 > >& eb_update_E,
+    int step, amrex::Real dt_half, SubcyclingHalf subcycling_half,
+    IntVect ng, std::optional<bool> nodal_sync )
+{
+    auto& warpx = WarpX::GetInstance();
+    for (int lev = 0; lev <= warpx.finestLevel(); ++lev)
+    {
+        BfieldEvolve(
+            Bfield, Efield, Jfield, rhofield, eb_update_E,
+            step, dt_half, lev, subcycling_half, ng, nodal_sync
+        );
+    }
+}
+
+
 void HybridPICModel::UpdateHybridExternalFields (
     amrex::Real t,
     amrex::Real dt)
@@ -1598,25 +1619,6 @@ void HybridPICModel::UpdateHybridExternalFields (
     // Add contributions from external scalar potential (Phi_ext)
     if (m_external_scalar_potential && m_external_scalar_potential->HasExternalFields()) {
         m_external_scalar_potential->UpdateExternalElectricField(t, dt);
-    }
-}
-
-void HybridPICModel::BfieldEvolveRK (
-    ablastr::fields::MultiLevelVectorField const& Bfield,
-    ablastr::fields::MultiLevelVectorField const& Efield,
-    ablastr::fields::MultiLevelVectorField const& Jfield,
-    ablastr::fields::MultiLevelScalarField const& rhofield,
-    amrex::Vector<std::array< std::unique_ptr<amrex::iMultiFab>,3 > >& eb_update_E,
-    int step, amrex::Real dt_half, SubcyclingHalf subcycling_half,
-    IntVect ng, std::optional<bool> nodal_sync )
-{
-    auto& warpx = WarpX::GetInstance();
-    for (int lev = 0; lev <= warpx.finestLevel(); ++lev)
-    {
-        BfieldEvolve(
-            Bfield, Efield, Jfield, rhofield, eb_update_E,
-            step, dt_half, lev, subcycling_half, ng, nodal_sync
-        );
     }
 }
 

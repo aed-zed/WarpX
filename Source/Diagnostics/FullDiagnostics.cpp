@@ -605,7 +605,9 @@ FullDiagnostics::InitializeFieldFunctorsRZopenPMD (int lev)
                             m_all_field_functors[lev][comp] = std::make_unique<CellCenterFunctor>(
                                 warpx.m_fields.get(base_name, Direction{idir}, lev), lev, m_crse_ratio,
                                 false, ncomp);
-                            AddRZModesToOutputNames(m_varnames_fields[comp], ncomp);
+                            if (update_varnames) {
+                                AddRZModesToOutputNames(m_varnames_fields[comp], ncomp);
+                            }
                             found_in_register = true;
                             break;
                         }

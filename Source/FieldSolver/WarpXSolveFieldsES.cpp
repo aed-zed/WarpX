@@ -18,6 +18,10 @@
 #include <ablastr/profiler/ProfilerWrapper.H>
 #include <ablastr/warn_manager/WarnManager.H>
 
+// _rt literals were previously reached transitively via the removed
+// Utils/WarpXProfilerWrapper.H; make the dependency explicit.
+using namespace amrex::literals;
+
 
 void WarpX::ComputeSpaceChargeField (bool const reset_E_field, bool const reset_B_field)
 {
