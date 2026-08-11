@@ -52,13 +52,15 @@ void FiniteDifferenceSolver::ComputeDivE (
     // but we compile code for each algorithm, using templates)
 #if defined(WARPX_DIM_RZ) || defined(WARPX_DIM_RCYLINDER)
     if (m_fdtd_algo == ElectromagneticSolverAlgo::Yee ||
-        m_fdtd_algo == ElectromagneticSolverAlgo::HybridPIC){
+        m_fdtd_algo == ElectromagneticSolverAlgo::HybridPIC ||
+        m_fdtd_algo == ElectromagneticSolverAlgo::ECT){
 
         ComputeDivECylindrical <CylindricalYeeAlgorithm> ( Efield, divEfield );
 
 #elif defined(WARPX_DIM_RSPHERE)
     if (m_fdtd_algo == ElectromagneticSolverAlgo::Yee ||
-        m_fdtd_algo == ElectromagneticSolverAlgo::HybridPIC){
+        m_fdtd_algo == ElectromagneticSolverAlgo::HybridPIC ||
+        m_fdtd_algo == ElectromagneticSolverAlgo::ECT){
 
         ComputeDivESpherical <SphericalYeeAlgorithm> ( Efield, divEfield );
 
@@ -68,7 +70,8 @@ void FiniteDifferenceSolver::ComputeDivE (
         ComputeDivECartesian <CartesianNodalAlgorithm> ( Efield, divEfield );
 
     } else if (m_fdtd_algo == ElectromagneticSolverAlgo::Yee ||
-               m_fdtd_algo == ElectromagneticSolverAlgo::HybridPIC) {
+               m_fdtd_algo == ElectromagneticSolverAlgo::HybridPIC ||
+               m_fdtd_algo == ElectromagneticSolverAlgo::ECT) {
 
         ComputeDivECartesian <CartesianYeeAlgorithm> ( Efield, divEfield );
 
