@@ -15,7 +15,7 @@ import numpy as np
 import openpmd_api as io
 from mpi4py import MPI as mpi
 
-from pywarpx import picmi, callbacks
+from pywarpx import picmi
 
 constants = picmi.constants
 
@@ -384,58 +384,6 @@ class PlasmaCylinderCompression(object):
             if Path.exists(Path("diags")):
                 shutil.rmtree("diags")
             Path("diags").mkdir(parents=True, exist_ok=True)
-
-        @callbacks.installafterInitEsolve
-        def allocate_diagnostic_fields():
-            print(f"=== allocate_diagnostic_fields callback ===", flush=True)
-
-            # Use an existing field as template
-            Ex = simulation.fields.get("Efield_fp", dir='x', level=0)
-
-            for dir_str in ['x', 'y', 'z']:
-                simulation.fields.alloc_init(
-                    name="hall_term",
-                    dir=dir_str,
-                    level=0,
-                    ba=Ex.box_array(),
-                    dm=Ex.dm(),
-                    ncomp=1,
-                    ngrow=Ex.n_grow_vect,
-                    initial_value=0.0,
-                    redistribute=True,
-                    redistribute_on_remake=True
-                )
-
-                simulation.fields.alloc_init(
-                    name="grad_Pe",
-                    dir=dir_str,
-                    level=0,
-                    ba=Ex.box_array(),
-                    dm=Ex.dm(),
-                    ncomp=1,
-                    ngrow=Ex.n_grow_vect,
-                    initial_value=0.0,
-                    redistribute=True,
-                    redistribute_on_remake=True
-                )
-
-            # Check if components exist
-            for dir_str in ['x', 'y', 'z']:
-                has_hall_comp = simulation.fields.has("hall_term", dir=dir_str, level=0)
-                print(f"has('hall_term', dir='{dir_str}', level=0) = {has_hall_comp}", flush=True)
-                has_grad_Pe_comp = simulation.fields.has("grad_Pe", dir=dir_str, level=0)
-                print(f"has('grad_Pe', dir='{dir_str}', level=0) = {has_grad_Pe_comp}", flush=True)
-
-            # Add to diagnostic output
-            simulation.extension.warpx.add_field_to_diagnostic("diag1", "hall_term", lev=0)
-            print(f"Successfully added hall_term to diagnostic", flush=True)
-            simulation.extension.warpx.add_field_to_diagnostic("diag1", "grad_Pe", lev=0)
-
-            # Query the diagnostic's data_list
-            for diag in simulation.diagnostics:
-                if diag.name == "field_diags":
-                    print(f"Diagnostic '{diag.name}' data_list: {diag.data_list}", flush=True)
-                    break
 
         # Initialize inputs and WarpX instance
         simulation.initialize_inputs()
