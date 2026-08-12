@@ -161,6 +161,34 @@ void WarpX::SolvePoissonEfield (bool force_plain_gradient)
                       es.is_igf_2d_slices);
         es.computeE(Efield_fp, amrex::GetVecOfPtrs(phi), beta);
     }
+
+    // Publish the solved potential into the field registry when a phi_fp
+    // MultiFab exists there.
+    //
+    // `phi` above is a function-local temporary, so on this code path the
+    // potential was previously discarded the moment the solve returned. Any
+    // consumer needing phi (rather than -grad(phi)) then had to reconstruct it
+    // by integrating the stored gradient along a ray -- a path-dependent
+    // operation that accumulates cut-cell defects over the whole ray, and the
+    // documented origin of the psi_k reconstruction error in the
+    // electrode-potential-maintenance reports.
+    //
+    // Copying it out costs one MultiFab copy per solve and makes the exact
+    // discrete potential available to Python via the field registry. This is
+    // a no-op unless phi_fp is registered (it is for electrostatic runs; the
+    // EM/ECT fixtures that call SolvePoissonEfield directly may not have it,
+    // hence the guard).
+    for (int lev = 0; lev < nlevs; lev++) {
+        if (m_fields.has(FieldType::phi_fp, lev)) {
+            amrex::MultiFab * phi_reg = m_fields.get(FieldType::phi_fp, lev);
+            if (phi_reg->boxArray()        == phi[lev]->boxArray() &&
+                phi_reg->DistributionMap() == phi[lev]->DistributionMap()) {
+                const amrex::IntVect ng_copy =
+                    amrex::min(phi_reg->nGrowVect(), phi[lev]->nGrowVect());
+                amrex::MultiFab::Copy(*phi_reg, *phi[lev], 0, 0, 1, ng_copy);
+            }
+        }
+    }
 }
 
 void WarpX::SolvePoissonEfieldHomogeneousClean ()

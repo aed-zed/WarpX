@@ -131,6 +131,12 @@ class MultiElectrodeBiasCorrector:
         self._ready = False
         self._capacitance = None  # numpy (n, n) matrix C_jk
         self._unit_names = [f"Efield_unit_{k}" for k in range(self.n)]
+        # Nodal scalar weighting potentials psi_k, stored directly at setup
+        # instead of being reconstructed from Efield_unit_k by a line integral.
+        # See setup_after_init() and measure_grounded_charge_reciprocity().
+        self._psi_names = [f"psi_unit_{k}" for k in range(self.n)]
+        self._psi_stored = False
+        self._phi_grounded = None  # phi from the all-electrodes-grounded solve
 
     # -- libwarpx accessors --------------------------------------------------
     def _warpx(self):
@@ -155,6 +161,24 @@ class MultiElectrodeBiasCorrector:
         for name in self._unit_names:
             self._alloc_vector_like_efield(name, lev)
 
+        # psi_k is the SAME Laplace solution that produces E_0k below. Storing
+        # it costs one nodal scalar per electrode and removes the need to
+        # reconstruct it later by integrating E_0k along a ray -- see
+        # measure_grounded_charge_reciprocity() for why that reconstruction is
+        # the wrong operation on a cut-cell grid.
+        #
+        # A nodal scalar is ~1/3 the size of an edge-centred vector, and E_0k
+        # is recoverable from psi_k by one gradient pass whereas the converse
+        # is not.
+        #
+        # ORDERING IS LOAD-BEARING: this must run BEFORE the grounded solve.
+        # Under the EM/ECT solver phi_fp does not exist until allocated here,
+        # and SolvePoissonEfield only publishes into it if it already exists --
+        # so allocating after the grounded solve would leave the grounded
+        # snapshot at zero and the plasma potential (O(100 V) on this fixture)
+        # would survive into psi_k, which is nominally O(1).
+        self._psi_stored = self._alloc_psi_fields(lev)
+
         # One grounded solve (shared by all electrodes): E_grounded carries the
         # plasma field with every electrode at 0 V, so differencing it out of
         # each "electrode k at 1 V" solve leaves the charge-free unit field.
@@ -162,6 +186,19 @@ class MultiElectrodeBiasCorrector:
         warpx.set_potential_on_eb("0.0")
         warpx.solve_poisson_efield()
         grounded = self._save_efield(lev)
+
+        if self._psi_stored:
+            # Snapshot the grounded-solve potential so the plasma contribution
+            # is differenced out of each unit solve, exactly as it is for E_0k
+            # above (E_full - E_grounded).
+            mfr0 = self._mfr()
+            ref0 = mfr0.get("phi_fp", level=lev)
+            mfr0.alloc_init(
+                "phi_grounded_tmp", lev, ref0.box_array(), ref0.dm(), 1,
+                ref0.n_grow_vect, 0.0, True, True,
+            )
+            self._phi_grounded = mfr0.get("phi_grounded_tmp", level=lev)
+            self._phi_grounded.copymf(ref0, 0, 0, 1, 0)
 
         for k in range(self.n):
             warpx.set_potential_on_eb(f"1.0*({self.regions[k]})")
@@ -173,6 +210,8 @@ class MultiElectrodeBiasCorrector:
                     self._mfr().get("Efield_fp", dir=d, level=lev), 0, 0, 1, 0
                 )
                 unit.saxpy(-1.0, grounded[comp], 0, 0, 1, 0)
+            if self._psi_stored:
+                self._capture_psi(k, lev)
 
         # Restore the live field and the configured EB potential.
         self._restore_efield(saved, lev)
@@ -195,6 +234,70 @@ class MultiElectrodeBiasCorrector:
         if self.verbose:
             print(f"[MultiElectrode] capacitance matrix (cond={cond:.3e}):")
             print(self._capacitance)
+
+    def _alloc_psi_fields(self, lev):
+        """Allocate one nodal scalar MultiFab per electrode for psi_k.
+
+        Returns True if the storage is available AND the solver publishes
+        ``phi_fp`` (so psi_k can actually be captured); False otherwise, in
+        which case the reciprocity path falls back to the legacy line-integral
+        reconstruction and says so.
+        """
+        mfr = self._mfr()
+        try:
+            ref = mfr.get("phi_fp", level=lev)
+        except Exception:
+            # phi_fp is allocated by WarpX only for the electrostatic solver
+            # modes (WarpX.cpp: LabFrame / LabFrameElectroMagnetostatic /
+            # LabFrameEffectivePotential). This corrector also runs under the
+            # EM/ECT solver, which calls SolvePoissonEfield directly without
+            # ever allocating it -- so allocate it here, on rho's nodal grid,
+            # and let SolvePoissonEfield populate it.
+            try:
+                # Build the nodal BoxArray from Efield_fp (always present) by
+                # taking surrounding nodes -- the same grid rho and phi live
+                # on in SolvePoissonEfield.
+                eref = mfr.get("Efield_fp", dir=self._Direction(0), level=lev)
+                nba = eref.box_array().surroundingNodes()
+                mfr.alloc_init(
+                    "phi_fp", lev, nba, eref.dm(), 1,
+                    eref.n_grow_vect, 0.0, True, True,
+                )
+                ref = mfr.get("phi_fp", level=lev)
+                if self.verbose:
+                    print(
+                        "[MultiElectrode] allocated phi_fp (absent under the "
+                        "EM/ECT solver) so psi_k can be stored directly."
+                    )
+            except Exception as exc:
+                if self.verbose:
+                    print(
+                        f"[MultiElectrode] phi_fp unavailable ({exc}); psi_k "
+                        "cannot be stored directly and the reciprocity Q_g "
+                        "falls back to line-integral reconstruction. Its "
+                        "output is an order-of-magnitude cross-check only."
+                    )
+                return False
+        for name in self._psi_names:
+            mfr.alloc_init(
+                name, lev, ref.box_array(), ref.dm(), 1,
+                ref.n_grow_vect, 0.0, True, True,
+            )
+        return True
+
+    def _capture_psi(self, k, lev):
+        """Copy the just-solved phi_fp into psi_unit_k.
+
+        Called immediately after the ``electrode k at 1 V, all others at 0 V``
+        solve, so phi_fp holds exactly psi_k (the unit-electrode Laplace basis
+        function) plus the plasma potential. The plasma part is removed by the
+        same grounded-solve differencing used for E_0k.
+        """
+        mfr = self._mfr()
+        psi = mfr.get(self._psi_names[k], level=lev)
+        psi.copymf(mfr.get("phi_fp", level=lev), 0, 0, 1, 0)
+        if self._phi_grounded is not None:
+            psi.saxpy(-1.0, self._phi_grounded, 0, 0, 1, 0)
 
     def _alloc_vector_like_efield(self, name, lev):
         mfr = self._mfr()
@@ -376,6 +479,34 @@ class MultiElectrodeBiasCorrector:
         dV = dx * geom_data.CellSize()[1] * geom_data.CellSize()[2]
 
         q_g = np.empty(self.n)
+
+        if self._psi_stored:
+            # EXACT PATH. psi_k was stored at setup as the solved potential of
+            # the same Laplace problem that produced E_0k, so it is read
+            # directly, on the same nodal grid as rho -- no line integral, no
+            # anchor choice, no collocation shift, and no cut-cell
+            # accumulation. psi_k and rho are both nodal (n+1)^3, so the
+            # product is pointwise-aligned by construction.
+            for k in range(self.n):
+                psi_k = np.asarray(
+                    mfr.get(self._psi_names[k], level=lev)[:, :, :]
+                )
+                if psi_k.shape != rho.shape:
+                    raise RuntimeError(
+                        f"psi_{k} shape {psi_k.shape} != rho shape "
+                        f"{rho.shape}; the stored weighting potential and the "
+                        "charge density must share the nodal grid."
+                    )
+                q_g[k] = -np.sum(rho * psi_k) * dV
+            return q_g
+
+        # FALLBACK PATH (legacy). Reached only when the WarpX build does not
+        # publish phi_fp from SolvePoissonEfield. Retained so the diagnostic
+        # still returns a value on older builds, but it carries the
+        # reconstruction error documented above: the cumulative sum is a
+        # path-dependent line integral whose cut-cell defects offset the entire
+        # downstream ray, AND psi_k[1:] = -cumsum(Ex0) places psi_k half a cell
+        # from rho. Treat its output as an order-of-magnitude cross-check only.
         for k in range(self.n):
             Ex0 = np.asarray(
                 mfr.get(self._unit_names[k], dir=self._Direction(0), level=lev)[
