@@ -1749,6 +1749,30 @@ class MultiElectrodeBiasCorrector:
         a future change to the particle shape order or filter pass count
         could invalidate it silently; if ``_deposit_and_read_rho_fp()``
         starts hitting the same assertion, this is the first place to look.
+
+        TWO COMPONENTS -- NOT ONE. Merely registering ``rho_fp`` flips on
+        ``has_rho`` in ``PhysicalParticleContainer::PushPX``
+        (``has_rho = fields.has(FieldType::rho_fp, lev)``), which makes
+        WarpX's OWN post-push deposit unconditionally write into
+        **component 1** of ``rho_fp`` every step from then on
+        (``PhysicalParticleContainer.cpp``, "Deposit charge after particle
+        push, in component 1 of MultiFab rho"), guarded by
+        ``WARPX_ALWAYS_ASSERT_WITH_MESSAGE(rho->nComp() >= 2, ...)`` --
+        an unrecoverable MPI_Abort, not a catchable Python exception, the
+        first time any particle pushes after this MultiFab is registered
+        with only 1 component. This was invisible to every earlier
+        validation of ``qg_mode="reciprocity"`` (T7, T8) because those are
+        static ``max_steps=0`` fixtures -- the post-push deposit never runs.
+        It reproduces immediately (step 2) in any REAL time-stepping run
+        with this qg_mode enabled (confirmed on the four-arm campaign
+        fixture, nx=32 and nx=80 alike -- resolution-independent). Matches
+        WarpX's own convention when it decides to allocate ``rho_fp`` itself
+        (``WarpX.cpp``: ``rho_ncomps = 2*ncomps`` whenever ``do_dive_cleaning``),
+        so allocate 2 components here too. ``_deposit_and_read_rho_fp()``
+        below explicitly reads back only component 0 -- the one this
+        class's own per-species deposit writes into (see its docstring) --
+        component 1 is WarpX's own post-push bookkeeping, never read by this
+        class, and safe to leave in whatever state the last push left it.
         """
         mfr = self._mfr()
         try:
@@ -1761,7 +1785,7 @@ class MultiElectrodeBiasCorrector:
         eref = mfr.get("Efield_fp", dir=self._Direction(0), level=lev)
         nba = eref.box_array().surroundingNodes()
         ng = libwarpx.amr.IntVect(4)
-        mfr.alloc_init("rho_fp", lev, nba, eref.dm(), 1, ng, 0.0, True, True)
+        mfr.alloc_init("rho_fp", lev, nba, eref.dm(), 2, ng, 0.0, True, True)
 
     def _deposit_and_read_rho_fp(self, lev):
         """Deposit EVERY species' charge into the registered ``rho_fp`` and
@@ -1806,10 +1830,25 @@ class MultiElectrodeBiasCorrector:
 
         COLLECTIVE. Depositing is a local per-tile operation, but
         ``sync_rho()`` performs the guard-cell MPI exchange, and reading the
-        result back via ``mf[:, :, :]`` performs the same MPI allgather as
+        result back via ``mf[:, :, :, 0]`` performs the same MPI allgather as
         every other MultiFab read in this module -- called unconditionally
         on every rank, exactly like the psi prefetch in
         ``accumulate_absorption()``.
+
+        COMPONENT 0, EXPLICITLY. ``rho_fp`` has 2 components (see
+        ``_ensure_rho_fp()``'s docstring for why 1 is not enough once this
+        method is used in a real time-stepping run): this class's own
+        per-species deposit above always targets component 0 (the pybind
+        ``deposit_charge`` wrapper hardcodes ``icomp=0``); component 1 is
+        WarpX's own post-push bookkeeping deposit, unrelated to this
+        identity. Reading ``mf[:, :, :]`` (3 indices) on a 2-component
+        MultiFab returns BOTH components stacked (pyAMReX pads the missing
+        trailing index to a full component slice), which would silently
+        change this array's shape from the nodal ``(nx, ny, nz)`` every
+        caller here expects to ``(nx, ny, nz, 2)`` -- caught loudly by
+        ``_grounded_charge_via_reciprocity()``'s shape guard against
+        ``psi_k`` rather than corrupting the dot product, but avoided
+        entirely by indexing the component explicitly below.
 
         SIDE EFFECT ON ``rho_fp`` -- CHECKED, HARMLESS FOR THIS CLASS'S OWN
         USE. This method takes ownership of the registered ``rho_fp``: it
@@ -1857,7 +1896,7 @@ class MultiElectrodeBiasCorrector:
             )
         self._warpx().sync_rho()   # single filter/exchange pass -- see above
         mfr = self._mfr()
-        return np.asarray(mfr.get("rho_fp", level=lev)[:, :, :])
+        return np.asarray(mfr.get("rho_fp", level=lev)[:, :, :, 0])
 
     def _grounded_charge_via_reciprocity(self, lev):
         """``qg_mode="reciprocity"``: Q_g,k = -sum_a rho_a * dV * Psi_k[a].
