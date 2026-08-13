@@ -94,6 +94,18 @@ class MultiElectrodeBiasCorrector:
         If True, run the homogeneous Boris/Marder Gauss clean before the bias.
     verbose : bool, optional
         Print per-electrode voltages each correction.
+    electrode_centers : list of (x, y, z), optional
+        One centre per electrode, used ONLY by ``accumulate_absorption()`` to
+        geometrically attribute an absorbed particle to the electrode it
+        struck (nearest surface, see ``electrode_radii``), instead of the
+        argmax(psi) heuristic. Required if ``psi_table``/``load_psi_table()``
+        or ``gather_mode="deposit"`` is used, since argmax(psi) is only
+        meaningful for the plain Dirichlet basis. See ``accumulate_absorption``.
+    electrode_radii : list of float, optional
+        One radius per electrode, paired with ``electrode_centers`` for
+        nearest-*surface* (rather than nearest-centre) attribution when
+        electrodes have different sizes. Defaults to zero (nearest centre)
+        if ``electrode_centers`` is given but this is not.
     """
 
     def __init__(
@@ -109,7 +121,11 @@ class MultiElectrodeBiasCorrector:
         impact_histogram_cap=0,
         psi_table=None,
         gather_mode="node",
+        electrode_centers=None,
+        electrode_radii=None,
     ):
+        import numpy as np  # noqa: PLC0415
+
         if not (0.0 < relaxation <= 1.0):
             raise ValueError("relaxation must be in (0, 1].")
         if len(electrodes) < 1:
@@ -192,6 +208,41 @@ class MultiElectrodeBiasCorrector:
             raise ValueError(f"gather_mode must be 'node' or 'deposit', got {gather_mode!r}")
         self.gather_mode = gather_mode
         self._psi_filtered_cache = {}   # k -> filtered nodal array, for gather_mode="deposit"
+        # Cache for the raw nodal psi_unit_k table (used when _psi_override is
+        # None). Reading it (mfr.get(...)[:, :, :]) triggers an MPI allgather
+        # in pyAMReX's MultiFab.__getitem__ -- a COLLECTIVE call that every
+        # rank must issue the same number of times in the same order. Once
+        # filled, this cache is never invalidated (psi_unit_k is fixed after
+        # setup_after_init() and never mutated again), so the collective is
+        # paid at most once per electrode -- see the prefetch call at the top
+        # of accumulate_absorption() for why it must not be filled lazily
+        # from a rank-locally-conditioned branch.
+        self._nodal_psi_cache = {}
+
+        # Optional geometric attribution for accumulate_absorption()'s
+        # struck-electrode assignment (see its docstring / defect note there).
+        # `electrode_centers` is a list of n (x, y, z) tuples; `electrode_radii`
+        # is an optional list of n radii (default 0, i.e. nearest-centre
+        # attribution) for surface- rather than centre-nearest assignment when
+        # electrodes have different sizes.
+        if electrode_centers is not None:
+            electrode_centers = np.asarray(electrode_centers, dtype=float)
+            if electrode_centers.shape != (self.n, 3):
+                raise ValueError(
+                    f"electrode_centers must have shape ({self.n}, 3), got "
+                    f"{electrode_centers.shape}"
+                )
+        self.electrode_centers = electrode_centers
+        if electrode_radii is not None:
+            electrode_radii = np.asarray(electrode_radii, dtype=float)
+            if electrode_radii.shape != (self.n,):
+                raise ValueError(
+                    f"electrode_radii must have shape ({self.n},), got "
+                    f"{electrode_radii.shape}"
+                )
+        elif electrode_centers is not None:
+            electrode_radii = np.zeros(self.n)
+        self.electrode_radii = electrode_radii
 
         if psi_table is not None:
             self.load_psi_table(psi_table)
@@ -431,12 +482,32 @@ class MultiElectrodeBiasCorrector:
         return self
 
     def _nodal_psi(self, k):
-        """The raw nodal Psi_k table (override if supplied, else psi_unit_k)."""
+        """The raw nodal Psi_k table (override if supplied, else psi_unit_k).
+
+        CACHED AND COLLECTIVE. When there is no override, this reads the
+        psi_unit_k MultiFab via ``mf[:, :, :]``, which in pyAMReX performs an
+        MPI allgather so every rank gets the full global nodal array -- a
+        COLLECTIVE call that every rank must issue the same number of times,
+        in the same order. psi_unit_k is fixed after ``setup_after_init()``
+        and never mutated again, so the result is cached on first use and the
+        collective is paid at most once per electrode. This cache is why
+        ``accumulate_absorption()`` prefetches every electrode's table
+        unconditionally near the top of the method, BEFORE any rank-locally-
+        conditioned skip logic -- see that method's docstring. Do not call
+        this lazily from a branch whose condition can differ between ranks
+        (e.g. "this rank has new particles this step"): if one rank fills the
+        cache while another does not reach the call at all, the allgather
+        deadlocks.
+        """
         import numpy as np  # noqa: PLC0415
 
         if self._psi_override is not None:
             return np.asarray(self._psi_override[k])
-        return np.asarray(self._mfr().get(self._psi_names[k], level=0)[:, :, :])
+        if k not in self._nodal_psi_cache:
+            self._nodal_psi_cache[k] = np.asarray(
+                self._mfr().get(self._psi_names[k], level=0)[:, :, :]
+            )
+        return self._nodal_psi_cache[k]
 
     @staticmethod
     def _binomial_filter_3d(psi_nodal):
@@ -637,6 +708,63 @@ class MultiElectrodeBiasCorrector:
         correction is a linear functional of the absorbed charge and
         superposition over impacts is exact (verified in WarpX itself), which
         is why this scales to millions of impacts per step.
+
+        REVIEW FIX 2026-08-13 -- MPI correctness (four items)
+        ------------------------------------------------------
+        A completed review found this method silently wrong under >1 MPI
+        rank, in a way no single-rank test could catch. Fixed here:
+
+        1. CURSOR/BUFFER-SIZE MISMATCH. The per-species cursor ``seen`` is
+           necessarily PER-RANK state (each rank only ever reads its own tile
+           arrays from ``get_particle_boundary_buffer``), but the buffer size
+           used to decide whether there is anything new was previously the
+           GLOBAL (MPI-reduced, ``local=False``) count. On >=2 ranks each
+           rank's local arrays are shorter than the global total, so the
+           ``total <= seen`` guard could silently skip whole batches on every
+           rank but one. Fixed by sizing with ``local=True``: the cursor now
+           compares like with like (this rank's count vs. this rank's cursor).
+
+        2. RANK-LOCAL TOTALS. ``_absorb_booked``/``_absorb_deficit``/
+           ``_absorb_counts`` (and ``_impact_histogram``) are accumulated
+           PER RANK -- each rank only ever sees the particles scraped into
+           its own tiles. That is correct for incremental accumulation (do
+           not try to make the running accumulators global), but it means
+           reading the raw attributes directly on >1 rank gives a partial
+           sum. Use ``absorption_totals()``/``absorption_report()`` (both
+           default to ``reduce=True``, an MPI-summed COLLECTIVE call every
+           rank must make together) to get the run-wide ledger.
+           ``_absorb_history`` entries are recorded RANK-LOCAL (documented on
+           the attribute); reduce a history entry yourself if you need a
+           global time series.
+
+        3. STRUCK-ELECTRODE ATTRIBUTION. ``argmax(psi)`` identifies the
+           struck electrode by largest gathered psi, which only means
+           anything for the plain Dirichlet basis (psi ~ 1 on its own
+           electrode by boundary condition, close to 0 elsewhere). For a
+           custom ``psi_table`` (measured/adjoint) or ``gather_mode=
+           "deposit"``, psi is not ~1 at the struck surface and argmax is
+           meaningless. Fixed by attributing geometrically (nearest
+           electrode surface) whenever ``electrode_centers`` was supplied to
+           the constructor; ``argmax(psi)`` remains the default ONLY for the
+           plain basis with no override, and a clear error is raised if a
+           custom table/gather_mode is used without ``electrode_centers``.
+           Note: ``booked[k, s]`` does NOT depend on ``struck`` (it sums
+           ``q_p * psi_k`` over every impact regardless of attribution) --
+           only ``deficit[k, s]`` uses it, unchanged.
+
+        4. CURSOR VALIDITY. A buffer that SHRINKS between calls (regrid /
+           load-balance clearing or redistributing the scrape buffer) used to
+           be silently treated as "nothing new" by the old ``total <= seen``
+           guard, which also hid the shrink. Now a shrink raises immediately
+           with a message pointing at ``reset_absorption_cursors()``. Load
+           balancing / regrid is NOT otherwise supported by this ledger: the
+           cursor's ordering assumption (this rank's buffer only grows,
+           never reorders) can be violated by a regrid in ways this check
+           cannot detect in general (e.g. a redistribution that changes size
+           by coincidence). Call ``reset_absorption_cursors()`` yourself
+           around any regrid if you use this ledger with AMR/load balancing
+           enabled; note that doing so cannot recover particles scraped
+           between the last successful read and the regrid.
         """
         import numpy as np  # noqa: PLC0415
 
@@ -653,12 +781,43 @@ class MultiElectrodeBiasCorrector:
             self._absorb_booked = np.zeros((self.n, ns))
             self._absorb_counts = np.zeros(ns, dtype=np.int64)
 
+        # Prefetch every electrode's psi table UNCONDITIONALLY, before any
+        # rank-locally-conditioned skip logic below. When there is no
+        # psi_override, _nodal_psi(k) triggers a collective MPI allgather the
+        # FIRST time it is called for a given k (see its docstring) and caches
+        # the result forever after (psi_unit_k never changes post-setup). If
+        # that first call were instead reached only from inside the
+        # per-species "do I have new data" branch, two ranks with different
+        # local scrape timing could diverge on whether they call it at all --
+        # deadlock. This loop runs identically on every rank every call
+        # (accumulate_absorption() itself is invoked in lockstep by the
+        # step callback), so the collective, when it happens, is symmetric.
+        for k in range(self.n):
+            self._nodal_psi(k)
+
         for s, sp in enumerate(self.absorption_species):
             try:
-                total = buf.get_particle_boundary_buffer_size(sp, "eb")
+                # local=True: the cursor below is inherently PER-RANK state
+                # (each rank only ever reads its own tile arrays), so it must
+                # be compared against this rank's local buffer size, not the
+                # global MPI-reduced count (see fix note 1 above).
+                total = buf.get_particle_boundary_buffer_size(sp, "eb", local=True)
             except Exception:
                 continue
             seen = self._buffer_cursor.get(sp, 0)
+            if total < seen:
+                raise RuntimeError(
+                    f"EB scrape buffer for species '{sp}' on this rank shrank "
+                    f"from {seen} to {total} particles between calls to "
+                    "accumulate_absorption(). This means the buffer was "
+                    "cleared or reordered (e.g. by a regrid / load-balance "
+                    "step) -- the per-rank cursor's ordering assumption is "
+                    "violated and load balancing is currently UNSUPPORTED by "
+                    "this ledger. Call corrector.reset_absorption_cursors() "
+                    "if you intend to resume accounting from here (this "
+                    "cannot recover particles scraped between the last "
+                    "successful read and the shrink)."
+                )
             if total <= seen:
                 continue
 
@@ -668,20 +827,54 @@ class MultiElectrodeBiasCorrector:
                         if arrs else np.zeros(0))
 
             x, y, z, w = (_cat("x"), _cat("y"), _cat("z"), _cat("w"))
-            if len(x) <= seen:
-                continue
+            # x/y/z/w are THIS RANK's tile arrays (never reduced), so their
+            # length must equal the local `total` above -- if it does not,
+            # `local=True` sizing and the tile-array read have gone out of
+            # sync (e.g. a stale ParticleBoundaryBufferWrapper instance).
+            assert len(x) == total, (
+                f"species '{sp}': local buffer size {total} != concatenated "
+                f"local tile-array length {len(x)}"
+            )
             x, y, z, w = x[seen:], y[seen:], z[seen:], w[seen:]
             self._buffer_cursor[sp] = total
 
             q_sp = self._species_charge(sp)
             q_p = q_sp * w                       # macroparticle charge [C]
 
-            # Which electrode was struck? The one whose psi is largest at the
-            # impact site. An impact perturbs EVERY conductor, so all n rows
-            # are updated -- cross-terms are not negligible.
             psis = np.stack([self._gather_psi(k, x, y, z)
                              for k in range(self.n)], axis=0)   # (n, N)
-            struck = np.argmax(psis, axis=0)
+
+            # Which electrode was struck? An impact perturbs EVERY conductor,
+            # so all n rows of `deficit` are updated regardless -- cross-terms
+            # are not negligible. `struck` only selects which electrode's row
+            # gets the "(1 - psi)" (own-electrode) term vs. the "-psi"
+            # (foreign-electrode) term; `booked` does not use `struck` at all.
+            if self.electrode_centers is not None:
+                # Geometric attribution: nearest electrode SURFACE (centre
+                # distance minus radius; radius defaults to 0, i.e. nearest
+                # centre). Valid for any psi table, since it does not depend
+                # on psi's value or normalization.
+                d = np.stack([
+                    np.sqrt((x - c[0]) ** 2 + (y - c[1]) ** 2 + (z - c[2]) ** 2)
+                    - r
+                    for c, r in zip(self.electrode_centers, self.electrode_radii)
+                ], axis=0)
+                struck = np.argmin(d, axis=0)
+            elif self._psi_override is not None or self.gather_mode == "deposit":
+                raise RuntimeError(
+                    "accumulate_absorption() cannot attribute struck "
+                    "electrodes: argmax(psi) is only meaningful for the "
+                    "plain Dirichlet psi_unit_k basis (psi ~ 1 on its own "
+                    "electrode by boundary condition), and this corrector is "
+                    "using a custom psi_table and/or gather_mode='deposit', "
+                    "whose surface values are not ~1 and vary. Pass "
+                    "electrode_centers=[...] (and optionally electrode_radii="
+                    "[...]) to the constructor for geometric attribution."
+                )
+            else:
+                # Legacy fallback: only valid for the plain Dirichlet basis.
+                struck = np.argmax(psis, axis=0)
+
             for k in range(self.n):
                 self._absorb_booked[k, s] += float(np.sum(q_p * psis[k]))
                 is_k = (struck == k)
@@ -701,10 +894,88 @@ class MultiElectrodeBiasCorrector:
                     )
 
         step = self._warpx().getistep(lev=0)
+        # RANK-LOCAL. Each entry records THIS RANK's partial deficit/counts at
+        # this step, not the MPI-summed run total -- reduce yourself (e.g.
+        # with _mpi_sum) if you need a global time series from this history.
         self._absorb_history.append(
             (int(step), self._absorb_deficit.copy(), self._absorb_counts.copy())
         )
         return self._absorb_deficit
+
+    def reset_absorption_cursors(self):
+        """Reset the per-species EB-scrape-buffer read cursors.
+
+        The cursor (``self._buffer_cursor``) assumes this rank's scrape
+        buffer only ever grows and is never reordered between calls to
+        ``accumulate_absorption()``. A regrid / load-balance step can violate
+        that (the buffer may be cleared or redistributed across ranks), which
+        ``accumulate_absorption()`` detects as a same-species buffer SHRINK
+        and raises on. Call this method to resume accounting after such an
+        event.
+
+        Load balancing / regrid is otherwise UNSUPPORTED by this ledger: this
+        only resets the read position, it does not attempt to recover or
+        re-attribute particles scraped between the last successful read and
+        the event that invalidated the cursor, and a redistribution that
+        happens not to shrink the local buffer (e.g. a regrid that changes
+        which particles land on this rank without reducing the count) will
+        not be detected at all. Treat this ledger as valid only for AMR-off,
+        load-balancing-off, single-static-grid runs, or call this method
+        defensively around every regrid if you use it otherwise.
+        """
+        self._buffer_cursor = {}
+
+    def _mpi_sum(self, arr):
+        """MPI-SUM ``arr`` (numpy array or scalar) across ranks; identity if
+        mpi4py is unavailable or there is one rank. COLLECTIVE -- every rank
+        must call this together."""
+        import numpy as np  # noqa: PLC0415
+
+        try:
+            from mpi4py import MPI  # noqa: PLC0415
+        except ImportError:
+            return arr
+        comm = MPI.COMM_WORLD
+        if comm.Get_size() <= 1:
+            return arr
+        arr = np.asarray(arr)
+        out = np.empty_like(arr)
+        comm.Allreduce(np.ascontiguousarray(arr), out, op=MPI.SUM)
+        return out.reshape(arr.shape)
+
+    def absorption_totals(self, reduce=True):
+        """The (electrode x species) absorption ledger, MPI-summed by default.
+
+        ``_absorb_booked``/``_absorb_deficit``/``_absorb_counts`` are
+        accumulated PER RANK (see ``accumulate_absorption``'s fix-note 2):
+        correct as running accumulators, but a partial sum on every rank but
+        one if read directly on >1 rank. This method returns the run-wide
+        total.
+
+        Parameters
+        ----------
+        reduce : bool, optional
+            If True (default), MPI-sum across ranks -- a COLLECTIVE call
+            every rank must make together (in lockstep with any other
+            collective calls this corrector makes, e.g. accumulate_absorption
+            itself). If False, return this rank's partial sums only (e.g. to
+            inspect a load imbalance).
+
+        Returns
+        -------
+        dict with keys "booked", "deficit", "counts" (numpy arrays), or None
+        if ``accumulate_absorption()`` has not yet run.
+        """
+        if self._absorb_deficit is None:
+            return None
+        booked = self._absorb_booked.copy()
+        deficit = self._absorb_deficit.copy()
+        counts = self._absorb_counts.copy()
+        if reduce:
+            booked = self._mpi_sum(booked)
+            deficit = self._mpi_sum(deficit)
+            counts = self._mpi_sum(counts)
+        return {"booked": booked, "deficit": deficit, "counts": counts}
 
     def _species_charge(self, name):
         """Signed charge per unit weight [C] for a named species."""
@@ -751,6 +1022,13 @@ class MultiElectrodeBiasCorrector:
         from the retained sample, so with a cap smaller than the impact count
         it is a SUBSAMPLE and the absolute normalisation is not meaningful.
         `saturated` in the return says whether that happened.
+
+        RANK-LOCAL. ``self._impact_histogram`` is filled per rank (each rank
+        only ever sees the particles scraped into its own tiles, same as the
+        absorption ledger -- see ``accumulate_absorption``) and is never
+        reduced. On >1 rank this therefore maps only the calling rank's
+        sample, not the whole-domain distribution; there is no gather here
+        (out of scope for this fix).
         """
         import numpy as np  # noqa: PLC0415
 
@@ -760,10 +1038,12 @@ class MultiElectrodeBiasCorrector:
         x, y, z, sidx, q = H[:, 0], H[:, 1], H[:, 2], H[:, 3].astype(int), H[:, 4]
 
         if electrode_centers is None:
+            electrode_centers = self.electrode_centers  # constructor-supplied, if any
+        if electrode_centers is None:
             raise ValueError(
                 "electrode_centers is required: the map is angular about each "
                 "electrode centre, and there is no way to infer those from the "
-                "region expressions")
+                "region expressions. Pass it here, or to the constructor.")
 
         nth, nph = nbins
         ns = max(len(self.absorption_species), 1)
@@ -810,20 +1090,32 @@ class MultiElectrodeBiasCorrector:
                                 "phi_edges": ph_e.tolist()})
         return out
 
-    def absorption_report(self):
-        """Return the (electrode x species) ledger as a plain dict."""
+    def absorption_report(self, reduce=True):
+        """Return the (electrode x species) ledger as a plain dict.
+
+        Parameters
+        ----------
+        reduce : bool, optional
+            If True (default), the returned matrices are MPI-summed across
+            ranks via ``absorption_totals()`` -- a COLLECTIVE call every rank
+            must make together (harmless/identity on a single rank, which is
+            why this default does not change the recorded single-rank
+            results). Pass False for this rank's partial sums only.
+        """
         import numpy as np  # noqa: PLC0415
 
-        if self._absorb_deficit is None:
+        totals = self.absorption_totals(reduce=reduce)
+        if totals is None:
             return None
+        deficit, booked, counts = totals["deficit"], totals["booked"], totals["counts"]
         return {
             "electrodes": list(self.names),
             "species": list(self.absorption_species),
-            "deficit": self._absorb_deficit.tolist(),
-            "booked": self._absorb_booked.tolist(),
-            "counts": self._absorb_counts.tolist(),
-            "deficit_total": float(np.sum(self._absorb_deficit)),
-            "deficit_abs_total": float(np.sum(np.abs(self._absorb_deficit))),
+            "deficit": deficit.tolist(),
+            "booked": booked.tolist(),
+            "counts": counts.tolist(),
+            "deficit_total": float(np.sum(deficit)),
+            "deficit_abs_total": float(np.sum(np.abs(deficit))),
         }
 
     def measure_grounded_charge_reciprocity(self):

@@ -51,6 +51,20 @@ p = argparse.ArgumentParser()
 p.add_argument("steps", nargs="?", type=int, default=90)
 p.add_argument("--nx", type=int, default=32)
 p.add_argument("--out", type=str, default="t7_fluxeb_crosscheck.json")
+p.add_argument("--max_grid_size", type=int, default=1024,
+               help="warpx_max_grid_size. The original default (1024) is "
+                    ">= nx, so the domain is always a single box regardless "
+                    "of rank count. Pass e.g. 16 to force the domain to "
+                    "split into >=2 boxes for a multi-rank run (added for "
+                    "the 2-rank cursor/reduction acceptance test; the "
+                    "default is unchanged so single-rank runs are unaffected).")
+p.add_argument("--max_grid_size_x", type=int, default=None,
+               help="warpx_max_grid_size_x override. Left at the --max_grid_size "
+                    "value by default. Set to nx (i.e. do not split x) together "
+                    "with a small --max_grid_size to keep both spheres reachable "
+                    "from every rank's boxes (they sit at x<0/x>0) while still "
+                    "splitting y/z -- useful to demonstrate the pre-fix cursor "
+                    "bug silently mis-booking rather than deadlocking.")
 args, _ = p.parse_known_args()
 
 preflight.require(bindings=("compute_eb_charge", "solve_poisson_efield",
@@ -78,7 +92,8 @@ grid = picmi.Cartesian3DGrid(
     upper_boundary_conditions=["dirichlet"] * 3,
     lower_boundary_conditions_particles=["absorbing"] * 3,
     upper_boundary_conditions_particles=["absorbing"] * 3,
-    warpx_blocking_factor=bf, warpx_max_grid_size=1024,
+    warpx_blocking_factor=bf, warpx_max_grid_size=args.max_grid_size,
+    warpx_max_grid_size_x=args.max_grid_size_x,
 )
 solver = picmi.ElectromagneticSolver(grid=grid, method="ECT", cfl=0.9)
 R2 = R * R
@@ -154,7 +169,36 @@ installafterstep(tick)
 sim.step(args.steps)
 
 # --- compare -----------------------------------------------------------------
-rep = corrector.absorption_report()
+# NOTE (added for the 2-rank cursor-fix acceptance test): the block below reads
+# the EB scrape buffer directly (not through the corrector's cursor) to get a
+# psi-independent raw absorbed charge to compare against ChargeFluxEB.
+# get_particle_boundary_buffer() always returns THIS RANK's tile arrays (see
+# its docstring / particle_containers.py) with no MPI reduction, so under
+# >1 rank the "raw" sums below are rank-local partial sums unless summed
+# across ranks -- and every rank was about to print and json.dump its own
+# partial view to the SAME path, racing. Both are fixed here with a plain
+# mpi4py SUM plus an IO-rank guard; this is a test-harness fix, independent of
+# the corrector's cursor/reduction fix, needed only to make the multi-rank
+# comparison meaningful. Single-rank behavior (the recorded t7_fluxeb_
+# crosscheck.json) is unchanged: with one rank the reduction is the identity
+# and that rank is the only, hence IO, rank.
+try:
+    from mpi4py import MPI
+    _comm = MPI.COMM_WORLD
+    _rank = _comm.Get_rank()
+except ImportError:
+    _comm = None
+    _rank = 0
+
+rep = corrector.absorption_report()  # reduced across ranks by default (see fix)
+# DEBUG (added for the 2-rank acceptance test, harmless on 1 rank): print this
+# rank's UNREDUCED partial ledger too, so the reduction can be checked by hand
+# (sum of the per-rank partials should equal `rep` above). reduce=False makes
+# no MPI call, so this is safe to print per rank without a collective concern.
+_partial = corrector.absorption_report(reduce=False)
+if _partial:
+    print(f"[rank {_rank}] partial (unreduced): counts={_partial['counts']} "
+          f"booked={_partial['booked']} deficit={_partial['deficit']}", flush=True)
 booked_raw = None
 if rep:
     # With psi=1 the ledger's "booked" is the raw absorbed charge. Here psi is
@@ -171,9 +215,14 @@ if rep:
         xs = buf.get_particle_boundary_buffer(sp, "eb", "x", 0)
         x = (np.concatenate([np.asarray(a) for a in xs])
              if xs else np.zeros(0))
-        raw[sp] = {"n": int(len(w)),
-                   "q_left": float(qs * w[x < 0].sum()) if len(w) else 0.0,
-                   "q_right": float(qs * w[x >= 0].sum()) if len(w) else 0.0}
+        n_local = int(len(w))
+        q_left_local = float(qs * w[x < 0].sum()) if len(w) else 0.0
+        q_right_local = float(qs * w[x >= 0].sum()) if len(w) else 0.0
+        if _comm is not None:
+            n_local = int(_comm.allreduce(n_local, op=MPI.SUM))
+            q_left_local = float(_comm.allreduce(q_left_local, op=MPI.SUM))
+            q_right_local = float(_comm.allreduce(q_right_local, op=MPI.SUM))
+        raw[sp] = {"n": n_local, "q_left": q_left_local, "q_right": q_right_local}
     booked_raw = raw
 
 flux = {}
@@ -186,21 +235,22 @@ for nm in ("flux_eb_left", "flux_eb_right"):
             hdr = fh.readline().split()
         flux[nm] = {"header": hdr, "last_row": d[-1].tolist()}
 
-print("\n" + "=" * 88)
-print("T7 RESULT")
-print("=" * 88)
-print(f"  ledger impacts / species: {rep['counts'] if rep else None}")
-if booked_raw:
-    for sp, v in booked_raw.items():
-        print(f"    {sp:<10s} n={v['n']:5d}  Q(x<0)={v['q_left']:+.6e} C  "
-              f"Q(x>0)={v['q_right']:+.6e} C")
-if flux:
-    for nm, v in flux.items():
-        print(f"  ChargeFluxEB {nm}: {v['header'][2:]} -> {v['last_row'][2:]}")
-else:
-    print("  ChargeFluxEB: NO OUTPUT FILE -- the reduced diagnostic was not "
-          "registered (see note in the script); the cross-check did not run.")
-print("=" * 88)
-json.dump({"ledger": rep, "raw_from_buffer": booked_raw, "fluxeb": flux},
-          open(args.out, "w"), indent=1)
-print(f"wrote {args.out}")
+if _rank == 0:
+    print("\n" + "=" * 88)
+    print("T7 RESULT")
+    print("=" * 88)
+    print(f"  ledger impacts / species: {rep['counts'] if rep else None}")
+    if booked_raw:
+        for sp, v in booked_raw.items():
+            print(f"    {sp:<10s} n={v['n']:5d}  Q(x<0)={v['q_left']:+.6e} C  "
+                  f"Q(x>0)={v['q_right']:+.6e} C")
+    if flux:
+        for nm, v in flux.items():
+            print(f"  ChargeFluxEB {nm}: {v['header'][2:]} -> {v['last_row'][2:]}")
+    else:
+        print("  ChargeFluxEB: NO OUTPUT FILE -- the reduced diagnostic was not "
+              "registered (see note in the script); the cross-check did not run.")
+    print("=" * 88)
+    json.dump({"ledger": rep, "raw_from_buffer": booked_raw, "fluxeb": flux},
+              open(args.out, "w"), indent=1)
+    print(f"wrote {args.out}")
