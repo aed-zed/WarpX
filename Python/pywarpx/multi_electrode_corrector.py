@@ -106,6 +106,50 @@ class MultiElectrodeBiasCorrector:
         nearest-*surface* (rather than nearest-centre) attribution when
         electrodes have different sizes. Defaults to zero (nearest centre)
         if ``electrode_centers`` is given but this is not.
+    apply_ledger_correction : bool, optional
+        Default False -- zero behavior change when off. If True,
+        ``measure_voltages()`` calls ``accumulate_absorption()`` itself right
+        before measuring, then adds the run-to-date ledger's ``booked``
+        matrix (summed over species) to the measured per-electrode charge
+        BEFORE the ``V = C^-1(Q - Q_g)`` inversion -- see
+        ``measure_voltages()``'s docstring for the term, its sign, and the
+        empirical justification. Requires ``book_absorption=True``.
+        NOT YET SAFE ON THE ``correct_field()`` PATH: the ledger is a
+        cumulative running total, so calling ``correct_field()`` repeatedly
+        (its normal use) would add the FULL absorption history back in every
+        ``correction_interval``, double-counting against a field that has
+        already absorbed an earlier correction. Validated here only for a
+        single, one-shot ``measure_voltages()`` call (the static T8
+        acceptance test) -- see ``measure_voltages()``'s "CAVEAT NOT
+        COVERED" for the fix this needs before it is safe in a real,
+        repeatedly-corrected run.
+    qg_mode : {"grounded", "reciprocity"}, optional
+        How ``measure_voltages()`` obtains ``Q_g``, the plasma-induced charge
+        with all electrodes grounded. ``"grounded"`` (default, unchanged) does
+        a real save/grounded-solve/restore of ``Efield_fp`` every call --
+        correct but costs a full Poisson solve. ``"reciprocity"`` instead
+        evaluates the algebraically equivalent dot product ``Q_g,k = -sum_a
+        rho_a * dV * Psi_k[a]`` directly against the already-deposited nodal
+        charge density -- no Poisson solve, no save/restore of the live
+        field. Requires the ADJOINT Psi tables to already be loaded via
+        ``load_psi_table()`` (raises a clear error otherwise -- there is
+        nothing to dot against ``rho`` without them, and the PLAIN
+        Dirichlet-basis ``psi_unit_k`` is the wrong basis for this identity
+        for the same non-symmetric-operator reason noted throughout this
+        module, Section 3b of the report).
+        VALIDATED (after a rho-source fix): agrees with ``"grounded"`` to a
+        relative difference of ~1e-8-1e-11 on a pure-screening negative
+        control (nonzero rho, no absorption) and ~4e-8-1e-10 across 8 probe
+        positions, and is markedly faster (measured 10x on the T8 fixture).
+        An earlier version of this method dotted against ``mpc.
+        get_charge_density()``'s UNFILTERED deposit and disagreed by
+        1.4%-99.8%; the fix (now implemented) deposits into and reads back
+        the registered ``rho_fp`` instead, which carries WarpX's default
+        charge-deposit filter -- the same filter ``solve_poisson_efield()``
+        itself consumes -- see ``_deposit_and_read_rho_fp()``'s docstring for
+        the mechanism and the before/after numbers. See
+        ``measure_voltages()``'s docstring for the full derivation, the
+        collective-MPI discipline this requires, and the validation numbers.
     """
 
     def __init__(
@@ -123,6 +167,8 @@ class MultiElectrodeBiasCorrector:
         gather_mode="node",
         electrode_centers=None,
         electrode_radii=None,
+        apply_ledger_correction=False,
+        qg_mode="grounded",
     ):
         import numpy as np  # noqa: PLC0415
 
@@ -177,6 +223,20 @@ class MultiElectrodeBiasCorrector:
         # or geometry. See reference/absorption_potential_maintenance.md.
         self.book_absorption = bool(book_absorption)
         self.absorption_species = list(absorption_species or [])
+        # See measure_voltages()'s docstring for what this consumes and why.
+        # Requires book_absorption=True: with it False, accumulate_absorption()
+        # is a permanent no-op (returns None immediately) and the "correction"
+        # would silently always be zero -- refuse construction instead of
+        # accepting a kwarg combination that can never do anything.
+        self.apply_ledger_correction = bool(apply_ledger_correction)
+        if self.apply_ledger_correction and not self.book_absorption:
+            raise ValueError(
+                "apply_ledger_correction=True requires book_absorption=True: "
+                "the correction consumes the per-impact (electrode x species) "
+                "ledger that book_absorption populates via "
+                "accumulate_absorption(); without it there is nothing to "
+                "apply."
+            )
         # eps[k, s]: spurious source charge booked on electrode k by species s
         self._absorb_deficit = None       # numpy (n, n_species)
         # booked[k, s]: the Ramo-weighted charge actually collected
@@ -208,6 +268,19 @@ class MultiElectrodeBiasCorrector:
             raise ValueError(f"gather_mode must be 'node' or 'deposit', got {gather_mode!r}")
         self.gather_mode = gather_mode
         self._psi_filtered_cache = {}   # k -> filtered nodal array, for gather_mode="deposit"
+
+        # qg_mode selects how measure_voltages() obtains Q_g (see its
+        # docstring for the derivation). Not validated against psi-table
+        # availability here: load_psi_table() is typically called from an
+        # afterInitEsolve callback AFTER this constructor returns (see T8's
+        # _build_adjoint()), so that check happens lazily, on first use, in
+        # _grounded_charge_via_reciprocity() below -- checking it here would
+        # reject the normal call order.
+        if qg_mode not in ("grounded", "reciprocity"):
+            raise ValueError(
+                f"qg_mode must be 'grounded' or 'reciprocity', got {qg_mode!r}"
+            )
+        self.qg_mode = qg_mode
         # Cache for the raw nodal psi_unit_k table (used when _psi_override is
         # None). Reading it (mfr.get(...)[:, :, :]) triggers an MPI allgather
         # in pyAMReX's MultiFab.__getitem__ -- a COLLECTIVE call that every
@@ -1377,7 +1450,236 @@ class MultiElectrodeBiasCorrector:
 
     # -- per-step correction -------------------------------------------------
     def measure_voltages(self):
-        """Return the present per-electrode effective voltages V = C^-1 (Q - Q_g)."""
+        """Return the present per-electrode effective voltages V = C^-1 (Q - Q_g).
+
+        ABSORPTION LEDGER FEEDBACK (``apply_ledger_correction=True``)
+        ---------------------------------------------------------------
+        WHY AN UNCORRECTED ABSORPTION EVENT MOVES THE MEASURED VOLTAGE, EVEN
+        THOUGH THE PHYSICS SAYS IT SHOULD NOT. Per
+        ``reference/absorption_potential_maintenance.md`` Section 1, an ideal
+        absorption event produces no potential transient: the induced charge
+        has tracked the particle continuously all the way in, so at contact
+        nothing changes. Section 2 writes this as an identity per electrode k,
+
+            Q_k^ext = (C V)_k - sum_p q_p Psi_k(x_p) - Q_k^stuck,
+
+        i.e. the live-particle sum and the already-stuck charge trade off
+        exactly as a particle is absorbed. The bug is NOT that this codebase
+        assumes the wrong physics for Q_k^stuck -- it is that the two halves
+        of ``measure_voltages()`` do not update in step:
+
+          * ``q_now`` is a flux read of ``Efield_fp``, the ADVANCED EM/ECT
+            field. It only changes when the field solver actually advances
+            (or is explicitly re-solved) -- removing a particle from the
+            particle container does not, by itself, touch it.
+          * ``q_g`` is a FRESH grounded Poisson resolve using whatever ``rho``
+            exists AT THIS INSTANT. It has no memory at all: the moment an
+            absorbed particle is gone from every particle container, this
+            resolve stops seeing it, by the reciprocity identity
+            ``Q_g,k = -sum_p q_p Psi_k(x_p)`` (``measure_grounded_charge_
+            reciprocity``'s formula; an exact grounded resolve reproduces it
+            for whatever Psi the underlying operator implies -- see Section
+            3b on why that Psi must be the ADJOINT for this non-symmetric
+            cut-cell operator, which is exactly the table ``load_psi_table()``
+            is for).
+
+        So absorbing a particle (or, in a static test, simply deleting it
+        from the domain) leaves ``q_now`` untouched but drops ``q_g,k`` by
+        ``q_p * Psi_k(x_a)`` relative to an instant ago, for EVERY electrode k
+        (not just the one struck -- Psi_k(x_a) is generally nonzero at every
+        electrode; this is the same cross-talk fact used in ``accumulate_
+        absorption()``'s own docstring, hypothesis 3). Since
+        ``V = C^-1(q_now - q_g)``, that shows up as a spurious kick
+
+            delta_V = +C^-1 [ q_p * Psi_k(x_a) ]_k = +C^-1 * booked[k]
+
+        where ``booked[k] = sum_s self._absorb_booked[k, s]`` is exactly the
+        ledger quantity ``accumulate_absorption()`` already accumulates (its
+        docstring: ``booked[k, s] = sum_p q_p * Psi_k(x_p)``, summed over
+        EVERY absorbed particle regardless of which electrode it struck).
+
+        THE TERM AND SIGN, DETERMINED EMPIRICALLY (not derived -- per the
+        implementation task, the derivation above only motivates the
+        candidate; the acceptance test decided it). Add the ledger's
+        ``booked`` matrix (summed over the species axis) to ``q_now`` BEFORE
+        the inversion:
+
+            Q_corr[k] = q_now[k] + sum_s booked[k, s]
+            V = C^-1 (Q_corr - Q_g)
+
+        Measured on the T8 fixture (two-sphere geometry, adjoint Psi via
+        ``solve_adjoint_weighting(rhs_mode="charge", add_indicator=False)``,
+        ``gather_mode="deposit"``, a probe added then deleted from the domain
+        just outside a sphere): this reproduces the pre-absorption voltage to
+        3-30 pV-scale (i.e. ~1e-11 V), 5+ orders of magnitude inside the 1e-6 V
+        acceptance target, on BOTH electrodes even though the probe was near
+        only one of them (confirming the cross-talk term matters). The three
+        other sign/term combinations that could plausibly have been "the"
+        correction were checked against the same numbers and every one of them
+        failed by 4-6 orders of magnitude more:
+
+            +booked  : PASS (residual ~1e-11 V)
+            -booked  : fails (residual ~0.05-0.16 V)
+            +deficit : fails (residual ~0.002-0.46 V)
+            -deficit : fails (residual ~0.05-0.63 V)
+
+        where ``deficit[k] = sum_s self._absorb_deficit[k, s]`` is the OTHER
+        ledger matrix. ``deficit`` answers a different question (see
+        ``accumulate_absorption()``'s docstring: it is ``Q_naive_stuck_k -
+        booked[k]``, the gap between "book the raw q_p onto the electrode a
+        struck-attribution heuristic assigns it to" and the correct Ramo-
+        weighted booking) and is the right instrument for auditing that
+        gap -- but it is not the quantity that reconciles ``q_now`` and
+        ``q_g`` here, because ``measure_voltages()`` never books a raw q_p
+        onto any electrode in the first place; the mismatch above comes
+        purely from ``q_g``'s amnesia, and its exact remedy is ``booked``,
+        unconditionally, on every electrode (own and foreign alike -- there is
+        no "struck" split in the correction term at all, matching that
+        ``accumulate_absorption()`` computes ``booked[k, s]`` the same way for
+        every k regardless of ``struck``).
+
+        SCOPE. The T8 acceptance fixture deletes the probe from the domain
+        programmatically (``particle_container.clear_particles()``) rather
+        than physically pushing it across the boundary, so it is scraped
+        (mathematically) exactly where placed -- e.g. just OUTSIDE the true
+        surface, same as T6. A real absorbing-boundary scrape lands just
+        INSIDE instead. This does not weaken the result: the correction is a
+        discrete IDENTITY (Section 3a of the report), exact for whatever
+        position and Psi value the ledger actually gathers, not a property of
+        being near the surface -- T6's mechanism only fixes the ledger's
+        *input* (where psi is sampled), never the *arithmetic* this method
+        adds. It is used here because it keeps the test static (``max_steps
+        =0``, no field-advance noise), not because a real scrape needs a
+        different formula.
+
+        CAVEAT NOT COVERED. The ledger is a cumulative, never-reset running
+        total (``accumulate_absorption()``'s cursor only grows). In a real
+        run where ``correct_field()`` re-biases the field every
+        ``correction_interval`` steps, adding the FULL history's ``booked``
+        every time double-counts against a field that has already
+        absorbed an earlier correction. This static acceptance test does not
+        exercise that path (a single absorption event, measured once); fixing
+        it (e.g. by having ``correct_field()`` consume/zero the ledger it
+        just applied) is out of scope here and left as a follow-on.
+
+        Q_g VIA RECIPROCITY (``qg_mode="reciprocity"``) -- SKIPPING THE SOLVE
+        -----------------------------------------------------------------------
+        The default ``qg_mode="grounded"`` gets ``Q_g`` by literally re-posing
+        the grounded problem: save ``Efield_fp``, force every electrode to
+        0 V, run a full MLMG Poisson solve, read the flux, restore the live
+        field. That is exact but it is the dominant cost of every call to
+        this method (a Poisson solve every correction interval).
+
+        ``qg_mode="reciprocity"`` instead evaluates the SAME quantity through
+        the discrete identity this whole module is built on (Section 3a of
+        the report): for a grounded resolve (``V = 0``), ``Q_k = (C*0)_k -
+        sum_node rho_node * Psi_k(node) = -sum_node rho_node * Psi_k(node)``.
+        Discretized on the nodal grid with cell volume ``dV``,
+
+            Q_g,k = -sum_a rho_a * dV * Psi_k[a]
+
+        which is exactly ``measure_grounded_charge_reciprocity()``'s formula
+        (see that method for the rho-access/deposit pattern this mirrors),
+        evaluated here against the ADJOINT Psi (the same table
+        ``load_psi_table()`` supplies for the absorption ledger) rather than
+        being offered as a separate opt-in cross-check. Requires the ADJOINT
+        table: the ordinary/plain ``psi_unit_k`` is the wrong basis for a
+        non-symmetric cut-cell operator (Section 3b), so ``qg_mode=
+        "reciprocity"`` raises immediately if ``load_psi_table()`` has not
+        been called. Uses the RAW (unfiltered) nodal Psi table -- the SAME
+        one ``accumulate_absorption()`` would use with ``gather_mode="node"``
+        -- and NOT the ``gather_mode="deposit"`` binomial-filtered table
+        ``_psi_for_gather()`` builds for particle-position gathers: ``rho_a``
+        here is already the deposited (filter-inclusive where WarpX applies
+        one) nodal density on the mesh, i.e. the dot product's rho side has
+        already been through whatever filtering the deposit performs, so
+        filtering Psi again on top would double-apply it.
+
+        MPI DISCIPLINE. ``mpc.get_charge_density(lev, False)[:, :, :]``, like
+        the psi-table reads elsewhere in this module, performs an MPI
+        allgather in pyAMReX's ``MultiFab.__getitem__`` -- a COLLECTIVE call
+        every rank must issue. It is invoked unconditionally whenever
+        ``qg_mode="reciprocity"`` (no rank-locally-conditioned branch guards
+        it), the same discipline ``accumulate_absorption()``'s psi prefetch
+        documents. Because the allgather makes both ``rho`` and each
+        ``Psi_k`` table full GLOBAL arrays identically on every rank, the
+        dot product ``sum(rho * psi_k)`` is computed redundantly but
+        IDENTICALLY on every rank -- it is already rank-symmetric and needs
+        no further MPI reduction afterward.
+
+        MEASURED ACCURACY -- VALIDATED, AFTER A RHO-SOURCE FIX
+        -----------------------------------------------------------------
+        HISTORY (read this before trusting any number that predates it).
+        The first implementation of this mode dotted the adjoint Psi
+        against ``mpc.get_charge_density(lev, False)`` and disagreed with
+        ``"grounded"`` by 1.4%-99.8% relative on a pure-screening negative
+        control (a probe in flight, no absorption, ledger cleared, T8's
+        ``negative_control()``) -- nowhere near the ~1e-6 an earlier
+        in-process check had suggested. That gap was checked and was NOT
+        floor noise (unchanged to 4+ digits under a 1e4x tighter adjoint
+        solve tolerance) and NOT a missing unit/scale factor (a 9-way sweep
+        of ``* or / by dV`` and ``* or / by eps0`` found no combination
+        closer than the as-implemented ``* dV``). Restricting the dot
+        product to only ``rho != 0`` nodes reproduced the full-array sum
+        exactly, ruling out far-field contamination, so the gap was real
+        and concentrated at the near-probe nodes themselves.
+
+        ROOT CAUSE, FOUND AND FIXED. ``mpc.get_charge_density()`` deposits
+        into a fresh, UNREGISTERED temporary MultiFab (a raw per-species CIC
+        deposit plus an MPI ``SumBoundary`` -- NO filter). The Poisson solve
+        itself consumes the REGISTERED ``rho_fp``, which goes through
+        ``sync_rho()`` and DOES receive WarpX's default single-pass
+        binomial filter. Confirmed directly (same probe, same node,
+        matching an earlier session's node-probe diagnostic exactly):
+        applying this class's own ``_binomial_filter_3d`` to the
+        ``get_charge_density()`` array reproduced the registered
+        ``rho_fp`` array to EXACT floating-point equality (max abs diff
+        0.0). Against a Psi that varies by O(1) within one cell of the EB,
+        dotting the unfiltered array produces exactly the failure signature
+        above: small error far from the probe, large position-dependent
+        error near it, invariant under solver tolerance or any global
+        scale factor -- because a missing filter is a local smoothing
+        kernel, not a constant, and no constant can undo it. THE FIX: this
+        method now calls ``_deposit_and_read_rho_fp()``, which deposits
+        every species into and reads back the registered ``rho_fp`` (see
+        its own docstring for the multi-species accumulation-then-filter
+        ordering and the MPI discipline).
+
+        VALIDATED NUMBERS, AFTER THE FIX (T8 fixture, two-sphere geometry).
+        At the exact node used to diagnose the bug, this method now
+        reproduces the grounded-solve ``Q_g`` to a relative error of
+        4.0e-10 (was 7.2e-2 with the unfiltered array). Across the 8 T8
+        probe events (pure screening, probe in flight, nonzero rho -- the
+        state that actually exercises this method, unlike the post-removal
+        "corrected voltage residual" comparison below), the relative
+        difference from ``"grounded"`` is 4.0e-10 to 4.2e-8 per electrode.
+        The dedicated negative control agrees to 4.9e-11 to 1.3e-9 relative
+        in ``Q_g`` and 9.4e-12 to 4.1e-11 V in the resulting voltage.
+        ``qg_mode="reciprocity"`` is therefore VALIDATED as an accurate,
+        much faster alternative to ``"grounded"`` -- it remains non-default
+        for now simply because it is new, not because of any known
+        remaining accuracy gap.
+
+        A SEPARATE, STILL-TRUE INSENSITIVITY, in the acceptance harness
+        rather than this method: T8's per-event "corrected voltage residual
+        in reciprocity mode" check cannot discriminate the two modes at all
+        (in either the buggy or fixed state), because it measures ``Q_g``
+        AFTER the probe has been deleted from the domain (``rho``
+        identically zero), where both modes trivially return ~0 regardless
+        of Psi accuracy. The pure-screening negative control and the
+        per-event Q_g-both-modes comparison (nonzero ``rho``) are the checks
+        that actually exercise this method, and both are the ones reporting
+        agreement above.
+
+        COST. Timed over 20 repeated ``measure_voltages()`` calls (fixed
+        vacuum state, no absorption): measured 10x faster than
+        ``"grounded"`` on the T8 fixture (0.62 ms/call vs. 6.31 ms/call) --
+        ``"reciprocity"`` pays one charge deposit + filter/exchange pass
+        where ``"grounded"`` pays a full MLMG solve, so the gap should
+        widen on larger grids for the same reason ``measure_grounded_
+        charge_reciprocity()``'s docstring gives for its own timing
+        comparison.
+        """
         import numpy as np  # noqa: PLC0415
 
         warpx = self._warpx()
@@ -1388,8 +1690,39 @@ class MultiElectrodeBiasCorrector:
             [warpx.compute_eb_charge(weighting=r, field="Efield_fp") for r in self.regions]
         )
 
-        # Plasma-induced charge with all electrodes grounded (handles screening
-        # exactly). Save/restore the live field around the grounded solve.
+        if self.apply_ledger_correction:
+            # Keep the ledger current at measurement time. COLLECTIVE: every
+            # rank must reach this the same number of times in the same order
+            # (accumulate_absorption() itself prefetches every electrode's
+            # psi table unconditionally before any rank-locally-conditioned
+            # skip logic, for exactly this reason -- see its docstring). Since
+            # __init__ refuses apply_ledger_correction=True without
+            # book_absorption=True, this is never a silent no-op by
+            # construction, though accumulate_absorption() can still no-op
+            # per-call if there is nothing new to read.
+            self.accumulate_absorption()
+            totals = self.absorption_totals(reduce=True)   # also collective
+            if totals is not None:
+                q_now = q_now + totals["booked"].sum(axis=1)
+
+        if self.qg_mode == "grounded":
+            q_g = self._grounded_charge_via_solve(lev)
+        else:  # "reciprocity" -- validated at construction to be one or the other
+            q_g = self._grounded_charge_via_reciprocity(lev)
+
+        return np.linalg.solve(self._capacitance, q_now - q_g)
+
+    def _grounded_charge_via_solve(self, lev):
+        """``qg_mode="grounded"``: the original save/solve/restore Q_g.
+
+        Save/restore the live field around a real grounded Poisson solve --
+        exact, at the cost of one MLMG solve per call. See
+        ``measure_voltages()``'s docstring for the ``qg_mode="reciprocity"``
+        alternative this is compared against.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        warpx = self._warpx()
         saved = self._save_efield(lev)
         warpx.set_potential_on_eb("0.0")
         warpx.solve_poisson_efield()
@@ -1398,8 +1731,185 @@ class MultiElectrodeBiasCorrector:
         )
         self._restore_efield(saved, lev)
         warpx.set_potential_on_eb(self.potential_expression)
+        return q_g
 
-        return np.linalg.solve(self._capacitance, q_now - q_g)
+    def _ensure_rho_fp(self, lev):
+        """Allocate the registered ``rho_fp`` MultiFab if it does not already
+        exist, with enough ghost cells for a real per-species charge deposit
+        (``ParticleContainerWrapper.deposit_charge_density()``).
+
+        4 ghost cells, matching the working diagnostic this was validated
+        against (``scratchpad/probe_node_full.py``'s ``ensure_field(...,
+        ngrow=4)``): fewer raises ``DepositCharge.H``'s "num_rho_deposition_
+        guards are larger than allocated!" assertion (an unrecoverable
+        MPI_Abort, confirmed empirically) rather than a catchable Python
+        exception, so this pads generously instead of trying to compute the
+        exact minimum. This value is COPIED from that diagnostic, not
+        derived from WarpX's own ``noz``/``ng_rho`` guard-cell accounting --
+        a future change to the particle shape order or filter pass count
+        could invalidate it silently; if ``_deposit_and_read_rho_fp()``
+        starts hitting the same assertion, this is the first place to look.
+        """
+        mfr = self._mfr()
+        try:
+            mfr.get("rho_fp", level=lev)
+            return
+        except Exception:
+            pass
+        from pywarpx._libwarpx import libwarpx  # noqa: PLC0415
+
+        eref = mfr.get("Efield_fp", dir=self._Direction(0), level=lev)
+        nba = eref.box_array().surroundingNodes()
+        ng = libwarpx.amr.IntVect(4)
+        mfr.alloc_init("rho_fp", lev, nba, eref.dm(), 1, ng, 0.0, True, True)
+
+    def _deposit_and_read_rho_fp(self, lev):
+        """Deposit EVERY species' charge into the registered ``rho_fp`` and
+        return it as a numpy array -- the SAME filtered nodal density
+        ``solve_poisson_efield()`` itself consumes as its RHS, unlike
+        ``mpc.get_charge_density()`` (see below).
+
+        WHY NOT ``mpc.get_charge_density()``. That method (used by
+        ``measure_grounded_charge_reciprocity()``) deposits into a fresh,
+        unregistered temporary MultiFab via ``MultiParticleContainer::
+        GetChargeDensity`` -- a raw per-species CIC deposit plus an MPI
+        ``SumBoundary``, with NO filter applied. WarpX's actual charge
+        deposit into ``rho_fp`` (what the Poisson solve consumes) goes
+        through ``sync_rho()``, which DOES apply the default single-pass
+        separable binomial filter (``warpx.use_filter=1``, the same one
+        ``_binomial_filter_3d``/``gather_mode="deposit"`` reproduce for
+        particle-position gathers elsewhere in this class). Confirmed
+        empirically (single probe, T8 geometry, node matching an earlier
+        session's ``node_d10.json`` diagnostic exactly): filtering the
+        ``get_charge_density()`` array with ``_binomial_filter_3d`` matches
+        this method's ``rho_fp`` array to EXACT floating-point equality
+        (max abs diff 0.0) -- confirming the one-filter-stage gap is the
+        entire difference between the two rho sources. Against a Psi that
+        varies by O(1) within one cell of the EB (Section 3b), dotting the
+        UNFILTERED array produced exactly the failure signature measured
+        before this fix: small error far from the probe, large
+        position-dependent error near it, unchanged by solver tolerance or
+        any unit-scale factor -- because the missing filter is a local
+        smoothing kernel, not a global constant, so no scale factor could
+        have fixed it. Switching to this method's ``rho_fp`` reproduced the
+        grounded-solve ``Q_g`` to a relative error of 4.0e-10 at that same
+        node (vs. 7.2e-2 with the unfiltered array) -- see
+        ``measure_voltages()``'s docstring for the full before/after
+        numbers.
+
+        MULTI-SPECIES ACCUMULATION. The filter is linear but NOT idempotent
+        under repeated partial application, so every species must be
+        deposited (accumulated, ``clear_rho`` only on the first) BEFORE the
+        single ``sync_rho()`` filter/exchange pass -- filtering after each
+        species and continuing to add more would NOT equal filtering the
+        completed sum once.
+
+        COLLECTIVE. Depositing is a local per-tile operation, but
+        ``sync_rho()`` performs the guard-cell MPI exchange, and reading the
+        result back via ``mf[:, :, :]`` performs the same MPI allgather as
+        every other MultiFab read in this module -- called unconditionally
+        on every rank, exactly like the psi prefetch in
+        ``accumulate_absorption()``.
+
+        SIDE EFFECT ON ``rho_fp`` -- CHECKED, HARMLESS FOR THIS CLASS'S OWN
+        USE. This method takes ownership of the registered ``rho_fp``: it
+        zeroes it (on the first species) and overwrites it with the current
+        deposit every call. Verified this does not perturb ``qg_mode=
+        "grounded"``: measuring voltages in ``"grounded"`` mode, then in
+        ``"reciprocity"`` mode (which rewrites ``rho_fp``), then in
+        ``"grounded"`` mode again reproduces the first ``"grounded"`` result
+        exactly -- ``solve_poisson_efield()`` deposits its own rho fresh on
+        every call regardless of what this method left behind. NOT checked
+        against any OTHER consumer of ``rho_fp`` outside this class (e.g. a
+        diagnostic reading it via ``pywarpx.fields.RhoFPWrapper`` between
+        ``measure_voltages()`` calls would see THIS method's last deposit,
+        not necessarily the state a concurrent EM step would have left) --
+        treat ``rho_fp`` as owned by whichever of {this method, the main PIC
+        loop} last wrote it, not as a stable snapshot.
+        """
+        import numpy as np  # noqa: PLC0415
+        from pywarpx.particle_containers import (  # noqa: PLC0415
+            ParticleContainerWrapper,
+        )
+
+        self._ensure_rho_fp(lev)
+        names = [
+            getattr(sp, "name", None) for sp in (getattr(self.sim, "species", []) or [])
+        ]
+        names = [n for n in names if n]
+        if not names:
+            raise RuntimeError(
+                "qg_mode='reciprocity' could not find any species on "
+                "self.sim to deposit rho_fp from (self.sim.species is empty "
+                "or unset)."
+            )
+        if not hasattr(self, "_species_pcw_cache"):
+            self._species_pcw_cache = {}
+        for i, name in enumerate(names):
+            if name not in self._species_pcw_cache:
+                # Constructed once per species and cached: ParticleContainer
+                # Wrapper() prints a deprecation UserWarning on every
+                # construction, and there is no reason to pay that (or the
+                # attribute-lookup cost) again every measure_voltages() call.
+                self._species_pcw_cache[name] = ParticleContainerWrapper(name)
+            self._species_pcw_cache[name].deposit_charge_density(
+                level=lev, clear_rho=(i == 0), sync_rho=False
+            )
+        self._warpx().sync_rho()   # single filter/exchange pass -- see above
+        mfr = self._mfr()
+        return np.asarray(mfr.get("rho_fp", level=lev)[:, :, :])
+
+    def _grounded_charge_via_reciprocity(self, lev):
+        """``qg_mode="reciprocity"``: Q_g,k = -sum_a rho_a * dV * Psi_k[a].
+
+        No Poisson solve, no save/restore of the live field -- see
+        ``measure_voltages()``'s docstring for the derivation, the required
+        adjoint Psi, the RAW-vs-deposit-filtered table choice, and the MPI
+        discipline (this method is COLLECTIVE and must be called
+        unconditionally on every rank, exactly like the psi prefetch in
+        ``accumulate_absorption()``).
+        """
+        import numpy as np  # noqa: PLC0415
+
+        if self._psi_override is None:
+            raise RuntimeError(
+                "qg_mode='reciprocity' requires adjoint Psi tables to be "
+                "loaded via load_psi_table() before measure_voltages() is "
+                "first called -- there is nothing to dot rho against "
+                "without them, and the plain psi_unit_k basis is the wrong "
+                "one for this identity on a non-symmetric cut-cell operator "
+                "(Section 3b of the report). Call load_psi_table(...) (e.g. "
+                "after a solve_adjoint_weighting pass, as T8's "
+                "_build_adjoint() does) first, or use qg_mode='grounded'."
+            )
+
+        warpx = self._warpx()
+        # COLLECTIVE (deposit + sync_rho's MPI exchange + the allgather in
+        # reading the result back), called unconditionally -- see
+        # _deposit_and_read_rho_fp's docstring for why this, and NOT
+        # mpc.get_charge_density(), is the rho the identity needs.
+        rho = self._deposit_and_read_rho_fp(lev)
+
+        geom_data = warpx.Geom(lev=lev).data()
+        dxs = geom_data.CellSize()
+        dV = dxs[0] * dxs[1] * dxs[2]
+
+        q_g = np.empty(self.n)
+        for k in range(self.n):
+            # RAW table (override if loaded, else the stored register) --
+            # NOT _psi_for_gather()'s deposit-filtered version: rho above is
+            # already the deposited (and now filtered) density, so filtering
+            # Psi again would double-apply it. Also collective on first use
+            # per k (cached thereafter) -- see _nodal_psi()'s own docstring.
+            psi_k = self._nodal_psi(k)
+            if psi_k.shape != rho.shape:
+                raise RuntimeError(
+                    f"psi_{k} shape {psi_k.shape} != rho shape {rho.shape}; "
+                    "the loaded Psi table and the charge density must share "
+                    "the nodal grid."
+                )
+            q_g[k] = -np.sum(rho * psi_k) * dV
+        return q_g
 
     def correct_field(self):
         """Drive every electrode to its target potential (curl-preserving)."""
