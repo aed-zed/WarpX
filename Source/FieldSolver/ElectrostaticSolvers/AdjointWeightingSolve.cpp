@@ -106,6 +106,24 @@ void ApplyOp (amrex::MultiFab& y, amrex::MultiFab const& x,
                         i, j, k, ya, xa, ls, dm, ecx, ecy, ecz, bx, by, bz,
                         scatter_from);
                 });
+            // Constrained rows carry no equation: restrict the scatter output
+            // to FREE rows, exactly as the validated numpy transliteration
+            // does (check_transpose_kernel.py, "constrained nodes carry no
+            // equation"). Without this the scatter leaves values on Dirichlet
+            // rows -- the diag term each scatter_from=1 source node writes
+            // onto ITSELF, and spill into wall/covered neighbours -- and the
+            // system A^T psi = rhs acquires equations no psi can satisfy:
+            // rows where the scatter_from=0 operator is identically zero but
+            // the RHS is not. That inconsistency is precisely the 2.004e-02
+            // least-squares plateau the first version stalled at (identical
+            // at max_iter 2000/20000). Q7 (check_adjoint_wiring_status.py)
+            // always validated the FREE-NODE RESTRICTION of the RHS; this
+            // makes the code compute the object Q7 validated.
+            amrex::ParallelFor(vbx,
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (dm(i,j,k) != 0) { ya(i,j,k) = amrex::Real(0.0); }
+                });
         } else {
             amrex::ParallelFor(vbx,
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
@@ -195,6 +213,14 @@ bool WarpXSolveAdjointWeighting (amrex::MultiFab& psi,
         if (rel < tol) { converged = true; break; }
 
         const amrex::Real rr_new = Dot(r, r);
+        // Guard the beta division: on an inconsistent system the
+        // normal-equation residual can underflow to exactly 0.0 while the
+        // true residual is still large (observed in the numpy reproduction of
+        // this loop). Without this break, beta = 0/0 = NaN on the following
+        // iteration NaN-poisons psi, and `pMp == 0` never fires again because
+        // NaN != 0. CG is fully converged on (A A^T) at this point; whatever
+        // `rel` remains is inconsistency, and `converged` stays false.
+        if (rr_new == amrex::Real(0.0) || rr == amrex::Real(0.0)) { break; }
         const amrex::Real beta = rr_new / rr;
         rr = rr_new;
         amrex::MultiFab::Xpay(p, beta, r, 0, 0, 1, 0);

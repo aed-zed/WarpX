@@ -210,14 +210,28 @@ void warpx_mlebndfdlap_adotx_forward_eb (
     // per-direction inside the sum. In 1-D the two coincide; in 3-D they do
     // not, and getting it wrong reintroduces exactly the row-scaling error
     // this whole adjoint construction exists to handle.
+    // A covered neighbour's value is Dirichlet data (xeb in AMReX's own
+    // kernel), homogeneous (0) for the adjoint problem -- it must NOT be
+    // read from x. The first version of this kernel read x at covered
+    // neighbours unconditionally, diverging from the numpy pair that
+    // check_transpose_kernel.py H1 validated (that pair has this branch):
+    // the compiled forward was then not the exact transpose of the compiled
+    // scatter. Harmless only while every input is identically zero on
+    // covered nodes -- which the unmasked RHS was not.
     const Real x0 = x(i,j,k);
+    const Real xpx = (levset(i+1,j,k) < Real(0.0)) ? x(i+1,j,k) : Real(0.0);
+    const Real xmx = (levset(i-1,j,k) < Real(0.0)) ? x(i-1,j,k) : Real(0.0);
+    const Real xpy = (levset(i,j+1,k) < Real(0.0)) ? x(i,j+1,k) : Real(0.0);
+    const Real xmy = (levset(i,j-1,k) < Real(0.0)) ? x(i,j-1,k) : Real(0.0);
+    const Real xpz = (levset(i,j,k+1) < Real(0.0)) ? x(i,j,k+1) : Real(0.0);
+    const Real xmz = (levset(i,j,k-1) < Real(0.0)) ? x(i,j,k-1) : Real(0.0);
     Real out = Real(0.0);
     out += bx * Real(2.0) / (hpx + hmx)
-         * ((x(i+1,j,k) - x0) / hpx + (x(i-1,j,k) - x0) / hmx);
+         * ((xpx - x0) / hpx + (xmx - x0) / hmx);
     out += by * Real(2.0) / (hpy + hmy)
-         * ((x(i,j+1,k) - x0) / hpy + (x(i,j-1,k) - x0) / hmy);
+         * ((xpy - x0) / hpy + (xmy - x0) / hmy);
     out += bz * Real(2.0) / (hpz + hmz)
-         * ((x(i,j,k+1) - x0) / hpz + (x(i,j,k-1) - x0) / hmz);
+         * ((xpz - x0) / hpz + (xmz - x0) / hmz);
     y(i,j,k) = out * scale;
 }
 

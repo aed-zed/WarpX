@@ -467,12 +467,25 @@ class MultiElectrodeBiasCorrector:
 
         REQUIRES A T6-VALIDATED Psi TABLE -- THE STORED BASIS IS NOT ONE
         -----------------------------------------------------------------
-        STATUS 2026-08-13: the in-code adjoint route (`solve_adjoint_weighting`)
-        is BOUND AND CALLABLE BUT DOES NOT CONVERGE -- residual stalls at
-        2.0e-2, identical at 2000 and 20000 iterations, so the system is
-        inconsistent as posed rather than slow. See
-        reviews/check_adjoint_wiring_status.py. Do not use it. The working
-        input is the probed table below.
+        STATUS 2026-08-13 (updated after review): the earlier non-convergence
+        (stall at 2.0e-2, identical at 2000/20000 iterations) was an
+        INCONSISTENT RHS -- the scatter_from=1 builder wrote each Dirichlet
+        source node's diagonal onto the node itself, rows where the solve
+        operator is identically zero; 99.7% of the RHS norm sat on constrained
+        nodes in a numpy reproduction. Fixed by restricting the transpose
+        output to free rows (the object Q7 always validated). The solve now
+        CONVERGES (rel. residual ~1e-10, both electrodes, T6 fixture) -- but
+        its solution is still NOT USABLE FOR BOOKING: on commensurate cut
+        geometries (R/dx exactly 4 here) AMReX's min(h) row scaling produces
+        near-zero rows, the A_DF-row functional couples to them with 1/h
+        weights, and the posed system's true solution carries ~1e12-scale
+        entries (measured: gathered Psi ~ -1e12 vs bounded truth ~1e-13; T6's
+        acceptance comparison catches this even though the convergence flag no
+        longer can). The remaining defect is the RHS FUNCTIONAL: it must be
+        built from the charge functional the truth is measured with
+        (ChargeOnEB's area-fraction flux), not from the operator's Dirichlet
+        row sums. Until that lands, the working input is the probed table
+        below.
 
         Pass `psi_table=` with a table probed on BOTH sides of the EB surface
         (`inputs_3d_t5_probe_band.py --band_in 1.0 --band 2.0`) and confirm it
