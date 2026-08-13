@@ -6,6 +6,16 @@
 #include "pyWarpX.H"
 
 #include <WarpX.H>
+
+// Adjoint weighting-potential solve, defined in
+// Source/FieldSolver/ElectrostaticSolvers/AdjointWeightingSolve.cpp.
+bool WarpXSolveAdjointWeighting (amrex::MultiFab& psi, amrex::MultiFab const& rhs,
+                                 amrex::iMultiFab const& dmsk, int lev,
+                                 amrex::Real tol, int max_iter,
+                                 amrex::Real* final_res);
+void WarpXBuildAdjointRHS (amrex::MultiFab& rhs, amrex::MultiFab const& indicator,
+                           amrex::iMultiFab const& dmsk, int lev);
+
 // see WarpX.cpp - full includes for _fwd.H headers
 #include <BoundaryConditions/PEC_Insulator.H>
 #include <BoundaryConditions/PML.H>
@@ -294,6 +304,88 @@ void init_WarpX (py::module& m)
             "Induced charge eps0 * oint w(x,y,z) E.n dS over the embedded boundary for the "
             "named field (default Efield_fp), with an optional spatial weighting w(x,y,z) "
             "that selects a region/electrode (default w=1, the whole EB). 3D + EB only."
+        )
+        .def("solve_adjoint_weighting",
+            [] (WarpX& wx, const std::string& region, const std::string& out_name,
+                amrex::Real tol, int max_iter) {
+                int const lev = 0;
+                auto const& eb_fact = wx.fieldEBFactory(lev);
+                auto const& levset = eb_fact.getLevelSet();
+
+                amrex::MultiFab* psi = wx.m_fields.get(out_name, lev);
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(psi != nullptr,
+                    "solve_adjoint_weighting: output field not registered");
+
+                const amrex::BoxArray& ba = psi->boxArray();
+                const amrex::DistributionMapping& dm = psi->DistributionMap();
+
+                // Dirichlet mask: nodes covered by the EB are the constrained
+                // rows; everything else is free. The electrode indicator is 1
+                // on THIS electrode's constrained nodes only.
+                amrex::iMultiFab dmsk(ba, dm, 1, 1);
+                dmsk.setVal(0);
+                amrex::MultiFab ind(ba, dm, 1, 1);
+                ind.setVal(0.0);
+
+                amrex::Parser rparser = utils::parser::makeParser(region, {"x","y","z"});
+                auto rexe = rparser.compile<3>();
+                const auto plo = wx.Geom(lev).ProbLoArray();
+                const auto dx  = wx.Geom(lev).CellSizeArray();
+                const amrex::Box ndom = amrex::surroundingNodes(wx.Geom(lev).Domain());
+                const auto dlo = ndom.smallEnd();
+                const auto dhi = ndom.bigEnd();
+
+                for (amrex::MFIter mfi(dmsk); mfi.isValid(); ++mfi) {
+                    const amrex::Box& bx = mfi.growntilebox();
+                    auto const& dma = dmsk.array(mfi);
+                    auto const& ina = ind.array(mfi);
+                    auto const& ls  = levset.const_array(mfi);
+                    amrex::ParallelFor(bx,
+                        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                        {
+                            // Constrained rows are (a) nodes covered by the
+                            // EB and (b) nodes on the grounded outer walls.
+                            // Omitting (b) leaves those rows free, so the
+                            // free-node operator is posed on a space that
+                            // includes unconstrained boundary values.
+                            const bool covered = (ls(i,j,k) >= amrex::Real(0.0));
+                            const bool wall =
+                                (i <= dlo[0] || i >= dhi[0] ||
+                                 j <= dlo[1] || j >= dhi[1] ||
+                                 k <= dlo[2] || k >= dhi[2]);
+                            dma(i,j,k) = (covered || wall) ? 1 : 0;
+                            if (covered) {
+                                const amrex::Real x = plo[0] + i*dx[0];
+                                const amrex::Real y = plo[1] + j*dx[1];
+                                const amrex::Real z = plo[2] + k*dx[2];
+                                ina(i,j,k) = rexe(x,y,z);
+                            }
+                        });
+                }
+
+                amrex::MultiFab rhs(ba, dm, 1, 1);
+                WarpXBuildAdjointRHS(rhs, ind, dmsk, lev);
+
+                amrex::Real res = -1.0;
+                const bool ok = WarpXSolveAdjointWeighting(
+                    *psi, rhs, dmsk, lev, tol, max_iter, &res);
+
+                // The solve determines the free nodes; psi = 1 on its own
+                // electrode comes from the constrained rows.
+                amrex::MultiFab::Add(*psi, ind, 0, 0, 1, 0);
+                psi->FillBoundary(wx.Geom(lev).periodicity());
+                return py::make_tuple(ok, res);
+            },
+            py::arg("region"), py::arg("out_name"),
+            py::arg("tol") = 1.0e-10, py::arg("max_iter") = 2000,
+            "Solve for the ADJOINT weighting potential Psi_k of the electrode "
+            "selected by region(x,y,z), writing it into the registered nodal "
+            "field out_name. Returns (converged, relative_residual) -- CHECK "
+            "converged: an unconverged Psi yields a wrong absorption "
+            "correction that looks entirely plausible. Unlike the plain "
+            "unit-voltage basis, this Psi makes the grounded-charge identity "
+            "Q_k = -sum_a rho_a Psi_k[a] exact on WarpX's non-symmetric EB "
+            "Laplacian. 3D + EB only."
         )
         .def("saxpy_field_masked",
             [] (WarpX& wx, const std::string& target, const std::string& source,

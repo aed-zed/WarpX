@@ -104,6 +104,10 @@ class MultiElectrodeBiasCorrector:
         relaxation=1.0,
         enable_gauss_clean=False,
         verbose=False,
+        book_absorption=False,
+        absorption_species=None,
+        impact_histogram_cap=0,
+        psi_table=None,
     ):
         if not (0.0 < relaxation <= 1.0):
             raise ValueError("relaxation must be in (0, 1].")
@@ -137,6 +141,44 @@ class MultiElectrodeBiasCorrector:
         self._psi_names = [f"psi_unit_{k}" for k in range(self.n)]
         self._psi_stored = False
         self._phi_grounded = None  # phi from the all-electrodes-grounded solve
+
+        # -- per-impact absorption bookkeeping (ROADMAP item A) --------------
+        # When a macroparticle is absorbed at x_a, the clamp's charge accounting
+        # implicitly books its FULL charge q_p onto the struck electrode. The
+        # correct amount is q_p * Psi_k(x_a) for EVERY conductor k, because an
+        # impact on one electrode perturbs all of them. The difference is a
+        # spurious source charge that the clamp then works to cancel.
+        #
+        # The deficit is tracked as an (electrode x species) MATRIX, never an
+        # aggregate. The geometric factor 1 - Psi_k is always positive, but the
+        # injected charge carries the sign of q_p, so in a multi-species device
+        # (e.g. an Orbitron with both ions and electrons striking every
+        # electrode) the species contributions push in OPPOSITE directions on
+        # the same electrode. An aggregate can read near zero while hiding two
+        # large opposing errors, and that cancellation is an accident of the
+        # operating point -- it will not survive a change in species mix, bias,
+        # or geometry. See reference/absorption_potential_maintenance.md.
+        self.book_absorption = bool(book_absorption)
+        self.absorption_species = list(absorption_species or [])
+        # eps[k, s]: spurious source charge booked on electrode k by species s
+        self._absorb_deficit = None       # numpy (n, n_species)
+        # booked[k, s]: the Ramo-weighted charge actually collected
+        self._absorb_booked = None
+        self._absorb_counts = None        # impacts per species
+        self._buffer_cursor = {}          # species -> #particles already read
+        self._absorb_history = []         # [(step, deficit.copy(), counts)]
+        self._impact_histogram = []       # (x, y, z, species_index, q) samples
+        self._impact_histogram_cap = int(impact_histogram_cap)
+        # Optional override for the weighting potential used by the ledger.
+        # The stored psi_unit_k is the PLAIN (Dirichlet) basis, which is ~1 at
+        # its own electrode by boundary condition and so under-books the
+        # correction by roughly an order of magnitude (T4: 6.6% vs a measured
+        # ~74-80%). Supply the measured table from T5, or the adjoint Psi once
+        # that is wired up. Shape: list of n nodal arrays, or a path to the
+        # .npz T5 writes.
+        self._psi_override = None
+        if psi_table is not None:
+            self.load_psi_table(psi_table)
 
     # -- libwarpx accessors --------------------------------------------------
     def _warpx(self):
@@ -341,6 +383,344 @@ class MultiElectrodeBiasCorrector:
     # existing grounded-resolve measure_voltages()/Q_g machinery. They are
     # never called by correct_field()/measure_voltages(); call them explicitly
     # if you want the comparison.
+    # -- per-impact absorption bookkeeping -----------------------------------
+    def load_psi_table(self, table):
+        """Use a measured/adjoint weighting potential for the ledger.
+
+        `table` is either a list of n nodal arrays or a path to the .npz that
+        `inputs_3d_t5_probe_band.py` writes (keys ``psi_0`` .. ``psi_{n-1}``).
+
+        WHY THIS EXISTS. The stored ``psi_unit_k`` is the plain Dirichlet
+        basis: psi = 1 on electrode k by boundary condition. Gathering it at an
+        impact site therefore returns a value near 1 and books a small deficit
+        no matter what the truth is -- T4 measured a 6.6% mis-booking rate
+        where the weighting potential measured through WarpX's own charge
+        identity implies 74-80%. Booking q_p * Psi_k zeroes the residual BY
+        CONSTRUCTION for whatever Psi is supplied, so the plain basis is not
+        "wrong" so much as solving the wrong problem precisely. This is how the
+        right one gets in.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        if isinstance(table, (str, bytes)):
+            with np.load(table) as z:
+                table = [np.array(z[f"psi_{k}"]) for k in range(self.n)]
+        table = [np.asarray(t) for t in table]
+        if len(table) != self.n:
+            raise ValueError(
+                f"psi_table has {len(table)} arrays but there are {self.n} "
+                "electrodes")
+        self._psi_override = table
+        return self
+
+    def _gather_psi(self, k, x, y, z):
+        """Trilinear gather of psi_k at particle positions.
+
+        Uses the SAME shape function as the field gather (``particle_shape =
+        "linear"``). That is not a detail: the bookkeeping identity holds
+        exactly only when gather and deposit are adjoint operations, which for
+        a shared shape function they are. Using a different (e.g. nearest-node)
+        interpolation here would reintroduce an error of the same order as the
+        one being removed.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        mfr = self._mfr()
+        geom = self._warpx().Geom(lev=0).data()
+        dx = np.array(geom.CellSize())
+        lo = np.array(geom.ProbLo())
+        if self._psi_override is not None:
+            psi = self._psi_override[k]
+        else:
+            psi = np.asarray(mfr.get(self._psi_names[k], level=0)[:, :, :])
+
+        g = (np.stack([x, y, z], axis=1) - lo) / dx    # (N, 3) in cell units
+        i0 = np.floor(g).astype(np.int64)
+        f = g - i0
+        shp = np.array(psi.shape) - 1
+        i0 = np.clip(i0, 0, shp - 1)
+        out = np.zeros(len(x))
+        for c0 in (0, 1):
+            for c1 in (0, 1):
+                for c2 in (0, 1):
+                    w = ((1 - f[:, 0]) if c0 == 0 else f[:, 0]) \
+                        * ((1 - f[:, 1]) if c1 == 0 else f[:, 1]) \
+                        * ((1 - f[:, 2]) if c2 == 0 else f[:, 2])
+                    out += w * psi[i0[:, 0] + c0, i0[:, 1] + c1, i0[:, 2] + c2]
+        return out
+
+    def accumulate_absorption(self):
+        """Book the Ramo-weighted charge of newly absorbed particles.
+
+        Reads the EB scrape buffer incrementally (a per-species cursor, so each
+        particle is counted exactly once), gathers psi_k at every impact site,
+        and accumulates two (electrode x species) matrices:
+
+            booked[k, s]  = sum_p q_p * Psi_k(x_p)      <- the correct charge
+            deficit[k, s] = sum_p q_p * (1 - Psi_k(x_p)) for the struck
+                            electrode; for k != struck, -q_p * Psi_k(x_p)
+
+        ``deficit`` is the spurious source charge the naive full-q_p booking
+        would inject. Its exact target under correct booking is ZERO, which is
+        what makes it a far more sensitive acceptance metric than energy: the
+        error is linear and one-signed per species, while energy is quadratic.
+
+        REQUIRES A T6-VALIDATED Psi TABLE -- THE STORED BASIS IS NOT ONE
+        -----------------------------------------------------------------
+        STATUS 2026-08-13: the in-code adjoint route (`solve_adjoint_weighting`)
+        is BOUND AND CALLABLE BUT DOES NOT CONVERGE -- residual stalls at
+        2.0e-2, identical at 2000 and 20000 iterations, so the system is
+        inconsistent as posed rather than slow. See
+        reviews/check_adjoint_wiring_status.py. Do not use it. The working
+        input is the probed table below.
+
+        Pass `psi_table=` with a table probed on BOTH sides of the EB surface
+        (`inputs_3d_t5_probe_band.py --band_in 1.0 --band 2.0`) and confirm it
+        with `inputs_3d_t6_booking_exactness.py` before enabling. Measured
+        booking error across five configurations (equal and unequal radii,
+        nx=32 and 64): 1.7%-8.2%. It does NOT refine away, and it is not set
+        by cells-per-radius -- R/dx = 8.0 books worse (5.5%) than R/dx = 4.0
+        (1.7%). Treat the per-impact correction as carrying a few-percent
+        residual, not as exact. The adjoint route is the one with a claim to
+        exactness (check_adjoint_identity.py Q1, 1e-17); it is not yet wired
+        into a solve.
+
+        Without it, the gathered weighting is wrong by a large factor:
+        T6 (`inputs_3d_t6_booking_exactness.py`) straddles a real absorption
+        event and compares the booked charge against the change WarpX itself
+        reports. Neither candidate table passes:
+
+            plain psi_unit_k        : 0.868 vs true 0.115  -> 7.57x over
+            T5 outside-only band    : 0.383 vs true 0.115  -> 3.34x over
+            T5 BOTH sides (correct) : 0.113 vs true 0.115  -> 1.66% error
+
+        Cause: particles are scraped just INSIDE the surface (measured d/h
+        between -0.088 and -0.016), where the stored psi is exactly 1.0 by
+        Dirichlet BC. A trilinear gather there is dominated by those covered
+        nodes. The T5 band, probed over d/h in (0.15, 2.0], never covers the
+        actual impact sites.
+
+        Booking q_p * Psi_k zeroes the residual BY CONSTRUCTION for whatever
+        Psi is supplied, so a wrong table is a wrong-input problem rather than
+        a wrong-method one -- but enabling one would over-correct by 3-8x,
+        which is worse than not correcting at all. The two-sided table fixes
+        it because covered nodes hold psi = 1 in the stored Dirichlet basis
+        while the weighting an absorbed particle should contribute there is
+        ~0, and the trilinear gather reaches those nodes from every real
+        scrape position.
+
+        WHICH Psi THIS GATHERS
+        ----------------------
+        This gathers ``psi_unit_k``, the stored PLAIN (Dirichlet, "electrode k
+        at 1 V") basis. That basis is ~1 at its own electrode BY BOUNDARY
+        CONDITION, so it reports a small deficit no matter what the truth is.
+        T4 measured an implied <Psi> ~ 0.94 at the impact sites and a
+        mis-booking rate of 6.6-6.8%, whereas the weighting potential MEASURED
+        through WarpX's own charge identity is 0.18-0.26 within one cell of the
+        boundary, implying ~76-85%.
+
+        So the ledger arithmetic below is correct and the machinery works, but
+        with the plain basis it under-books the correction by roughly an order
+        of magnitude. This is exactly the failure mode
+        `reviews/check_absorption_deficit_measured.py` (K2) predicted. Booking
+        q_p * Psi_k still zeroes the residual BY CONSTRUCTION for whatever Psi
+        is supplied -- so this is not wrong, it is solving the wrong problem
+        precisely. Supplying the measured/adjoint Psi is what makes it solve
+        the intended one; see ROADMAP item A.
+
+        Cost is O(N_e) multiply-adds per absorbed particle -- no solve. The
+        correction is a linear functional of the absorbed charge and
+        superposition over impacts is exact (verified in WarpX itself), which
+        is why this scales to millions of impacts per step.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        if not self.book_absorption or not self._psi_stored:
+            return None
+        from pywarpx.particle_containers import (  # noqa: PLC0415
+            ParticleBoundaryBufferWrapper,
+        )
+
+        buf = ParticleBoundaryBufferWrapper()
+        ns = len(self.absorption_species)
+        if self._absorb_deficit is None:
+            self._absorb_deficit = np.zeros((self.n, ns))
+            self._absorb_booked = np.zeros((self.n, ns))
+            self._absorb_counts = np.zeros(ns, dtype=np.int64)
+
+        for s, sp in enumerate(self.absorption_species):
+            try:
+                total = buf.get_particle_boundary_buffer_size(sp, "eb")
+            except Exception:
+                continue
+            seen = self._buffer_cursor.get(sp, 0)
+            if total <= seen:
+                continue
+
+            def _cat(comp):
+                arrs = buf.get_particle_boundary_buffer(sp, "eb", comp, 0)
+                return (np.concatenate([np.asarray(a) for a in arrs])
+                        if arrs else np.zeros(0))
+
+            x, y, z, w = (_cat("x"), _cat("y"), _cat("z"), _cat("w"))
+            if len(x) <= seen:
+                continue
+            x, y, z, w = x[seen:], y[seen:], z[seen:], w[seen:]
+            self._buffer_cursor[sp] = total
+
+            q_sp = self._species_charge(sp)
+            q_p = q_sp * w                       # macroparticle charge [C]
+
+            # Which electrode was struck? The one whose psi is largest at the
+            # impact site. An impact perturbs EVERY conductor, so all n rows
+            # are updated -- cross-terms are not negligible.
+            psis = np.stack([self._gather_psi(k, x, y, z)
+                             for k in range(self.n)], axis=0)   # (n, N)
+            struck = np.argmax(psis, axis=0)
+            for k in range(self.n):
+                self._absorb_booked[k, s] += float(np.sum(q_p * psis[k]))
+                is_k = (struck == k)
+                self._absorb_deficit[k, s] += float(
+                    np.sum(q_p[is_k] * (1.0 - psis[k][is_k]))
+                    - np.sum(q_p[~is_k] * psis[k][~is_k])
+                )
+            self._absorb_counts[s] += len(x)
+
+            if self._impact_histogram_cap:
+                room = self._impact_histogram_cap - len(self._impact_histogram)
+                if room > 0:
+                    take = min(room, len(x))
+                    self._impact_histogram.extend(
+                        zip(x[:take].tolist(), y[:take].tolist(),
+                            z[:take].tolist(), [s] * take, q_p[:take].tolist())
+                    )
+
+        step = self._warpx().getistep(lev=0)
+        self._absorb_history.append(
+            (int(step), self._absorb_deficit.copy(), self._absorb_counts.copy())
+        )
+        return self._absorb_deficit
+
+    def _species_charge(self, name):
+        """Signed charge per unit weight [C] for a named species."""
+        for sp in getattr(self.sim, "species", []) or []:
+            if getattr(sp, "name", None) == name:
+                q = getattr(sp, "charge", None)
+                if isinstance(q, str):        # picmi accepts "q_e"/"-q_e"
+                    return {"q_e": 1.602176634e-19,
+                            "-q_e": -1.602176634e-19}.get(q, 0.0)
+                if q is not None:
+                    return float(q)
+                ptype = getattr(sp, "particle_type", "") or ""
+                if ptype == "electron":
+                    return -1.602176634e-19
+                if ptype in ("proton", "hydrogen"):
+                    return 1.602176634e-19
+        raise ValueError(
+            f"cannot determine the charge of species '{name}'; pass an "
+            "explicit picmi Species with .charge set so the absorption ledger "
+            "is not silently signed wrong")
+
+    def impact_map(self, electrode_centers=None, nbins=(72, 36)):
+        """Per-species angular map of absorption events on each electrode.
+
+        Returns a dict with a (n_species, ntheta, nphi) CHARGE histogram and a
+        matching COUNT histogram per electrode, binned on the sphere of
+        directions around each electrode centre.
+
+        WHY CHARGE AND COUNT SEPARATELY. They answer different questions and
+        can look completely different. Count density drives surface effects
+        that scale with particle flux -- sputtering, secondary emission, heat
+        load. Charge density drives the electrical asymmetry: in a
+        multi-species device the two species deposit opposite signs, so a
+        region with high count density can carry near-zero net charge, and a
+        region with modest counts can dominate the dipole if one species is
+        absent there. Reporting only one of them hides the other.
+
+        The binning is angular rather than Cartesian because the electrodes are
+        closed surfaces: (theta, phi) around the centre covers the surface
+        exactly once with no empty cells, which a Cartesian slab grid would
+        not.
+
+        Requires `impact_histogram_cap > 0` at construction; the map is built
+        from the retained sample, so with a cap smaller than the impact count
+        it is a SUBSAMPLE and the absolute normalisation is not meaningful.
+        `saturated` in the return says whether that happened.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        if not self._impact_histogram:
+            return None
+        H = np.array(self._impact_histogram, dtype=float)
+        x, y, z, sidx, q = H[:, 0], H[:, 1], H[:, 2], H[:, 3].astype(int), H[:, 4]
+
+        if electrode_centers is None:
+            raise ValueError(
+                "electrode_centers is required: the map is angular about each "
+                "electrode centre, and there is no way to infer those from the "
+                "region expressions")
+
+        nth, nph = nbins
+        ns = max(len(self.absorption_species), 1)
+        out = {"species": list(self.absorption_species),
+               "electrodes": list(self.names),
+               "nbins": [int(nth), int(nph)],
+               "saturated": bool(self._absorb_counts is not None
+                                 and int(self._absorb_counts.sum())
+                                 > len(self._impact_histogram)),
+               "n_sampled": int(len(H)),
+               "maps": []}
+
+        cen = np.asarray(electrode_centers, dtype=float)
+        # assign each impact to its nearest electrode centre
+        d = np.stack([np.sqrt((x - c[0]) ** 2 + (y - c[1]) ** 2
+                              + (z - c[2]) ** 2) for c in cen], axis=0)
+        owner = np.argmin(d, axis=0)
+
+        for k in range(len(cen)):
+            m = owner == k
+            dx_, dy_, dz_ = x[m] - cen[k][0], y[m] - cen[k][1], z[m] - cen[k][2]
+            r = np.sqrt(dx_ ** 2 + dy_ ** 2 + dz_ ** 2)
+            r[r == 0] = 1.0
+            theta = np.arccos(np.clip(dz_ / r, -1, 1))      # [0, pi]
+            phi = np.arctan2(dy_, dx_)                       # (-pi, pi]
+            th_e = np.linspace(0, np.pi, nth + 1)
+            ph_e = np.linspace(-np.pi, np.pi, nph + 1)
+            chg = np.zeros((ns, nth, nph))
+            cnt = np.zeros((ns, nth, nph))
+            for s in range(ns):
+                sm = sidx[m] == s
+                if not sm.any():
+                    continue
+                cnt[s], _, _ = np.histogram2d(theta[sm], phi[sm],
+                                              bins=[th_e, ph_e])
+                chg[s], _, _ = np.histogram2d(theta[sm], phi[sm],
+                                              bins=[th_e, ph_e],
+                                              weights=q[m][sm])
+            out["maps"].append({"electrode": self.names[k],
+                                "center": cen[k].tolist(),
+                                "charge": chg.tolist(),
+                                "count": cnt.tolist(),
+                                "theta_edges": th_e.tolist(),
+                                "phi_edges": ph_e.tolist()})
+        return out
+
+    def absorption_report(self):
+        """Return the (electrode x species) ledger as a plain dict."""
+        import numpy as np  # noqa: PLC0415
+
+        if self._absorb_deficit is None:
+            return None
+        return {
+            "electrodes": list(self.names),
+            "species": list(self.absorption_species),
+            "deficit": self._absorb_deficit.tolist(),
+            "booked": self._absorb_booked.tolist(),
+            "counts": self._absorb_counts.tolist(),
+            "deficit_total": float(np.sum(self._absorb_deficit)),
+            "deficit_abs_total": float(np.sum(np.abs(self._absorb_deficit))),
+        }
+
     def measure_grounded_charge_reciprocity(self):
         """Q_g via Shockley-Ramo weighting-potential reciprocity (cross-check).
 

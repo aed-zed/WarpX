@@ -8,7 +8,9 @@
 #define WARPX_ADJOINT_WEIGHTING_POTENTIAL_H_
 
 #include <AMReX_Array4.H>
+#include <AMReX_GpuAtomic.H>
 #include <AMReX_GpuQualifiers.H>
+#include <AMReX_Algorithm.H>
 #include <AMReX_REAL.H>
 
 /** \brief Apply the TRANSPOSE of the MLEBNodeFDLaplacian operator.
@@ -70,11 +72,23 @@ void warpx_mlebndfdlap_adotx_transpose_eb (
     amrex::Array4<amrex::Real const> const& ecx,
     amrex::Array4<amrex::Real const> const& ecy,
     amrex::Array4<amrex::Real const> const& ecz,
-    amrex::Real bx, amrex::Real by, amrex::Real bz) noexcept
+    amrex::Real bx, amrex::Real by, amrex::Real bz,
+    int scatter_from = 0) noexcept
 {
     using amrex::Real;
 
-    if (dmsk(i,j,k)) { return; }
+    // scatter_from = 0 : only FREE rows scatter -- this is A^T restricted to
+    //                    the free-free block, the operator the CG solve needs.
+    // scatter_from = 1 : only DIRICHLET rows scatter -- this is A^T applied to
+    //                    an electrode indicator, i.e. the RHS  (A_DF)^T e_k
+    //                    that the adjoint weighting potential solves against.
+    //                    Verified against a dense assembly: the free-node
+    //                    restriction of A^T 1_k equals the column sum of A
+    //                    over electrode k's Dirichlet rows, exactly
+    //                    (check_adjoint_identity.py Q7).
+    const bool is_d = (dmsk(i,j,k) != 0);
+    if (scatter_from == 0 && is_d)  { return; }
+    if (scatter_from == 1 && !is_d) { return; }
 
     // ---- pass 1: recover the same hp/hm/scale this row would use ----------
     const Real hpx = (ecx(i  ,j,k) == Real(1.0)) ? Real(1.0)
@@ -145,6 +159,66 @@ void warpx_mlebndfdlap_adotx_transpose_eb (
     }
 
     amrex::Gpu::Atomic::AddNoRet(&y(i,j,k), diag);
+}
+
+/** Forward apply: y = A x, reproducing AMReX's mlebndfdlap_adotx_eb row.
+ *
+ * Needed because the normal-equation solve for the adjoint weighting potential
+ * applies BOTH A^T and A, and AMReX's own forward apply is not reachable
+ * outside its MLLinOp. Keeping the two in one header makes it obvious that
+ * they must recover the same hp/hm/scale factors -- if the forward apply here
+ * ever diverges from AMReX's, the transpose validation silently becomes a
+ * self-consistency check rather than a check against the real operator.
+ * check_transpose_kernel.py compares this pair against a dense transpose.
+ */
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void warpx_mlebndfdlap_adotx_forward_eb (
+    int i, int j, int k,
+    amrex::Array4<amrex::Real> const& y,
+    amrex::Array4<amrex::Real const> const& x,
+    amrex::Array4<amrex::Real const> const& levset,
+    amrex::Array4<int const> const& dmsk,
+    amrex::Array4<amrex::Real const> const& ecx,
+    amrex::Array4<amrex::Real const> const& ecy,
+    amrex::Array4<amrex::Real const> const& ecz,
+    amrex::Real bx, amrex::Real by, amrex::Real bz) noexcept
+{
+    using amrex::Real;
+
+    if (dmsk(i,j,k)) { y(i,j,k) = Real(0.0); return; }
+
+    const Real hpx = (ecx(i  ,j,k) == Real(1.0)) ? Real(1.0)
+                   : (Real(1.0) + Real(2.0)*ecx(i  ,j,k));
+    const Real hmx = (ecx(i-1,j,k) == Real(1.0)) ? Real(1.0)
+                   : (Real(1.0) - Real(2.0)*ecx(i-1,j,k));
+    const Real hpy = (ecy(i,j  ,k) == Real(1.0)) ? Real(1.0)
+                   : (Real(1.0) + Real(2.0)*ecy(i,j  ,k));
+    const Real hmy = (ecy(i,j-1,k) == Real(1.0)) ? Real(1.0)
+                   : (Real(1.0) - Real(2.0)*ecy(i,j-1,k));
+    const Real hpz = (ecz(i,j,k  ) == Real(1.0)) ? Real(1.0)
+                   : (Real(1.0) + Real(2.0)*ecz(i,j,k  ));
+    const Real hmz = (ecz(i,j,k-1) == Real(1.0)) ? Real(1.0)
+                   : (Real(1.0) - Real(2.0)*ecz(i,j,k-1));
+
+    Real scale = amrex::min(hmx, hpx);
+    scale = amrex::min(scale, hmy, hpy);
+    scale = amrex::min(scale, hmz, hpz);
+    scale = amrex::min(scale, Real(1.0));
+
+    // NOTE the scale placement: AMReX applies min(h) ONCE to the summed
+    // result (AMReX_MLEBNodeFDLap_3D_K.H: `y(i,j,k) = out*scale`), not
+    // per-direction inside the sum. In 1-D the two coincide; in 3-D they do
+    // not, and getting it wrong reintroduces exactly the row-scaling error
+    // this whole adjoint construction exists to handle.
+    const Real x0 = x(i,j,k);
+    Real out = Real(0.0);
+    out += bx * Real(2.0) / (hpx + hmx)
+         * ((x(i+1,j,k) - x0) / hpx + (x(i-1,j,k) - x0) / hmx);
+    out += by * Real(2.0) / (hpy + hmy)
+         * ((x(i,j+1,k) - x0) / hpy + (x(i,j-1,k) - x0) / hmy);
+    out += bz * Real(2.0) / (hpz + hmz)
+         * ((x(i,j,k+1) - x0) / hpz + (x(i,j,k-1) - x0) / hmz);
+    y(i,j,k) = out * scale;
 }
 
 #endif // WARPX_ADJOINT_WEIGHTING_POTENTIAL_H_
