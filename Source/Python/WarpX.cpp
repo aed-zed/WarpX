@@ -15,6 +15,17 @@ bool WarpXSolveAdjointWeighting (amrex::MultiFab& psi, amrex::MultiFab const& rh
                                  amrex::Real* final_res);
 void WarpXBuildAdjointRHS (amrex::MultiFab& rhs, amrex::MultiFab const& indicator,
                            amrex::iMultiFab const& dmsk, int lev);
+void WarpXBuildAdjointRHSChargeFunctional (amrex::MultiFab& rhs,
+                                           std::string const& region,
+                                           amrex::iMultiFab const& dmsk, int lev);
+void WarpXFinalizeChargeFunctionalPsi (amrex::MultiFab& psi, int lev);
+
+// TEMPORARY DEBUG bindings -- topic-ect-gauss-rebase-2026-08 diagnostic task.
+// See AdjointWeightingSolve.cpp for what they do and why; remove before merging.
+void WarpXDebugForwardApply (amrex::MultiFab& y, amrex::MultiFab const& x,
+                             amrex::iMultiFab const& dmsk, int lev);
+void WarpXDebugComputeScale (amrex::MultiFab& scale_mf, int lev);
+void WarpXDebugDumpLevelSet (amrex::MultiFab& out_mf, int lev);
 
 // see WarpX.cpp - full includes for _fwd.H headers
 #include <BoundaryConditions/PEC_Insulator.H>
@@ -307,8 +318,11 @@ void init_WarpX (py::module& m)
         )
         .def("solve_adjoint_weighting",
             [] (WarpX& wx, const std::string& region, const std::string& out_name,
-                amrex::Real tol, int max_iter) {
+                amrex::Real tol, int max_iter,
+                const std::string& rhs_mode, bool add_indicator) {
                 int const lev = 0;
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(rhs_mode == "operator" || rhs_mode == "charge",
+                    "solve_adjoint_weighting: rhs_mode must be \"operator\" or \"charge\"");
                 auto const& eb_fact = wx.fieldEBFactory(lev);
                 auto const& levset = eb_fact.getLevelSet();
 
@@ -364,28 +378,192 @@ void init_WarpX (py::module& m)
                 }
 
                 amrex::MultiFab rhs(ba, dm, 1, 1);
-                WarpXBuildAdjointRHS(rhs, ind, dmsk, lev);
+                if (rhs_mode == "charge") {
+                    // The functional WarpX actually books charge with
+                    // (WarpX::ComputeEBChargeWeighted), not the operator's own
+                    // Dirichlet-row sum -- see AdjointWeightingSolve.cpp.
+                    WarpXBuildAdjointRHSChargeFunctional(rhs, region, dmsk, lev);
+                } else {
+                    WarpXBuildAdjointRHS(rhs, ind, dmsk, lev);
+                }
 
                 amrex::Real res = -1.0;
                 const bool ok = WarpXSolveAdjointWeighting(
                     *psi, rhs, dmsk, lev, tol, max_iter, &res);
 
-                // The solve determines the free nodes; psi = 1 on its own
-                // electrode comes from the constrained rows.
-                amrex::MultiFab::Add(*psi, ind, 0, 0, 1, 0);
+                if (rhs_mode == "charge") {
+                    // Apply MLMG's scaleRHS diagonal and the 1/(eps0*dV) unit
+                    // -charge normalisation -- see WarpXFinalizeChargeFunctionalPsi.
+                    WarpXFinalizeChargeFunctionalPsi(*psi, lev);
+                }
+
+                // The plain operator-mode basis sets psi = 1 on its own
+                // electrode from the constrained (Dirichlet) rows -- the
+                // solve above only ever determines the free nodes. The
+                // charge functional has no such Dirichlet meaning (the
+                // covered nodes are simply left at 0, which is the correct
+                // booking value: charge deposited there is inert in the
+                // grounded solve), so add_indicator defaults to off for it
+                // and callers may opt out of it for "operator" mode too.
+                if (add_indicator) {
+                    amrex::MultiFab::Add(*psi, ind, 0, 0, 1, 0);
+                }
                 psi->FillBoundary(wx.Geom(lev).periodicity());
                 return py::make_tuple(ok, res);
             },
             py::arg("region"), py::arg("out_name"),
             py::arg("tol") = 1.0e-10, py::arg("max_iter") = 2000,
+            py::arg("rhs_mode") = "operator", py::arg("add_indicator") = true,
             "Solve for the ADJOINT weighting potential Psi_k of the electrode "
             "selected by region(x,y,z), writing it into the registered nodal "
-            "field out_name. Returns (converged, relative_residual) -- CHECK "
+            "field out_name. rhs_mode=\"operator\" (default) reproduces the "
+            "prior behaviour exactly; rhs_mode=\"charge\" builds the RHS from "
+            "the charge functional WarpX actually books with "
+            "(ComputeEBChargeWeighted) instead of the operator's own "
+            "Dirichlet-row sum. add_indicator=True (default) sets psi=1 on "
+            "this electrode's own Dirichlet nodes, the correct convention for "
+            "rhs_mode=\"operator\"; pass False (required for rhs_mode=\"charge\") "
+            "to leave covered nodes at 0, the correct booking value there. "
+            "Returns (converged, relative_residual) -- CHECK "
             "converged: an unconverged Psi yields a wrong absorption "
             "correction that looks entirely plausible. Unlike the plain "
             "unit-voltage basis, this Psi makes the grounded-charge identity "
             "Q_k = -sum_a rho_a Psi_k[a] exact on WarpX's non-symmetric EB "
             "Laplacian. 3D + EB only."
+        )
+        // ---------------------------------------------------------------
+        // TEMPORARY DEBUG bindings -- topic-ect-gauss-rebase-2026-08.
+        // Isolate whether warpx_mlebndfdlap_adotx_forward_eb (the
+        // transliterated forward EB Laplacian in AdjointWeightingPotential.H)
+        // reproduces AMReX's real MLEBNodeFDLaplacian::Fapply. Not for
+        // production use; remove before merging.
+        // ---------------------------------------------------------------
+        .def("debug_adjoint_forward_apply",
+            [] (WarpX& wx, const std::string& in_name, const std::string& out_name) {
+                int const lev = 0;
+                auto const& eb_fact = wx.fieldEBFactory(lev);
+                auto const& levset = eb_fact.getLevelSet();
+
+                amrex::MultiFab* in_mf  = wx.m_fields.get(in_name, lev);
+                amrex::MultiFab* out_mf = wx.m_fields.get(out_name, lev);
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(in_mf != nullptr && out_mf != nullptr,
+                    "debug_adjoint_forward_apply: in/out field not registered");
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(in_mf != out_mf,
+                    "debug_adjoint_forward_apply: in_name and out_name must differ");
+
+                const amrex::BoxArray& ba = out_mf->boxArray();
+                const amrex::DistributionMapping& dm = out_mf->DistributionMap();
+
+                // Same Dirichlet mask as solve_adjoint_weighting: EB-covered
+                // nodes (levset>=0) and the grounded outer walls are the
+                // constrained rows; everything else is free.
+                amrex::iMultiFab dmsk(ba, dm, 1, 1);
+                dmsk.setVal(0);
+
+                const amrex::Box ndom = amrex::surroundingNodes(wx.Geom(lev).Domain());
+                const auto dlo = ndom.smallEnd();
+                const auto dhi = ndom.bigEnd();
+
+                for (amrex::MFIter mfi(dmsk); mfi.isValid(); ++mfi) {
+                    const amrex::Box& bx = mfi.growntilebox();
+                    auto const& dma = dmsk.array(mfi);
+                    auto const& ls  = levset.const_array(mfi);
+                    amrex::ParallelFor(bx,
+                        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                        {
+                            const bool covered = (ls(i,j,k) >= amrex::Real(0.0));
+                            const bool wall =
+                                (i <= dlo[0] || i >= dhi[0] ||
+                                 j <= dlo[1] || j >= dhi[1] ||
+                                 k <= dlo[2] || k >= dhi[2]);
+                            dma(i,j,k) = (covered || wall) ? 1 : 0;
+                        });
+                }
+
+                WarpXDebugForwardApply(*out_mf, *in_mf, dmsk, lev);
+            },
+            py::arg("in_name"), py::arg("out_name"),
+            "DEBUG/TEMPORARY: apply the transliterated forward EB Laplacian "
+            "(warpx_mlebndfdlap_adotx_forward_eb, via AdjointWeightingSolve.cpp's "
+            "file-local ApplyOp) to the registered field in_name, writing the "
+            "result into out_name. Builds the same Dirichlet mask as "
+            "solve_adjoint_weighting (levset>=0 EB-covered nodes plus the "
+            "grounded outer walls). For diagnosing whether the transliteration "
+            "matches AMReX's real Fapply near the embedded boundary."
+        )
+        .def("debug_adjoint_scale",
+            [] (WarpX& wx, const std::string& out_name) {
+                int const lev = 0;
+                amrex::MultiFab* out_mf = wx.m_fields.get(out_name, lev);
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(out_mf != nullptr,
+                    "debug_adjoint_scale: output field not registered");
+                WarpXDebugComputeScale(*out_mf, lev);
+            },
+            py::arg("out_name"),
+            "DEBUG/TEMPORARY: write the per-node MLMG rhs-scale factor "
+            "S(node) = min(hp,hm) over the node's six edges "
+            "(MLEBNodeFDLaplacian::scaleRHS / mlebndfdlap_scale_rhs) into the "
+            "registered nodal field out_name."
+        )
+        .def("debug_adjoint_dump_levset",
+            [] (WarpX& wx, const std::string& out_name) {
+                int const lev = 0;
+                amrex::MultiFab* out_mf = wx.m_fields.get(out_name, lev);
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(out_mf != nullptr,
+                    "debug_adjoint_dump_levset: output field not registered");
+                WarpXDebugDumpLevelSet(*out_mf, lev);
+            },
+            py::arg("out_name"),
+            "DEBUG/TEMPORARY: copy the exact EB levelset MultiFab "
+            "(EBFArrayBoxFactory::getLevelSet(), the same array the forward "
+            "kernel and MLMG's mask both read) into the registered nodal "
+            "field out_name, so free (levset<0) / covered (levset>=0) nodes "
+            "can be classified in Python without an analytic proxy."
+        )
+        .def("debug_adjoint_query_node",
+            [] (WarpX& wx, int i, int j, int k) {
+                int const lev = 0;
+                auto const& eb_fact = wx.fieldEBFactory(lev);
+                auto const& levset = eb_fact.getLevelSet();
+                auto const& edge_cent = eb_fact.getEdgeCent();
+
+                py::dict result;
+                bool found = false;
+                for (amrex::MFIter mfi(levset); mfi.isValid(); ++mfi) {
+                    const amrex::Box& gbx = mfi.fabbox();
+                    if (!gbx.contains(amrex::IntVect(i-1,j-1,k-1)) ||
+                        !gbx.contains(amrex::IntVect(i+1,j+1,k+1))) { continue; }
+                    auto const& ls = levset.const_array(mfi);
+                    auto const& ecx = edge_cent[0]->const_array(mfi);
+                    auto const& ecy = edge_cent[1]->const_array(mfi);
+                    auto const& ecz = edge_cent[2]->const_array(mfi);
+
+                    result["levset_c"]  = ls(i,j,k);
+                    result["levset_xp"] = ls(i+1,j,k);
+                    result["levset_xm"] = ls(i-1,j,k);
+                    result["levset_yp"] = ls(i,j+1,k);
+                    result["levset_ym"] = ls(i,j-1,k);
+                    result["levset_zp"] = ls(i,j,k+1);
+                    result["levset_zm"] = ls(i,j,k-1);
+                    result["ecx_p"] = ecx(i,j,k);
+                    result["ecx_m"] = ecx(i-1,j,k);
+                    result["ecy_p"] = ecy(i,j,k);
+                    result["ecy_m"] = ecy(i,j-1,k);
+                    result["ecz_p"] = ecz(i,j,k);
+                    result["ecz_m"] = ecz(i,j,k-1);
+                    found = true;
+                    break;
+                }
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(found,
+                    "debug_adjoint_query_node: (i,j,k) plus its neighbours are "
+                    "not all inside one fab's valid+ghost region");
+                return result;
+            },
+            py::arg("i"), py::arg("j"), py::arg("k"),
+            "DEBUG/TEMPORARY: dump levset (self + 6 neighbours) and ecx/ecy/ecz "
+            "(this node's 6 edges) at nodal index (i,j,k), for inspecting "
+            "individual nodes flagged by the forward-apply vs scale*rhs "
+            "residual comparison."
         )
         .def("saxpy_field_masked",
             [] (WarpX& wx, const std::string& target, const std::string& source,

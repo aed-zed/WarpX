@@ -61,6 +61,13 @@ p.add_argument("--adjoint", action="store_true",
                help="build Psi with the in-code ADJOINT solve instead of a "
                     "probed table: N_e solves, no probe placement, exact by "
                     "construction rather than sampled")
+p.add_argument("--adjoint_rhs", type=str, default="operator",
+               choices=("operator", "charge"),
+               help="RHS for --adjoint: 'operator' (default) is the "
+                    "operator's own Dirichlet-row sum; 'charge' is the "
+                    "functional WarpX actually books charge with "
+                    "(WarpXBuildAdjointRHSChargeFunctional), which needs "
+                    "add_indicator=False so covered nodes stay at 0")
 p.add_argument("--r_right", type=float, default=None)
 p.add_argument("--which", type=str, default="left", choices=("left", "right"),
                help="which sphere to place the absorption events against")
@@ -119,6 +126,8 @@ from pywarpx.multi_electrode_corrector import (  # noqa: E402
     MultiElectrodeBiasCorrector,
 )
 
+_gather_mode = "deposit" if (args.adjoint and args.adjoint_rhs == "charge") else "node"
+print(f"gather_mode: {_gather_mode}")
 corrector = MultiElectrodeBiasCorrector(
     sim=sim, correction_interval=999999,
     electrodes=[{"name": "left", "region": "(x<0)", "potential": V_left},
@@ -126,6 +135,7 @@ corrector = MultiElectrodeBiasCorrector(
     enable_gauss_clean=False, verbose=True,
     book_absorption=True, absorption_species=["probe"],
     psi_table=args.psi_table,
+    gather_mode=_gather_mode,
 )
 installafterInitEsolve(corrector.setup_after_init)
 
@@ -139,10 +149,14 @@ def _build_adjoint():
     w = corrector._warpx()
     mfr = corrector._mfr()
     tables = []
+    kwargs = {}
+    if args.adjoint_rhs == "charge":
+        kwargs = {"rhs_mode": "charge", "add_indicator": False}
     for k, reg in enumerate(corrector.regions):
         name = corrector._psi_names[k]          # already registered at setup
         ok, res = w.solve_adjoint_weighting(region=reg, out_name=name,
-                                            tol=1.0e-10, max_iter=2000)
+                                            tol=1.0e-10, max_iter=2000,
+                                            **kwargs)
         print(f"  adjoint Psi[{corrector.names[k]}]: converged={ok} "
               f"rel.residual={res:.3e}")
         if not ok:

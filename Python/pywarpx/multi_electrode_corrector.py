@@ -108,6 +108,7 @@ class MultiElectrodeBiasCorrector:
         absorption_species=None,
         impact_histogram_cap=0,
         psi_table=None,
+        gather_mode="node",
     ):
         if not (0.0 < relaxation <= 1.0):
             raise ValueError("relaxation must be in (0, 1].")
@@ -177,6 +178,21 @@ class MultiElectrodeBiasCorrector:
         # that is wired up. Shape: list of n nodal arrays, or a path to the
         # .npz T5 writes.
         self._psi_override = None
+
+        # gather_mode selects how _gather_psi turns a nodal Psi table into a
+        # per-particle value. "node" (default, unchanged behavior) is a plain
+        # trilinear gather of the nodal table at the particle position.
+        # "deposit" additionally pre-filters the nodal table with WarpX's
+        # default single-pass separable binomial filter [0.25, 0.5, 0.25]
+        # before the SAME trilinear gather -- see _gather_psi's docstring for
+        # why: WarpX's real charge deposit is not plain nodal CIC, it is nodal
+        # CIC *composed with* that filter, so gathering the unfiltered table
+        # is inconsistent with what rho_fp actually measures at that position.
+        if gather_mode not in ("node", "deposit"):
+            raise ValueError(f"gather_mode must be 'node' or 'deposit', got {gather_mode!r}")
+        self.gather_mode = gather_mode
+        self._psi_filtered_cache = {}   # k -> filtered nodal array, for gather_mode="deposit"
+
         if psi_table is not None:
             self.load_psi_table(psi_table)
 
@@ -411,28 +427,104 @@ class MultiElectrodeBiasCorrector:
                 f"psi_table has {len(table)} arrays but there are {self.n} "
                 "electrodes")
         self._psi_override = table
+        self._psi_filtered_cache = {}   # stale after the table changes
         return self
 
-    def _gather_psi(self, k, x, y, z):
-        """Trilinear gather of psi_k at particle positions.
+    def _nodal_psi(self, k):
+        """The raw nodal Psi_k table (override if supplied, else psi_unit_k)."""
+        import numpy as np  # noqa: PLC0415
 
-        Uses the SAME shape function as the field gather (``particle_shape =
-        "linear"``). That is not a detail: the bookkeeping identity holds
-        exactly only when gather and deposit are adjoint operations, which for
-        a shared shape function they are. Using a different (e.g. nearest-node)
-        interpolation here would reintroduce an error of the same order as the
-        one being removed.
+        if self._psi_override is not None:
+            return np.asarray(self._psi_override[k])
+        return np.asarray(self._mfr().get(self._psi_names[k], level=0)[:, :, :])
+
+    @staticmethod
+    def _binomial_filter_3d(psi_nodal):
+        """WarpX's default rho/current filter: one pass of the separable
+        [0.25, 0.5, 0.25] binomial stencil along each axis, zero-padded at the
+        array edges (Psi is ~0 in the free region away from its own electrode
+        and the table here is only ever evaluated deep in the interior, so the
+        edge treatment does not matter for the booking use case).
+
+        HARDCODES A SINGLE PASS. This matches WarpX's default
+        (``warpx.use_filter=1``, ``warpx.filter_npass_each_dir=1``); if a run
+        ever configures more passes, this must be generalized (apply the pass
+        this many times) rather than silently mismatching the true deposit.
         """
         import numpy as np  # noqa: PLC0415
 
-        mfr = self._mfr()
+        def one_pass(a, axis):
+            left = np.zeros_like(a)
+            right = np.zeros_like(a)
+            idx_dst = [slice(None)] * a.ndim
+            idx_src = [slice(None)] * a.ndim
+            idx_dst[axis] = slice(1, None)
+            idx_src[axis] = slice(0, -1)
+            left[tuple(idx_dst)] = a[tuple(idx_src)]
+            idx_dst2 = [slice(None)] * a.ndim
+            idx_src2 = [slice(None)] * a.ndim
+            idx_dst2[axis] = slice(0, -1)
+            idx_src2[axis] = slice(1, None)
+            right[tuple(idx_dst2)] = a[tuple(idx_src2)]
+            return 0.5 * a + 0.25 * left + 0.25 * right
+
+        out = np.asarray(psi_nodal, dtype=float)
+        for ax in (0, 1, 2):
+            out = one_pass(out, ax)
+        return out
+
+    def _psi_for_gather(self, k):
+        """The nodal table _gather_psi actually reads, per ``self.gather_mode``."""
+        if self.gather_mode == "node":
+            return self._nodal_psi(k)
+        # "deposit"
+        if k not in self._psi_filtered_cache:
+            self._psi_filtered_cache[k] = self._binomial_filter_3d(self._nodal_psi(k))
+        return self._psi_filtered_cache[k]
+
+    def _gather_psi(self, k, x, y, z, mode=None):
+        """Deposit-consistent gather of psi_k at particle positions.
+
+        WHY THIS IS NOT A PLAIN TRILINEAR GATHER OF THE STORED TABLE.
+        WarpX's real charge deposit to ``rho_fp`` is not plain nodal linear
+        (CIC) interpolation: it is nodal CIC *composed with* WarpX's default
+        single-pass separable binomial filter ``[0.25, 0.5, 0.25]`` per axis
+        (``warpx.use_filter=1``, the default). Measured directly (probe
+        macroparticle, off-node positions, nx=32 fixture,
+        ``verify_offnode_weights.py``): the composed weight w_a at each node a
+        matches nodal-CIC-then-filter to **machine precision**
+        (max|actual-predicted| = 8-9e-17 across 64 affected nodes, two
+        independent non-mirrored fractional offsets), whereas the
+        CIC-to-cell-center + cell-to-node-average model considered earlier
+        matches only to 3.8-4.4e-2 (max node-weight error) and reproduces the
+        true charge functional ``sum_a w_a*Psi[a]`` to only 0.13%-0.78%
+        relative -- small enough to look "close" but not exact, and not
+        obviously wrong until checked against non-mirrored offsets.
+
+        Because the filter is a symmetric (self-adjoint) linear operator,
+        ``sum_a rho_a * Psi_a = sum_a (Filter . CIC)_a * Psi_a
+        = sum_a CIC_a * (Filter . Psi)_a`` -- i.e. the deposit-consistent
+        gather is: filter the nodal Psi table ONCE (``_psi_for_gather``,
+        cached), then use the ORDINARY nodal trilinear gather below, unchanged
+        from the plain "node" mode. No cell-centered indexing is needed; the
+        earlier cell-averaged-table design was superseded once the off-node
+        check falsified its underlying deposit model.
+
+        ``mode`` overrides ``self.gather_mode`` for this call only
+        ("node" | "deposit"); default None uses the instance setting.
+        """
+        import numpy as np  # noqa: PLC0415
+
         geom = self._warpx().Geom(lev=0).data()
         dx = np.array(geom.CellSize())
         lo = np.array(geom.ProbLo())
-        if self._psi_override is not None:
-            psi = self._psi_override[k]
+        mode = mode or self.gather_mode
+        if mode == "node":
+            psi = self._nodal_psi(k)
+        elif mode == "deposit":
+            psi = self._psi_for_gather(k)
         else:
-            psi = np.asarray(mfr.get(self._psi_names[k], level=0)[:, :, :])
+            raise ValueError(f"mode must be 'node' or 'deposit', got {mode!r}")
 
         g = (np.stack([x, y, z], axis=1) - lo) / dx    # (N, 3) in cell units
         i0 = np.floor(g).astype(np.int64)
