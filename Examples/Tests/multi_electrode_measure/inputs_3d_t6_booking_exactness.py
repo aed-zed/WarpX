@@ -68,6 +68,14 @@ p.add_argument("--adjoint_rhs", type=str, default="operator",
                     "functional WarpX actually books charge with "
                     "(WarpXBuildAdjointRHSChargeFunctional), which needs "
                     "add_indicator=False so covered nodes stay at 0")
+p.add_argument("--solver", type=str, default="cgnr",
+               choices=("auto", "cgnr", "pmlmg"),
+               help="linear solver for --adjoint's A^T psi = rhs solve: "
+                    "'cgnr' (default, unchanged prior behaviour) is CG on "
+                    "the normal equations; 'pmlmg' is BiCGSTAB on A^T "
+                    "preconditioned by a forward MLMG solve of A; 'auto' "
+                    "tries pmlmg and falls back to cgnr if it fails to "
+                    "converge")
 p.add_argument("--r_right", type=float, default=None)
 p.add_argument("--which", type=str, default="left", choices=("left", "right"),
                help="which sphere to place the absorption events against")
@@ -149,9 +157,9 @@ def _build_adjoint():
     w = corrector._warpx()
     mfr = corrector._mfr()
     tables = []
-    kwargs = {}
+    kwargs = {"solver": args.solver}
     if args.adjoint_rhs == "charge":
-        kwargs = {"rhs_mode": "charge", "add_indicator": False}
+        kwargs.update({"rhs_mode": "charge", "add_indicator": False})
     for k, reg in enumerate(corrector.regions):
         name = corrector._psi_names[k]          # already registered at setup
         ok, res = w.solve_adjoint_weighting(region=reg, out_name=name,

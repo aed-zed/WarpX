@@ -87,6 +87,11 @@ p.add_argument("--total_steps", type=int, default=2000)
 p.add_argument("--out", type=str, default=None,
                help="output .npz path (default: fourarm_v6/arm_<arm>.npz "
                     "relative to the repo's multi_electrode_measure dir)")
+p.add_argument("--solver", type=str, default="cgnr",
+               choices=("auto", "cgnr", "pmlmg"),
+               help="linear solver for _build_adjoint's A^T psi = rhs solve "
+                    "(see solve_adjoint_weighting's solver= docstring); "
+                    "default 'cgnr' reproduces prior behaviour exactly")
 args = p.parse_args()
 
 ARM = args.arm
@@ -369,7 +374,7 @@ def _build_adjoint():
         # rel.residual~9.95e-11, T6 acceptance booking relative error 0.00%.
         ok, res = w.solve_adjoint_weighting(
             region=reg, out_name=name, rhs_mode="charge", add_indicator=False,
-            tol=1.0e-10, max_iter=30000,
+            tol=1.0e-10, max_iter=30000, solver=args.solver,
         )
         print(f"  adjoint Psi[{corrector.names[k]}]: converged={ok} "
               f"rel.residual={res:.3e}", flush=True)
@@ -691,6 +696,7 @@ print(f"{'='*90}", flush=True)
 t_init_start = time.time()
 sim.step(0)
 t_init_end = time.time()
+print(f"INIT_WALL_TIME_S(early)={t_init_end - t_init_start:.3f}", flush=True)
 
 t_steps_start = time.time()
 sim.step(total_steps)

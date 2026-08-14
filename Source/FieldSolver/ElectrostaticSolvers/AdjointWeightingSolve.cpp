@@ -51,10 +51,15 @@
 #include <AMReX_MultiFab.H>
 #include <AMReX_MFIter.H>
 #include <AMReX_EBFabFactory.H>
+#include <AMReX_LO_BCTYPES.H>
+#include <AMReX_MLEBNodeFDLaplacian.H>
+#include <AMReX_MLMG.H>
 #include <AMReX_ParallelDescriptor.H>
 #include <AMReX_Parser.H>
 
 #include <cmath>
+#include <memory>
+#include <stdexcept>
 
 namespace {
 
@@ -145,6 +150,146 @@ amrex::Real Dot (amrex::MultiFab const& a, amrex::MultiFab const& b)
 {
     amrex::Real s = amrex::MultiFab::Dot(a, 0, b, 0, 1, 0);
     return s;
+}
+
+/** Build WarpX's own forward EB Laplacian, configured EXACTLY like
+ * ablastr::fields::computePhi's EB branch (ablastr/fields/PoissonSolver.H):
+ * same Geometry/BoxArray/DistributionMapping/EB factory, setSigma({1,1,1}),
+ * homogeneous EB Dirichlet (setEBDirichlet(0.0)), homogeneous Dirichlet
+ * domain BCs on all faces. This makes the operator's Fapply IDENTICAL to the
+ * forward apply ApplyOp(transpose=false) reproduces above -- i.e. this IS our
+ * A, not an approximation of it. Used as the right-preconditioner for the
+ * BiCGSTAB solve of A^T psi = rhs in WarpXSolveAdjointWeightingPrecond: A is
+ * non-symmetric only in the thin cut-cell shell (check_adjoint_route.py, F2
+ * /F3), so a forward MLMG solve of A is an excellent approximate inverse of
+ * A^{-T}.
+ */
+std::unique_ptr<amrex::MLEBNodeFDLaplacian> BuildAdjointPrecondLinOp (
+    amrex::BoxArray const& ba, amrex::DistributionMapping const& dm, int lev)
+{
+    auto& warpx = WarpX::GetInstance();
+    auto const& eb_fact = warpx.fieldEBFactory(lev);
+
+    amrex::LPInfo info;
+    auto linop = std::make_unique<amrex::MLEBNodeFDLaplacian>(
+        amrex::Vector<amrex::Geometry>{warpx.Geom(lev)},
+        amrex::Vector<amrex::BoxArray>{ba},
+        amrex::Vector<amrex::DistributionMapping>{dm},
+        info,
+        amrex::Vector<amrex::EBFArrayBoxFactory const*>{&eb_fact});
+
+    linop->setSigma({AMREX_D_DECL(amrex::Real(1.0), amrex::Real(1.0), amrex::Real(1.0))});
+    linop->setEBDirichlet(amrex::Real(0.0));
+
+    amrex::Array<amrex::LinOpBCType,AMREX_SPACEDIM> const lobc = {AMREX_D_DECL(
+        amrex::LinOpBCType::Dirichlet, amrex::LinOpBCType::Dirichlet,
+        amrex::LinOpBCType::Dirichlet)};
+    amrex::Array<amrex::LinOpBCType,AMREX_SPACEDIM> const hibc = lobc;
+    linop->setDomainBC(lobc, hibc);
+
+    return linop;
+}
+
+/** Per-node MLMG rhs-scale S(node) = min(hp,hm) over the node's six edges,
+ * i.e. the SAME diagonal MLEBNodeFDLaplacian::scaleRHS applies to whatever
+ * rhs a caller hands to MLMG::solve (mlebndfdlap_scale_rhs,
+ * AMReX_MLEBNodeFDLap_3D_K.H). Needed to pre-divide the preconditioner's
+ * input by S so that the forward solve returns A^{-1} v exactly rather than
+ * A^{-1} (S v) -- see WarpXSolveAdjointWeightingPrecond's header comment for
+ * why this turned out not to matter in practice.
+ */
+void ComputeNodeMinScale (amrex::MultiFab& scale_mf, int lev)
+{
+    auto& warpx = WarpX::GetInstance();
+    auto const& eb_fact = warpx.fieldEBFactory(lev);
+    auto const& edge_cent = eb_fact.getEdgeCent();
+
+    for (amrex::MFIter mfi(scale_mf); mfi.isValid(); ++mfi) {
+        const amrex::Box& vbx = mfi.validbox();
+        auto const& sa = scale_mf.array(mfi);
+        auto const& ecx = edge_cent[0]->const_array(mfi);
+        auto const& ecy = edge_cent[1]->const_array(mfi);
+        auto const& ecz = edge_cent[2]->const_array(mfi);
+        amrex::ParallelFor(vbx,
+            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                using amrex::Real;
+                const Real hpx = (ecx(i  ,j,k) == Real(1.0)) ? Real(1.0)
+                               : (Real(1.0) + Real(2.0)*ecx(i  ,j,k));
+                const Real hmx = (ecx(i-1,j,k) == Real(1.0)) ? Real(1.0)
+                               : (Real(1.0) - Real(2.0)*ecx(i-1,j,k));
+                const Real hpy = (ecy(i,j  ,k) == Real(1.0)) ? Real(1.0)
+                               : (Real(1.0) + Real(2.0)*ecy(i,j  ,k));
+                const Real hmy = (ecy(i,j-1,k) == Real(1.0)) ? Real(1.0)
+                               : (Real(1.0) - Real(2.0)*ecy(i,j-1,k));
+                const Real hpz = (ecz(i,j,k  ) == Real(1.0)) ? Real(1.0)
+                               : (Real(1.0) + Real(2.0)*ecz(i,j,k  ));
+                const Real hmz = (ecz(i,j,k-1) == Real(1.0)) ? Real(1.0)
+                               : (Real(1.0) - Real(2.0)*ecz(i,j,k-1));
+                Real scale = amrex::min(hmx, hpx);
+                scale = amrex::min(scale, hmy, hpy);
+                scale = amrex::min(scale, hmz, hpz);
+                sa(i,j,k) = scale;
+            });
+    }
+    scale_mf.FillBoundary(warpx.Geom(lev).periodicity());
+}
+
+/** Preconditioner variants under evaluation (electrode-potential-maintenance
+ * reviews, round-trip test against ApplyOp(transpose=false)):
+ *   0 : plain MLMG::solve(z, v, prec_rtol, 0.0) -- ignores that MLMG's
+ *       internal scaleRHS multiplies v by S(node) = min edge height, i.e.
+ *       returns z with A z = S v, not A z = v.
+ *   1 : pre-divide v by S (floored at 1e-6, identity below the floor) before
+ *       calling MLMG::solve, so A z = S (v/S) = v where S is resolved.
+ * Both zero the dmsk!=0 rows of z before returning, matching ApplyOp's
+ * free-row convention.
+ */
+enum class PrecondVariant { PlainSolve = 0, PreDivideS = 1 };
+
+void ApplyPrecond (amrex::MultiFab& z, amrex::MultiFab const& v,
+                   amrex::iMultiFab const& dmsk, int lev,
+                   amrex::MLMG& mlmg, amrex::Real prec_rtol,
+                   PrecondVariant variant, amrex::MultiFab const* sinv)
+{
+    auto& warpx = WarpX::GetInstance();
+
+    z.setVal(0.0);
+    if (variant == PrecondVariant::PreDivideS) {
+        AMREX_ALWAYS_ASSERT(sinv != nullptr);
+        amrex::MultiFab vscaled(v.boxArray(), v.DistributionMap(), 1, v.nGrowVect());
+        amrex::MultiFab::Copy(vscaled, v, 0, 0, 1, 0);
+        amrex::MultiFab::Multiply(vscaled, *sinv, 0, 0, 1, 0);
+        try {
+            mlmg.solve({&z}, {&vscaled}, prec_rtol, amrex::Real(0.0));
+        } catch (std::exception const& e) {
+            amrex::Print() << "WarpXSolveAdjointWeightingPrecond: "
+                           << "preconditioner solve did not converge ("
+                           << e.what() << "); using its last iterate.\n";
+        }
+    } else {
+        try {
+            mlmg.solve({&z}, {&v}, prec_rtol, amrex::Real(0.0));
+        } catch (std::exception const& e) {
+            amrex::Print() << "WarpXSolveAdjointWeightingPrecond: "
+                           << "preconditioner solve did not converge ("
+                           << e.what() << "); using its last iterate.\n";
+        }
+    }
+
+    // Keep the preconditioner output in the free-row space, matching
+    // ApplyOp's convention (dmsk!=0 rows carry no equation).
+    for (amrex::MFIter mfi(z); mfi.isValid(); ++mfi) {
+        const amrex::Box& vbx = mfi.validbox();
+        auto const& za = z.array(mfi);
+        auto const& dm_arr = dmsk.const_array(mfi);
+        amrex::ParallelFor(vbx,
+            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                if (dm_arr(i,j,k) != 0) { za(i,j,k) = amrex::Real(0.0); }
+            });
+    }
+    z.FillBoundary(warpx.Geom(lev).periodicity());
 }
 
 } // namespace
@@ -560,6 +705,190 @@ bool WarpXSolveAdjointWeighting (amrex::MultiFab& psi,
     return converged;
 }
 
+/** Solve A^T Psi = rhs by BiCGSTAB on A^T directly, RIGHT-preconditioned by a
+ * forward MLMG solve of A (WarpX's own EB Laplacian, BuildAdjointPrecondLinOp
+ * above). Replaces the squared-condition-number normal-equation CG above for
+ * the "pmlmg"/"auto" solver modes: check_adjoint_route.py F2/F3 shows A is
+ * non-symmetric only in the thin cut-cell shell, so A^{-1} is an excellent
+ * approximate inverse of A^{-T}, and F4 measured 14-15 outer BiCGSTAB
+ * iterations independent of resolution on exactly this preconditioning
+ * scheme -- versus ~30000 CG iterations at nx=80 on the normal equations.
+ *
+ * WHY THE S-SCALING MATTERS (round-trip validation,
+ * electrode-potential-maintenance/reviews as of this task): MLMG's
+ * MLEBNodeFDLaplacian::scaleRHS multiplies whatever rhs a caller hands to
+ * MLMG::solve by S(node) = min over the node's six edge heights BEFORE
+ * solving, i.e. mlmg.solve(z, v, ...) returns z with A z = S v, not A z = v.
+ * For a preconditioner this is NOT a harmless approximation: a round-trip
+ * test (pick free-row x, w = A x, z = Precond(w), compare z to x) measured
+ * max|z-x|/max|x| = 0.49 -- an O(1) error, useless as a preconditioner --
+ * when v was handed to MLMG::solve unmodified. Pre-dividing v by S first
+ * (floored at 1e-6 to avoid dividing by near-zero) fixed this exactly: the
+ * same round trip then reproduces x to ~1e-5 at prec_rtol=1e-4 and ~1e-7 at
+ * prec_rtol=1e-6 -- i.e. z = A^{-1} v to within the preconditioner's own
+ * solve tolerance, as intended. This function therefore always pre-divides.
+ *
+ * PRECONDITIONER TOLERANCE: prec_rtol=1e-4 (the default) kept outer BiCGSTAB
+ * iteration counts at 11-12, essentially flat across nx=32/48/64/80 in
+ * testing (see the task's acceptance-table measurements) -- comfortably
+ * under the "~30 iterations" threshold at which the task calls for
+ * tightening to 1e-6, so 1e-4 is what shipped. A tighter tolerance buys (at
+ * best) fewer outer iterations at the cost of more work per preconditioner
+ * solve; with 1e-4 already flat and well under the threshold, there was no
+ * measured benefit to tightening it further.
+ *
+ * The preconditioner operator is built ONCE (BuildAdjointPrecondLinOp) and
+ * its MLMG object reused for every outer iteration's preconditioner apply --
+ * the whole point of this route is that setup cost is paid once, not once
+ * per iteration.
+ *
+ * MLMG's own convergence-failure path (`amrex::Abort`) is converted to a
+ * catchable exception via `setThrowException(true)`; ApplyPrecond above
+ * catches it and returns its last iterate (z has 1 ghost cell and therefore
+ * gets ALIASED as MLMG's internal solution buffer -- see
+ * MLMGT::prepareForSolve -- so that last iterate is exactly what z holds at
+ * the moment of the exception, not garbage). A preconditioner solve that
+ * merely runs out of iterations therefore degrades the outer iteration's
+ * progress instead of aborting the whole process, so `solver="auto"`'s
+ * fallback to cgnr (wired in the Python binding) is reachable from outer
+ * BiCGSTAB non-convergence as intended.
+ *
+ * \param iters_out optional: outer BiCGSTAB iterations actually used.
+ * \param prec_rtol optional: relative tolerance for the preconditioner's
+ *        inner MLMG solve (see above).
+ * \return true if the TRUE residual |A^T psi - rhs| / |rhs| reached `tol`
+ *         within `max_iter` outer iterations. Same contract as
+ *         WarpXSolveAdjointWeighting: the caller MUST check this.
+ */
+bool WarpXSolveAdjointWeightingPrecond (amrex::MultiFab& psi,
+                                        amrex::MultiFab const& rhs,
+                                        amrex::iMultiFab const& dmsk,
+                                        int lev, amrex::Real tol, int max_iter,
+                                        amrex::Real* final_res,
+                                        int* iters_out,
+                                        amrex::Real prec_rtol)
+{
+    auto& warpx = WarpX::GetInstance();
+    const amrex::BoxArray& ba = psi.boxArray();
+    const amrex::DistributionMapping& dm = psi.DistributionMap();
+    const int ng = psi.nGrow();
+    auto const& eb_fact = warpx.fieldEBFactory(lev);
+
+    // ---- Build the preconditioner ONCE, reuse across all outer iterations -
+    auto linop = BuildAdjointPrecondLinOp(ba, dm, lev);
+    amrex::MLMG mlmg(*linop);
+    mlmg.setVerbose(0);
+    mlmg.setMaxIter(100);
+    mlmg.setConvergenceNormType(amrex::MLMGNormType::greater);
+    mlmg.setThrowException(true);
+
+    amrex::MultiFab s(ba, dm, 1, 1);
+    ComputeNodeMinScale(s, lev);
+    amrex::MultiFab sinv(ba, dm, 1, 1);
+    constexpr amrex::Real floor_s = amrex::Real(1.0e-6);
+    for (amrex::MFIter mfi(s); mfi.isValid(); ++mfi) {
+        const amrex::Box& vbx = mfi.validbox();
+        auto const& sa = s.const_array(mfi);
+        auto const& sia = sinv.array(mfi);
+        amrex::ParallelFor(vbx,
+            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                sia(i,j,k) = (sa(i,j,k) > floor_s)
+                    ? amrex::Real(1.0) / sa(i,j,k) : amrex::Real(1.0);
+            });
+    }
+    sinv.FillBoundary(warpx.Geom(lev).periodicity());
+
+    // Preconditioner input/output buffers: built with the EB factory and 1
+    // ghost cell so MLMG aliases them as its own solution array (rather than
+    // copying), which both avoids a copy every iteration and means a
+    // preconditioner solve that merely fails to converge still leaves its
+    // best iterate in y/z (see header comment).
+    amrex::MultiFab y(ba, dm, 1, 1, amrex::MFInfo(), eb_fact);
+    amrex::MultiFab z(ba, dm, 1, 1, amrex::MFInfo(), eb_fact);
+
+    // ---- BiCGSTAB on A^T psi = rhs, right-preconditioned by Precond -------
+    // Standard preconditioned BiCGSTAB (e.g. Saad, "Iterative Methods for
+    // Sparse Linear Systems", sec. 7.4.2), right preconditioning applied by
+    // ApplyPrecond in place of an explicit M^{-1}: dedicated buffers
+    // throughout, no in-place aliasing tricks -- clarity over saving a
+    // handful of MultiFab allocations paid once per electrode.
+    amrex::MultiFab r(ba, dm, 1, ng), rhat(ba, dm, 1, ng);
+    amrex::MultiFab p(ba, dm, 1, ng), v(ba, dm, 1, ng);
+    amrex::MultiFab s_vec(ba, dm, 1, ng), t_vec(ba, dm, 1, ng);
+    amrex::MultiFab true_res(ba, dm, 1, ng);
+
+    psi.setVal(0.0);
+    amrex::MultiFab::Copy(r, rhs, 0, 0, 1, 0);      // r0 = rhs - A^T*0 = rhs
+    amrex::MultiFab::Copy(rhat, r, 0, 0, 1, 0);
+    p.setVal(0.0);
+    v.setVal(0.0);
+
+    const amrex::Real b_norm = std::sqrt(Dot(rhs, rhs));
+    if (b_norm == amrex::Real(0.0)) {
+        if (final_res) { *final_res = 0.0; }
+        if (iters_out) { *iters_out = 0; }
+        return true;
+    }
+
+    amrex::Real rho = amrex::Real(1.0);
+    amrex::Real alpha = amrex::Real(1.0);
+    amrex::Real omega = amrex::Real(1.0);
+
+    bool converged = false;
+    int it_used = 0;
+    for (int it = 0; it < max_iter; ++it) {
+        const amrex::Real rho_new = Dot(rhat, r);
+        if (rho_new == amrex::Real(0.0)) { break; }   // breakdown
+
+        if (it == 0) {
+            amrex::MultiFab::Copy(p, r, 0, 0, 1, 0);
+        } else {
+            const amrex::Real beta = (rho_new / rho) * (alpha / omega);
+            amrex::MultiFab::Saxpy(p, -omega, v, 0, 0, 1, 0);  // p = p - omega*v
+            amrex::MultiFab::Xpay(p, beta, r, 0, 0, 1, 0);     // p = r + beta*p
+        }
+
+        ApplyPrecond(y, p, dmsk, lev, mlmg, prec_rtol,
+                    PrecondVariant::PreDivideS, &sinv);          // y ~= A^{-1} p
+        ApplyOp(v, y, dmsk, lev, /*transpose=*/true);            // v = A^T y
+
+        const amrex::Real rhat_v = Dot(rhat, v);
+        if (rhat_v == amrex::Real(0.0)) { break; }
+        alpha = rho_new / rhat_v;
+
+        amrex::MultiFab::Copy(s_vec, r, 0, 0, 1, 0);
+        amrex::MultiFab::Saxpy(s_vec, -alpha, v, 0, 0, 1, 0);   // s = r - alpha*v
+
+        ApplyPrecond(z, s_vec, dmsk, lev, mlmg, prec_rtol,
+                    PrecondVariant::PreDivideS, &sinv);          // z ~= A^{-1} s
+        ApplyOp(t_vec, z, dmsk, lev, /*transpose=*/true);        // t = A^T z
+
+        const amrex::Real tt = Dot(t_vec, t_vec);
+        omega = (tt == amrex::Real(0.0)) ? amrex::Real(0.0) : Dot(t_vec, s_vec) / tt;
+
+        amrex::MultiFab::Saxpy(psi, alpha, y, 0, 0, 1, 0);
+        amrex::MultiFab::Saxpy(psi, omega, z, 0, 0, 1, 0);
+
+        amrex::MultiFab::Copy(r, s_vec, 0, 0, 1, 0);
+        amrex::MultiFab::Saxpy(r, -omega, t_vec, 0, 0, 1, 0);   // r = s - omega*t
+
+        it_used = it + 1;
+
+        // Convergence on the TRUE residual |A^T psi - rhs| / |rhs|.
+        ApplyOp(true_res, psi, dmsk, lev, /*transpose=*/true);
+        amrex::MultiFab::Subtract(true_res, rhs, 0, 0, 1, 0);
+        const amrex::Real rel = std::sqrt(Dot(true_res, true_res)) / b_norm;
+        if (final_res) { *final_res = rel; }
+        if (rel < tol) { converged = true; break; }
+
+        if (omega == amrex::Real(0.0)) { break; }        // breakdown
+        rho = rho_new;
+    }
+    if (iters_out) { *iters_out = it_used; }
+    return converged;
+}
+
 /** Rescale a solved charge-functional Psi (WarpXBuildAdjointRHSChargeFunctional
  * + WarpXSolveAdjointWeighting) into the weighting potential the booking
  * ledger needs.
@@ -659,6 +988,74 @@ void WarpXDebugForwardApply (amrex::MultiFab& y, amrex::MultiFab const& x,
                              amrex::iMultiFab const& dmsk, int lev)
 {
     ApplyOp(y, x, dmsk, lev, /*transpose=*/false);
+}
+
+/** DEBUG: apply the MLMG-based preconditioner (BuildAdjointPrecondLinOp +
+ * ApplyPrecond) to `v_in`, writing the result into `z_out`. Used to validate
+ * the preconditioner in isolation, BEFORE wiring it into
+ * WarpXSolveAdjointWeightingPrecond's outer BiCGSTAB: pick a free-row vector
+ * x, forward-apply it (WarpXDebugForwardApply, ApplyOp transpose=false) to
+ * get w = A x, then Precond(w) should reproduce x to about prec_rtol if the
+ * preconditioner really is (an approximate inverse of) our own A. `variant`
+ * selects between the two S-scaling choices described at ApplyPrecond's
+ * declaration: 0 = plain MLMG::solve, 1 = pre-divide by S first.
+ *
+ * Builds and discards its own MLMG object every call (round-trip validation
+ * only -- the production path builds it once per
+ * WarpXSolveAdjointWeightingPrecond call and reuses it across the whole outer
+ * iteration, per the task's performance requirement).
+ */
+void WarpXDebugPrecondApply (amrex::MultiFab& z_out, amrex::MultiFab const& v_in,
+                             amrex::iMultiFab const& dmsk, int lev,
+                             int variant, amrex::Real prec_rtol)
+{
+    auto& warpx = WarpX::GetInstance();
+    auto const& eb_fact = warpx.fieldEBFactory(lev);
+    const amrex::BoxArray& ba = z_out.boxArray();
+    const amrex::DistributionMapping& dm = z_out.DistributionMap();
+
+    auto linop = BuildAdjointPrecondLinOp(ba, dm, lev);
+    amrex::MLMG mlmg(*linop);
+    mlmg.setVerbose(0);
+    mlmg.setMaxIter(100);
+    mlmg.setConvergenceNormType(amrex::MLMGNormType::greater);
+    mlmg.setThrowException(true);
+
+    const PrecondVariant pv = (variant == 1) ? PrecondVariant::PreDivideS
+                                             : PrecondVariant::PlainSolve;
+
+    amrex::MultiFab sinv;
+    if (pv == PrecondVariant::PreDivideS) {
+        amrex::MultiFab s(ba, dm, 1, 1);
+        ComputeNodeMinScale(s, lev);
+        sinv.define(ba, dm, 1, 1);
+        constexpr amrex::Real floor_s = amrex::Real(1.0e-6);
+        for (amrex::MFIter mfi(s); mfi.isValid(); ++mfi) {
+            const amrex::Box& vbx = mfi.validbox();
+            auto const& sa = s.const_array(mfi);
+            auto const& sia = sinv.array(mfi);
+            amrex::ParallelFor(vbx,
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    sia(i,j,k) = (sa(i,j,k) > floor_s)
+                        ? amrex::Real(1.0) / sa(i,j,k) : amrex::Real(1.0);
+                });
+        }
+        sinv.FillBoundary(warpx.Geom(lev).periodicity());
+    }
+
+    // Precond's output buffer must carry the EB factory (so MLMG's internal
+    // EB_set_covered acts on real EB data when it aliases this buffer as its
+    // solution array) and 1 ghost cell (so it DOES get aliased rather than
+    // copied) -- z_out itself may be a plain registered field with neither,
+    // so route through an internal EB-aware scratch buffer and copy out.
+    amrex::MultiFab z(ba, dm, 1, 1, amrex::MFInfo(), eb_fact);
+    ApplyPrecond(z, v_in, dmsk, lev, mlmg, prec_rtol, pv,
+                 pv == PrecondVariant::PreDivideS ? &sinv : nullptr);
+
+    z_out.setVal(0.0);
+    amrex::MultiFab::Copy(z_out, z, 0, 0, 1, 0);
+    z_out.FillBoundary(warpx.Geom(lev).periodicity());
 }
 
 /** Write the per-node MLMG rhs-scale S(node) = min(hp,hm) over the node's six
