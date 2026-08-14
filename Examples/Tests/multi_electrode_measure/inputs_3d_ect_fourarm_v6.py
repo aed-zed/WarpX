@@ -58,6 +58,14 @@ pyamrex-RPATH background):
     export UCX_TLS=tcp,self
     export PYTHONPATH=/home/mgarten/src/warpx/build/lib/site-packages:/home/mgarten/src/warpx/Examples/Tests/multi_electrode_measure
     python inputs_3d_ect_fourarm_v6.py --arm {a,b,c,d} [--total_steps 2000] [--out PATH.npz]
+        [--r_right 0.018]
+
+--r_right (default None -> RR = R, i.e. equal spheres, current/original
+behavior byte-identical): sets the RIGHT sphere's radius independently of the
+left sphere's R, geometrically breaking the left/right mirror symmetry (EB
+implicit function's second max() term, the corrector's electrode_radii=[R,
+RR], and the right electrode's own Gauss-box margins all use RR). Mirrors
+inputs_3d_t6_booking_exactness.py's identical --r_right flag.
 
 ALWAYS single-rank (no mpirun): the four arms must share an identical
 particle realization, which requires an identical domain decomposition, so
@@ -92,6 +100,14 @@ p.add_argument("--solver", type=str, default="cgnr",
                help="linear solver for _build_adjoint's A^T psi = rhs solve "
                     "(see solve_adjoint_weighting's solver= docstring); "
                     "default 'cgnr' reproduces prior behaviour exactly")
+p.add_argument("--r_right", type=float, default=None,
+               help="radius of the right sphere (m). Default None reproduces "
+                    "the v6 equal-radii geometry exactly (RR = R): the EB "
+                    "implicit function, the corrector's electrode_radii, and "
+                    "the right-electrode Gauss-box margins are all unchanged "
+                    "byte-for-byte in that case. Pass e.g. 0.018 to break the "
+                    "left/right mirror symmetry (see "
+                    "inputs_3d_t6_booking_exactness.py's identical --r_right).")
 args = p.parse_args()
 
 ARM = args.arm
@@ -139,6 +155,7 @@ preflight.require(bindings=(
 cells_per_R = 10
 L = 12e-2
 R = 1.5e-2
+RR = args.r_right if args.r_right is not None else R
 center_offset = 3e-2
 V_left = +300.0
 V_right = -700.0
@@ -159,7 +176,21 @@ z_beam_hi = -half + L_actual / 8
 vz_drift = 0.1 * c_light
 vx_impact = -vz_drift * center_offset / half
 
-h_boxes = [R + 2 * dx, R + 5 * dx, R + 8 * dx]
+
+# Per-sphere Gauss-box margins -- byte-identical to the old shared h_boxes
+# when RR == R (the default). Sized relative to each sphere's OWN radius so
+# the same 2/5/8-dx clearance from the electrode SURFACE is preserved when
+# RR != R; reusing the left-sphere h_boxes for an enlarged right electrode
+# would put the "close" box tangent to (or inside) it (R + 2*dx == 1.8 cm
+# exactly equals RR at --r_right 0.018, i.e. zero clearance). Clamped to
+# _H_MAX so the "far" box's outer face never reaches the domain wall --
+# without this, RR=0.018's far box (RR+8*dx=3.0 cm) sits exactly on the
+# wall (xc+h == half == 6.0 cm), which rounds to the one-past-the-end cell
+# index and IndexErrors in gauss_box_charge.
+_H_MAX = half - center_offset - 2 * dx
+h_boxes = [min(R + n * dx, _H_MAX) for n in (2, 5, 8)]
+h_boxes_right = [min(RR + n * dx, _H_MAX) for n in (2, 5, 8)]
+H_BOXES = {"left": h_boxes, "right": h_boxes_right}
 box_labels = ["close", "mid", "far"]
 cfl = 0.9
 frame_interval = 50
@@ -177,6 +208,8 @@ print(f"FOUR-ARM ELECTRODE-POTENTIAL-MAINTENANCE CAMPAIGN -- arm {ARM} "
       f"({CFG['label']})")
 print("=" * 90)
 print(f"Domain: {L_actual*1e2:.2f} cm cube, {nx}^3 cells, dx = {dx*1e3:.3f} mm")
+print(f"Sphere radii: left R={R*1e2:.3f} cm, right RR={RR*1e2:.3f} cm"
+      + ("  (equal -- v6 default geometry)" if RR == R else "  (ASYMMETRIC)"))
 print(f"Total steps: {total_steps}, correction every {correction_interval} steps, "
       f"measure_stride={measure_stride}")
 print(f"do_correction={DO_CORRECTION} book_absorption={CFG['book_absorption']} "
@@ -200,10 +233,10 @@ grid = picmi.Cartesian3DGrid(
 )
 solver = picmi.ElectromagneticSolver(grid=grid, method="ECT", cfl=cfl)
 
-R2 = R * R
+R2, RR2 = R * R, RR * RR
 eb_implicit = (
     f"max({R2}-((x+{center_offset})*(x+{center_offset})+y*y+z*z),"
-    f"{R2}-((x-{center_offset})*(x-{center_offset})+y*y+z*z))"
+    f"{RR2}-((x-{center_offset})*(x-{center_offset})+y*y+z*z))"
 )
 potential_expression = f"({V_left})*(x<0)+({V_right})*(x>0)"
 embedded_boundary = picmi.EmbeddedBoundary(
@@ -314,7 +347,7 @@ if CFG["book_absorption"]:
         absorption_species=["pos", "neg"],
         gather_mode="deposit",
         electrode_centers=[(-center_offset, 0.0, 0.0), (center_offset, 0.0, 0.0)],
-        electrode_radii=[R, R],
+        electrode_radii=[R, RR],
         apply_ledger_correction=CFG["apply_ledger_correction"],
     )
 
@@ -442,7 +475,7 @@ def collect(step):
 
     data = {}
     for s_name, xc, yc, zc, _ in sphere_centers:
-        for h, hl in zip(h_boxes, box_labels):
+        for h, hl in zip(H_BOXES[s_name], box_labels):
             i0 = int(round((xc - h - x_lo) / dxg))
             i1 = int(round((xc + h - x_lo) / dxg))
             j0 = int(round((yc - h - y_lo) / dyg))
@@ -755,9 +788,10 @@ save_dict = dict(
     arm=ARM, arm_label=CFG["label"],
     dx=dx, half=half, nx=nx, nz=nz,
     dt_sim=dt_sim,
-    R=R, center_offset=center_offset,
+    R=R, RR=RR, center_offset=center_offset,
     V_left=V_left, V_right=V_right,
     h_boxes=np.array(h_boxes),
+    h_boxes_right=np.array(h_boxes_right),
     z_beam_lo=z_beam_lo, vz_drift=vz_drift,
     n_beam=n_beam, beam_hw=beam_hw,
     cells_per_R=cells_per_R,
