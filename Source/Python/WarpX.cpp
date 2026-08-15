@@ -6,6 +6,26 @@
 #include "pyWarpX.H"
 
 #include <WarpX.H>
+
+// Adjoint weighting-potential solve, defined in
+// Source/FieldSolver/ElectrostaticSolvers/AdjointWeightingSolve.cpp.
+bool WarpXSolveAdjointWeighting (amrex::MultiFab& psi, amrex::MultiFab const& rhs,
+                                 amrex::iMultiFab const& dmsk, int lev,
+                                 amrex::Real tol, int max_iter,
+                                 amrex::Real* final_res);
+bool WarpXSolveAdjointWeightingPrecond (amrex::MultiFab& psi, amrex::MultiFab const& rhs,
+                                        amrex::iMultiFab const& dmsk, int lev,
+                                        amrex::Real tol, int max_iter,
+                                        amrex::Real* final_res,
+                                        int* iters_out = nullptr,
+                                        amrex::Real prec_rtol = 1.0e-4);
+void WarpXBuildAdjointRHS (amrex::MultiFab& rhs, amrex::MultiFab const& indicator,
+                           amrex::iMultiFab const& dmsk, int lev);
+void WarpXBuildAdjointRHSChargeFunctional (amrex::MultiFab& rhs,
+                                           std::string const& region,
+                                           amrex::iMultiFab const& dmsk, int lev);
+void WarpXFinalizeChargeFunctionalPsi (amrex::MultiFab& psi, int lev);
+
 // see WarpX.cpp - full includes for _fwd.H headers
 #include <BoundaryConditions/PEC_Insulator.H>
 #include <BoundaryConditions/PML.H>
@@ -24,6 +44,7 @@
 #       include <FieldSolver/SpectralSolver/SpectralSolver.H>
 #   endif // RZ ifdef
 #endif // use PSATD ifdef
+#include <FieldSolver/ElectrostaticSolvers/RelativisticExplicitES.H>
 #include <FieldSolver/WarpX_FDTD.H>
 #include <Filter/NCIGodfreyFilter.H>
 #include <Initialization/ExternalField.H>
@@ -33,6 +54,7 @@
 #include <Particles/ParticleBoundaryBuffer.H>
 #include <AcceleratorLattice/AcceleratorLattice.H>
 #include <Utils/TextMsg.H>
+#include <Utils/Parser/ParserUtils.H>
 #include <Utils/WarpXAlgorithmSelection.H>
 #include <Utils/WarpXConst.H>
 #include <Utils/WarpXUtil.H>
@@ -48,6 +70,7 @@
 #if defined(AMREX_DEBUG) || defined(DEBUG)
 #   include <cstdio>
 #endif
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -248,6 +271,209 @@ void init_WarpX (py::module& m)
             },
             py::arg("potential"),
             "Sets the EB potential string and updates the function parser."
+        )
+        .def("solve_poisson_efield",
+            [] (WarpX& wx) { wx.SolvePoissonEfield(); },
+            "Deposit charge from all species, solve Poisson with current EB/domain BCs, "
+            "replace Efield_fp with the result, and publish phi_fp when registered."
+        )
+        .def("compute_eb_charge",
+            [] (WarpX& wx, const std::string& weighting, const std::string& field) {
+                int const lev = 0;
+                ablastr::fields::VectorField E = {
+                    wx.m_fields.get(field, ablastr::fields::Direction{0}, lev),
+                    wx.m_fields.get(field, ablastr::fields::Direction{1}, lev),
+                    wx.m_fields.get(field, ablastr::fields::Direction{2}, lev)
+                };
+                if (weighting.empty() || weighting == "1") {
+                    return wx.ComputeEBChargeWeighted(E, lev, nullptr);
+                }
+                amrex::Parser parser = utils::parser::makeParser(weighting, {"x", "y", "z"});
+                return wx.ComputeEBChargeWeighted(E, lev, &parser);
+            },
+            py::arg("weighting") = "1",
+            py::arg("field") = "Efield_fp",
+            "Induced charge eps0 * oint w(x,y,z) E.n dS over the embedded boundary for the "
+            "named field (default Efield_fp), with an optional spatial weighting w(x,y,z) "
+            "that selects a region/electrode (default w=1, the whole EB). 3D + EB only."
+        )
+        .def("solve_adjoint_weighting",
+            [] (WarpX& wx, const std::string& region, const std::string& out_name,
+                amrex::Real tol, int max_iter,
+                const std::string& rhs_mode, bool add_indicator,
+                const std::string& solver) {
+                int const lev = 0;
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(rhs_mode == "operator" || rhs_mode == "charge",
+                    "solve_adjoint_weighting: rhs_mode must be \"operator\" or \"charge\"");
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+                    solver == "auto" || solver == "cgnr" || solver == "pmlmg",
+                    "solve_adjoint_weighting: solver must be \"auto\", \"cgnr\", or \"pmlmg\"");
+                auto const& eb_fact = wx.fieldEBFactory(lev);
+                auto const& levset = eb_fact.getLevelSet();
+
+                amrex::MultiFab* psi = wx.m_fields.get(out_name, lev);
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(psi != nullptr,
+                    "solve_adjoint_weighting: output field not registered");
+
+                const amrex::BoxArray& ba = psi->boxArray();
+                const amrex::DistributionMapping& dm = psi->DistributionMap();
+
+                // Dirichlet mask: nodes covered by the EB are the constrained
+                // rows; everything else is free. The electrode indicator is 1
+                // on THIS electrode's constrained nodes only.
+                amrex::iMultiFab dmsk(ba, dm, 1, 1);
+                dmsk.setVal(0);
+                amrex::MultiFab ind(ba, dm, 1, 1);
+                ind.setVal(0.0);
+
+                amrex::Parser rparser = utils::parser::makeParser(region, {"x","y","z"});
+                auto rexe = rparser.compile<3>();
+                const auto plo = wx.Geom(lev).ProbLoArray();
+                const auto dx  = wx.Geom(lev).CellSizeArray();
+                const amrex::Box ndom = amrex::surroundingNodes(wx.Geom(lev).Domain());
+                const auto dlo = ndom.smallEnd();
+                const auto dhi = ndom.bigEnd();
+
+                for (amrex::MFIter mfi(dmsk); mfi.isValid(); ++mfi) {
+                    const amrex::Box& bx = mfi.growntilebox();
+                    auto const& dma = dmsk.array(mfi);
+                    auto const& ina = ind.array(mfi);
+                    auto const& ls  = levset.const_array(mfi);
+                    amrex::ParallelFor(bx,
+                        [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                        {
+                            // Constrained rows are (a) nodes covered by the
+                            // EB and (b) nodes on the grounded outer walls.
+                            // Omitting (b) leaves those rows free, so the
+                            // free-node operator is posed on a space that
+                            // includes unconstrained boundary values.
+                            const bool covered = (ls(i,j,k) >= amrex::Real(0.0));
+                            const bool wall =
+                                (i <= dlo[0] || i >= dhi[0] ||
+                                 j <= dlo[1] || j >= dhi[1] ||
+                                 k <= dlo[2] || k >= dhi[2]);
+                            dma(i,j,k) = (covered || wall) ? 1 : 0;
+                            if (covered) {
+                                const amrex::Real x = plo[0] + i*dx[0];
+                                const amrex::Real y = plo[1] + j*dx[1];
+                                const amrex::Real z = plo[2] + k*dx[2];
+                                ina(i,j,k) = rexe(x,y,z);
+                            }
+                        });
+                }
+
+                amrex::MultiFab rhs(ba, dm, 1, 1);
+                if (rhs_mode == "charge") {
+                    // The functional WarpX actually books charge with
+                    // (WarpX::ComputeEBChargeWeighted), not the operator's own
+                    // Dirichlet-row sum -- see AdjointWeightingSolve.cpp.
+                    WarpXBuildAdjointRHSChargeFunctional(rhs, region, dmsk, lev);
+                } else {
+                    WarpXBuildAdjointRHS(rhs, ind, dmsk, lev);
+                }
+
+                amrex::Real res = -1.0;
+                bool ok = false;
+                std::string solver_used;
+                int pmlmg_iters = -1;
+                if (solver == "cgnr") {
+                    ok = WarpXSolveAdjointWeighting(*psi, rhs, dmsk, lev, tol, max_iter, &res);
+                    solver_used = "cgnr";
+                } else {
+                    // "pmlmg" or "auto": try the preconditioned BiCGSTAB route
+                    // first (F4 in check_adjoint_route.py: ~14-15 outer
+                    // iterations independent of resolution, vs the normal
+                    // equations' squared condition number). "auto" falls back
+                    // to cgnr if pmlmg fails to converge; "pmlmg" reports
+                    // whatever it got, matching cgnr's existing contract of
+                    // handing the caller (ok, res) and letting it decide.
+                    //
+                    // pmlmg's outer-iteration unit is a whole MLMG Poisson
+                    // solve, not a cheap matrix-free apply -- max_iter values
+                    // sized for cgnr (callers pass up to 30000-40000) would
+                    // let a stagnating pmlmg burn tens of thousands of
+                    // Poisson solves before ever falling back, orders of
+                    // magnitude worse than the cgnr cost it exists to avoid.
+                    // Measured outer iterations were 11-12, flat across
+                    // nx=32..80 (F4 predicts ~14-15), so 200 is a >10x margin
+                    // while still bounding worst-case cost to "one CG
+                    // iteration's-worth" of Poisson solves, not thousands.
+                    // The caller's own max_iter is still honoured for cgnr
+                    // (either the direct "cgnr" path above, or the fallback
+                    // below), so a caller who explicitly wants cgnr behaviour
+                    // is unaffected.
+                    constexpr int pmlmg_max_outer_iter = 200;
+                    ok = WarpXSolveAdjointWeightingPrecond(
+                        *psi, rhs, dmsk, lev, tol, std::min(max_iter, pmlmg_max_outer_iter),
+                        &res, &pmlmg_iters);
+                    solver_used = "pmlmg";
+                    if (!ok && solver == "auto") {
+                        amrex::Print() << "solve_adjoint_weighting: pmlmg did not "
+                                       << "converge (rel.residual " << res
+                                       << " after " << pmlmg_iters
+                                       << " outer iterations); falling back to cgnr.\n";
+                        ok = WarpXSolveAdjointWeighting(*psi, rhs, dmsk, lev, tol, max_iter, &res);
+                        solver_used = "cgnr";
+                    }
+                }
+                amrex::Print() << "solve_adjoint_weighting: solver=" << solver_used;
+                if (pmlmg_iters >= 0 && solver_used == "pmlmg") {
+                    amrex::Print() << " (" << pmlmg_iters << " outer iterations)";
+                }
+                amrex::Print() << ", converged=" << (ok ? "true" : "false")
+                               << ", rel.residual=" << res << "\n";
+
+                if (rhs_mode == "charge") {
+                    // Apply MLMG's scaleRHS diagonal and the 1/(eps0*dV) unit
+                    // -charge normalisation -- see WarpXFinalizeChargeFunctionalPsi.
+                    WarpXFinalizeChargeFunctionalPsi(*psi, lev);
+                }
+
+                // The plain operator-mode basis sets psi = 1 on its own
+                // electrode from the constrained (Dirichlet) rows -- the
+                // solve above only ever determines the free nodes. The
+                // charge functional has no such Dirichlet meaning (the
+                // covered nodes are simply left at 0, which is the correct
+                // booking value: charge deposited there is inert in the
+                // grounded solve), so add_indicator defaults to off for it
+                // and callers may opt out of it for "operator" mode too.
+                if (add_indicator) {
+                    amrex::MultiFab::Add(*psi, ind, 0, 0, 1, 0);
+                }
+                psi->FillBoundary(wx.Geom(lev).periodicity());
+                return py::make_tuple(ok, res);
+            },
+            py::arg("region"), py::arg("out_name"),
+            py::arg("tol") = 1.0e-10, py::arg("max_iter") = 2000,
+            py::arg("rhs_mode") = "operator", py::arg("add_indicator") = true,
+            py::arg("solver") = "auto",
+            "Solve for the ADJOINT weighting potential Psi_k of the electrode "
+            "selected by region(x,y,z), writing it into the registered nodal "
+            "field out_name. rhs_mode=\"operator\" (default) reproduces the "
+            "prior behaviour exactly; rhs_mode=\"charge\" builds the RHS from "
+            "the charge functional WarpX actually books with "
+            "(ComputeEBChargeWeighted) instead of the operator's own "
+            "Dirichlet-row sum. add_indicator=True (default) sets psi=1 on "
+            "this electrode's own Dirichlet nodes, the correct convention for "
+            "rhs_mode=\"operator\"; pass False (required for rhs_mode=\"charge\") "
+            "to leave covered nodes at 0, the correct booking value there. "
+            "solver selects the linear solve for A^T psi = rhs: \"cgnr\" is "
+            "CG on the normal equations (A A^T), whose squared condition "
+            "number costs ~30000 iterations at nx=80; \"pmlmg\" is BiCGSTAB "
+            "on A^T directly, right-preconditioned by a forward MLMG solve "
+            "of A (WarpX's own EB Laplacian) -- ~11-15 outer iterations "
+            "independent of resolution, and the same wall-clock cost as "
+            "roughly one ordinary Poisson solve per outer iteration instead "
+            "of ~30000 matrix-free applies; \"auto\" (the default) tries "
+            "pmlmg and falls back to cgnr if it fails to converge. Prints "
+            "which solver was actually used and the outer iteration count "
+            "(pmlmg/auto only). "
+            "Returns (converged, relative_residual) -- CHECK "
+            "converged: an unconverged Psi yields a wrong absorption "
+            "correction that looks entirely plausible. Unlike the plain "
+            "unit-voltage basis, this Psi makes the grounded-charge identity "
+            "Q_k = -sum_a rho_a Psi_k[a] exact on WarpX's non-symmetric EB "
+            "Laplacian. 3D + EB only."
         )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },

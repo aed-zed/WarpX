@@ -789,6 +789,12 @@ public:
 
     void ComputeDivE(amrex::MultiFab& divE, int lev);
 
+    /** Return the weighted electric flux through an embedded conductor. */
+    amrex::Real ComputeEBChargeWeighted (
+        ablastr::fields::VectorField const& Efield,
+        int lev,
+        amrex::Parser const* weighting_parser = nullptr);
+
     void ProjectionCleanDivB ();
     void CalculateExternalCurlA ();
 
@@ -810,6 +816,9 @@ public:
 
     /** Electrostatic solve call */
     void ComputeSpaceChargeField (bool reset_E_field, bool reset_B_field);
+
+    /** Deposit charge and replace Efield_fp with the current Poisson solution. */
+    void SolvePoissonEfield ();
 
     // Magnetostatic Solver Interface
     MagnetostaticSolver::VectorPoissonBoundaryHandler m_vector_poisson_boundary_handler;
