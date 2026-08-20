@@ -25,6 +25,8 @@ void WarpXBuildAdjointRHSChargeFunctional (amrex::MultiFab& rhs,
                                            std::string const& region,
                                            amrex::iMultiFab const& dmsk, int lev);
 void WarpXFinalizeChargeFunctionalPsi (amrex::MultiFab& psi, int lev);
+amrex::Real WarpXIntegrateRhoPsi (
+    amrex::MultiFab const& rho, amrex::MultiFab const& psi, int lev);
 
 // see WarpX.cpp - full includes for _fwd.H headers
 #include <BoundaryConditions/PEC_Insulator.H>
@@ -224,6 +226,12 @@ void init_WarpX (py::module& m)
             },
             py::arg("rho"), py::arg("lev")
         )
+#if defined(WARPX_DIM_RZ)
+        .def("rz_axis_volume_factor",
+            [] (WarpX const& wx) { return wx.RZAxisVolumeFactor(); },
+            "Radial axis-node volume factor used by charge deposition."
+        )
+#endif
 #endif
 
         // Expose functions to get the current simulation step and time
@@ -297,6 +305,22 @@ void init_WarpX (py::module& m)
             "named field (default Efield_fp), with an optional spatial weighting w(x,y,z) "
             "that selects a region/electrode (default w=1, the whole EB). 3D + EB only."
         )
+        .def("integrate_rho_psi",
+            [] (WarpX& wx, const std::string& psi_field,
+                const std::string& rho_field, int lev) {
+                auto const* rho = wx.m_fields.get(rho_field, lev);
+                auto const* psi = wx.m_fields.get(psi_field, lev);
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+                    rho != nullptr && psi != nullptr,
+                    "integrate_rho_psi: rho and psi fields must be registered");
+                return WarpXIntegrateRhoPsi(*rho, *psi, lev);
+            },
+            py::arg("psi_field"), py::arg("rho_field") = "rho_fp",
+            py::arg("lev") = 0,
+            "Compute sum rho*Psi*dV over a distributed nodal grid, counting "
+            "shared box-boundary nodes exactly once. In RZ, dV is WarpX's "
+            "cylindrical nodal volume, including the configured axis factor."
+        )
         .def("solve_adjoint_weighting",
             [] (WarpX& wx, const std::string& region, const std::string& out_name,
                 amrex::Real tol, int max_iter,
@@ -348,15 +372,29 @@ void init_WarpX (py::module& m)
                             // free-node operator is posed on a space that
                             // includes unconstrained boundary values.
                             const bool covered = (ls(i,j,k) >= amrex::Real(0.0));
+#ifdef WARPX_DIM_RZ
+                            // r=0 is a regularity (homogeneous Neumann) axis,
+                            // not a grounded wall.  The focused RZ adjoint
+                            // currently requires grounded outer-r and z walls.
+                            const bool wall =
+                                (i >= dhi[0] || j <= dlo[1] || j >= dhi[1]);
+#else
                             const bool wall =
                                 (i <= dlo[0] || i >= dhi[0] ||
                                  j <= dlo[1] || j >= dhi[1] ||
                                  k <= dlo[2] || k >= dhi[2]);
+#endif
                             dma(i,j,k) = (covered || wall) ? 1 : 0;
                             if (covered) {
+#ifdef WARPX_DIM_RZ
+                                const amrex::Real x = plo[0] + i*dx[0];
+                                const amrex::Real y = amrex::Real(0.0);
+                                const amrex::Real z = plo[1] + j*dx[1];
+#else
                                 const amrex::Real x = plo[0] + i*dx[0];
                                 const amrex::Real y = plo[1] + j*dx[1];
                                 const amrex::Real z = plo[2] + k*dx[2];
+#endif
                                 ina(i,j,k) = rexe(x,y,z);
                             }
                         });

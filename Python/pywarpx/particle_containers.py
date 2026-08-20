@@ -636,7 +636,9 @@ class ParticleContainerWrapper(object):
 
     bz = property(getbz)
 
-    def deposit_charge_density(self, level, clear_rho=True, sync_rho=True):
+    def deposit_charge_density(
+        self, level, clear_rho=True, sync_rho=True, apply_volume_scaling=True
+    ):
         """
         Deposit this species' charge density in rho_fp in order to
         access that data via pywarpx.fields.RhoFPWrapper().
@@ -651,6 +653,10 @@ class ParticleContainerWrapper(object):
             If True, zero out rho_fp before deposition.
         sync_rho       : bool
             If True, perform MPI exchange and properly set boundary cells for rho_fp.
+        apply_volume_scaling : bool
+            In radial geometry, convert the raw logical-grid deposit to a
+            physical density. Set False while accumulating several species
+            and apply the scaling once to the completed sum.
         """
         fields = libwarpx.warpx.multifab_register()
         rho_fp = fields.get("rho_fp", level=level)
@@ -664,7 +670,7 @@ class ParticleContainerWrapper(object):
         # deposit the charge density from the desired species
         self.particle_container.deposit_charge(rho_fp, level)
 
-        if libwarpx.geometry_dim == "rz":
+        if libwarpx.geometry_dim == "rz" and apply_volume_scaling:
             libwarpx.warpx.apply_inverse_volume_scaling_to_charge_density(rho_fp, level)
 
         if sync_rho:

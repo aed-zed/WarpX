@@ -583,7 +583,16 @@ public:
                                                     int lev) const;
 
     void ApplyInverseVolumeScalingToChargeDensity (amrex::MultiFab* Rho,
-                                                   int lev) const;
+                                                    int lev) const;
+
+#if defined(WARPX_DIM_RZ)
+    /** Axis-node radial volume factor used by charge deposition. */
+    [[nodiscard]] amrex::Real RZAxisVolumeFactor () const noexcept
+    {
+        return m_verboncoeur_axis_correction ? amrex::Real(1.0/3.0)
+                                             : amrex::Real(1.0/4.0);
+    }
+#endif
 #endif
 
     /**

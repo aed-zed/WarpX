@@ -88,6 +88,13 @@ class MultiElectrodeBiasCorrector:
         correction (the fixed point); <1 softens the per-step jump.
     verbose : bool, optional
         Print per-electrode voltages each correction.
+    particle_shape : int, optional
+        Particle B-spline order used by the discrete observer. The focused RZ
+        implementation currently validates CIC only (order 1).
+    filter_passes : int, optional
+        Number of binomial charge-filter passes represented by deposit-mode
+        impact gathering. Use 0 with ``warpx_use_filter=False`` in RZ; the
+        transpose of WarpX's volume-weighted radial filter is not implemented.
     electrode_centers : list of (x, y, z), optional
         One centre per electrode, used ONLY by ``accumulate_absorption()`` to
         geometrically attribute an absorbed particle to the electrode it
@@ -118,12 +125,10 @@ class MultiElectrodeBiasCorrector:
         evaluates the algebraically equivalent dot product ``Q_g,k = -sum_a
         rho_a * dV * Psi_k[a]`` directly against the already-deposited nodal
         charge density -- no Poisson solve, no save/restore of the live
-        field. Requires the ADJOINT Psi tables to already be loaded via
-        ``load_psi_table()`` (raises a clear error otherwise -- there is
-        nothing to dot against ``rho`` without them, and the PLAIN
-        Dirichlet-basis ``psi_unit_k`` is the wrong basis for this identity
-        for the same non-symmetric-operator reason noted throughout this
-        module, Section 3b of the report).
+        field. Setup automatically builds the ADJOINT Psi fields unless an
+        external table was supplied with ``load_psi_table()``. Internally
+        built fields are paired with rho by a distributed C++ owner-masked
+        reduction, so shared nodal box boundaries are counted exactly once.
         VALIDATED (after a rho-source fix): agrees with ``"grounded"`` to a
         relative difference of ~1e-8-1e-11 on a pure-screening negative
         control (nonzero rho, no absorption) and ~4e-8-1e-10 across 8 probe
@@ -159,8 +164,11 @@ class MultiElectrodeBiasCorrector:
         impact_histogram_cap=0,
         psi_table=None,
         gather_mode="node",
+        particle_shape=1,
+        filter_passes=1,
         electrode_centers=None,
         electrode_radii=None,
+        track_absorption_deficit=True,
         apply_ledger_correction=False,
         qg_mode="grounded",
         adjoint_solver="auto",
@@ -255,6 +263,10 @@ class MultiElectrodeBiasCorrector:
         # that is wired up. Shape: list of n nodal arrays, or a path to the
         # .npz T5 writes.
         self._psi_override = None
+        # True when build_adjoint_weighting() populated the registered
+        # psi_unit_k MultiFabs.  The production reciprocity pairing can then
+        # stay distributed in C++ instead of assembling box-local NumPy views.
+        self._adjoint_fields_available = False
 
         # gather_mode selects how _gather_psi turns a nodal Psi table into a
         # per-particle value. "node" (default, unchanged behavior) is a plain
@@ -268,7 +280,28 @@ class MultiElectrodeBiasCorrector:
         if gather_mode not in ("node", "deposit"):
             raise ValueError(f"gather_mode must be 'node' or 'deposit', got {gather_mode!r}")
         self.gather_mode = gather_mode
+        self.particle_shape = int(particle_shape)
+        self.filter_passes = int(filter_passes)
+        if self.particle_shape != 1:
+            raise NotImplementedError(
+                "The focused deposit-adjoint ledger currently supports CIC "
+                "(particle_shape=1). Higher-order RZ shape transposes are a "
+                "follow-up; use CIC rather than silently mis-booking impacts."
+            )
+        if self.filter_passes < 0:
+            raise ValueError("filter_passes must be non-negative.")
+        if (
+            self.filter_passes != 0
+            and self.gather_mode == "deposit"
+            and self._geometry_dim() == "rz"
+        ):
+            raise NotImplementedError(
+                "Filtered RZ impact gathering requires the transpose of "
+                "WarpX's volume-weighted radial filter. Set warpx_use_filter=False "
+                "and filter_passes=0 for the validated CIC path."
+            )
         self._psi_filtered_cache = {}   # k -> filtered nodal array, for gather_mode="deposit"
+        self.track_absorption_deficit = bool(track_absorption_deficit)
 
         # qg_mode selects how measure_voltages() obtains Q_g (see its
         # docstring for the derivation). Not validated against psi-table
@@ -287,15 +320,10 @@ class MultiElectrodeBiasCorrector:
         self.adjoint_max_iterations = int(adjoint_max_iterations)
         if self.adjoint_solver not in {"auto", "pmlmg", "cgnr"}:
             raise ValueError("adjoint_solver must be 'auto', 'pmlmg', or 'cgnr'.")
-        # Cache for the raw nodal psi_unit_k table (used when _psi_override is
-        # None). Reading it (mfr.get(...)[:, :, :]) triggers an MPI allgather
-        # in pyAMReX's MultiFab.__getitem__ -- a COLLECTIVE call that every
-        # rank must issue the same number of times in the same order. Once
-        # filled, this cache is never invalidated (psi_unit_k is fixed after
-        # setup_after_init() and never mutated again), so the collective is
-        # paid at most once per electrode -- see the prefetch call at the top
-        # of accumulate_absorption() for why it must not be filled lazily
-        # from a rank-locally-conditioned branch.
+        # Cache for NumPy Psi views used only by the optional per-impact
+        # absorption ledger. A pyAMReX MultiFab slice is box-local on a
+        # decomposed grid; the production rho-Psi observer intentionally does
+        # not use this cache and stays distributed in C++.
         self._nodal_psi_cache = {}
 
         # Optional geometric attribution for accumulate_absorption()'s
@@ -335,6 +363,22 @@ class MultiElectrodeBiasCorrector:
 
     def _Direction(self, comp):
         return _get_libwarpx().libwarpx_so.Direction(comp)
+
+    @staticmethod
+    def _geometry_dim():
+        lib = _get_libwarpx()
+        # geometry_dim is populated lazily when the compiled extension loads.
+        lib.libwarpx_so
+        return lib.geometry_dim
+
+    def _read_scalar_field(self, name, lev=0):
+        """Read scalar component zero with the correct pyAMReX dimensionality."""
+        import numpy as np  # noqa: PLC0415
+
+        mf = self._mfr().get(name, level=lev)
+        if self._geometry_dim() == "rz":
+            return np.asarray(mf[:, :, 0])
+        return np.asarray(mf[:, :, :, 0])
 
     # -- setup ---------------------------------------------------------------
     def setup_after_init(self):
@@ -428,12 +472,9 @@ class MultiElectrodeBiasCorrector:
             print(self._capacitance)
 
     def build_adjoint_weighting(self):
-        """Build and load the discrete Shockley--Ramo weighting potentials."""
-        import numpy as np  # noqa: PLC0415
+        """Build the discrete Shockley--Ramo weighting potentials."""
 
         warpx = self._warpx()
-        mfr = self._mfr()
-        tables = []
         for k, region in enumerate(self.regions):
             name = self._psi_names[k]
             ok, residual = warpx.solve_adjoint_weighting(
@@ -455,8 +496,7 @@ class MultiElectrodeBiasCorrector:
                     f"[MultiElectrode] adjoint Psi[{self.names[k]}]: "
                     f"relative residual={residual:.3e}"
                 )
-            tables.append(np.array(mfr.get(name, level=0)[:, :, :]))
-        self.load_psi_table(tables)
+        self._adjoint_fields_available = True
 
     def _alloc_psi_fields(self, lev):
         """Allocate one nodal scalar MultiFab per electrode for psi_k.
@@ -598,43 +638,34 @@ class MultiElectrodeBiasCorrector:
     def _nodal_psi(self, k):
         """The raw nodal Psi_k table (override if supplied, else psi_unit_k).
 
-        CACHED AND COLLECTIVE. When there is no override, this reads the
-        psi_unit_k MultiFab via ``mf[:, :, :]``, which in pyAMReX performs an
-        MPI allgather so every rank gets the full global nodal array -- a
-        COLLECTIVE call that every rank must issue the same number of times,
-        in the same order. psi_unit_k is fixed after ``setup_after_init()``
-        and never mutated again, so the result is cached on first use and the
-        collective is paid at most once per electrode. This cache is why
-        ``accumulate_absorption()`` prefetches every electrode's table
-        unconditionally near the top of the method, BEFORE any rank-locally-
-        conditioned skip logic -- see that method's docstring. Do not call
-        this lazily from a branch whose condition can differ between ranks
-        (e.g. "this rank has new particles this step"): if one rank fills the
-        cache while another does not reach the call at all, the allgather
-        deadlocks.
+        CACHED, BUT BOX-LOCAL ON A DECOMPOSED GRID. This NumPy path exists for
+        external tables and the optional impact ledger. It is not used by the
+        production rho-Psi observer, which calls ``integrate_rho_psi`` on the
+        distributed MultiFabs. Do not enable the impact ledger for a
+        decomposed RZ production run until its particle-position gather is
+        likewise distributed.
         """
         import numpy as np  # noqa: PLC0415
 
         if self._psi_override is not None:
             return np.asarray(self._psi_override[k])
         if k not in self._nodal_psi_cache:
-            self._nodal_psi_cache[k] = np.asarray(
-                self._mfr().get(self._psi_names[k], level=0)[:, :, :]
+            self._nodal_psi_cache[k] = self._read_scalar_field(
+                self._psi_names[k], lev=0
             )
         return self._nodal_psi_cache[k]
 
-    @staticmethod
-    def _binomial_filter_3d(psi_nodal):
-        """WarpX's default rho/current filter: one pass of the separable
+    def _binomial_filter_3d(self, psi_nodal):
+        """WarpX's separable [0.25, 0.5, 0.25] rho/current filter.
+
+        Applies ``self.filter_passes`` passes
         [0.25, 0.5, 0.25] binomial stencil along each axis, zero-padded at the
         array edges (Psi is ~0 in the free region away from its own electrode
         and the table here is only ever evaluated deep in the interior, so the
         edge treatment does not matter for the booking use case).
 
-        HARDCODES A SINGLE PASS. This matches WarpX's default
-        (``warpx.use_filter=1``, ``warpx.filter_npass_each_dir=1``); if a run
-        ever configures more passes, this must be generalized (apply the pass
-        this many times) rather than silently mismatching the true deposit.
+        The default ``filter_passes=1`` matches WarpX's default
+        ``warpx.filter_npass_each_dir=1``.
         """
         import numpy as np  # noqa: PLC0415
 
@@ -654,8 +685,9 @@ class MultiElectrodeBiasCorrector:
             return 0.5 * a + 0.25 * left + 0.25 * right
 
         out = np.asarray(psi_nodal, dtype=float)
-        for ax in (0, 1, 2):
-            out = one_pass(out, ax)
+        for _ in range(self.filter_passes):
+            for ax in range(out.ndim):
+                out = one_pass(out, ax)
         return out
 
     def _psi_for_gather(self, k):
@@ -711,19 +743,33 @@ class MultiElectrodeBiasCorrector:
         else:
             raise ValueError(f"mode must be 'node' or 'deposit', got {mode!r}")
 
-        g = (np.stack([x, y, z], axis=1) - lo) / dx    # (N, 3) in cell units
+        if self._geometry_dim() == "rz":
+            r = np.sqrt(np.asarray(x) ** 2 + np.asarray(y) ** 2)
+            g = (np.stack([r, z], axis=1) - lo[:2]) / dx[:2]
+        else:
+            g = (np.stack([x, y, z], axis=1) - lo) / dx
         i0 = np.floor(g).astype(np.int64)
         f = g - i0
         shp = np.array(psi.shape) - 1
         i0 = np.clip(i0, 0, shp - 1)
         out = np.zeros(len(x))
-        for c0 in (0, 1):
-            for c1 in (0, 1):
-                for c2 in (0, 1):
-                    w = ((1 - f[:, 0]) if c0 == 0 else f[:, 0]) \
-                        * ((1 - f[:, 1]) if c1 == 0 else f[:, 1]) \
-                        * ((1 - f[:, 2]) if c2 == 0 else f[:, 2])
-                    out += w * psi[i0[:, 0] + c0, i0[:, 1] + c1, i0[:, 2] + c2]
+        if self._geometry_dim() == "rz":
+            for c0 in (0, 1):
+                for c1 in (0, 1):
+                    w = ((1 - f[:, 0]) if c0 == 0 else f[:, 0]) * (
+                        (1 - f[:, 1]) if c1 == 0 else f[:, 1]
+                    )
+                    out += w * psi[i0[:, 0] + c0, i0[:, 1] + c1]
+        else:
+            for c0 in (0, 1):
+                for c1 in (0, 1):
+                    for c2 in (0, 1):
+                        w = ((1 - f[:, 0]) if c0 == 0 else f[:, 0]) \
+                            * ((1 - f[:, 1]) if c1 == 0 else f[:, 1]) \
+                            * ((1 - f[:, 2]) if c2 == 0 else f[:, 2])
+                        out += w * psi[
+                            i0[:, 0] + c0, i0[:, 1] + c1, i0[:, 2] + c2
+                        ]
         return out
 
     def accumulate_absorption(self):
@@ -895,17 +941,9 @@ class MultiElectrodeBiasCorrector:
             self._absorb_booked = np.zeros((self.n, ns))
             self._absorb_counts = np.zeros(ns, dtype=np.int64)
 
-        # Prefetch every electrode's psi table UNCONDITIONALLY, before any
-        # rank-locally-conditioned skip logic below. When there is no
-        # psi_override, _nodal_psi(k) triggers a collective MPI allgather the
-        # FIRST time it is called for a given k (see its docstring) and caches
-        # the result forever after (psi_unit_k never changes post-setup). If
-        # that first call were instead reached only from inside the
-        # per-species "do I have new data" branch, two ranks with different
-        # local scrape timing could diverge on whether they call it at all --
-        # deadlock. This loop runs identically on every rank every call
-        # (accumulate_absorption() itself is invoked in lockstep by the
-        # step callback), so the collective, when it happens, is symmetric.
+        # Cache each table before entering rank-local scrape branches. This
+        # NumPy gather is supported only for an explicitly supplied global
+        # table or a one-box mesh; see _nodal_psi().
         for k in range(self.n):
             self._nodal_psi(k)
 
@@ -957,6 +995,16 @@ class MultiElectrodeBiasCorrector:
 
             psis = np.stack([self._gather_psi(k, x, y, z)
                              for k in range(self.n)], axis=0)   # (n, N)
+
+            # The clamp consumes only `booked`.  Geometric struck-electrode
+            # attribution is needed solely for the optional diagnostic
+            # `deficit`; complex RZ ring/electrode surfaces generally cannot
+            # be represented by the legacy sphere-centre heuristic.
+            if not self.track_absorption_deficit:
+                for k in range(self.n):
+                    self._absorb_booked[k, s] += float(np.sum(q_p * psis[k]))
+                self._absorb_counts[s] += len(x)
+                continue
 
             # Which electrode was struck? An impact perturbs EVERY conductor,
             # so all n rows of `deficit` are updated regardless -- cross-terms
@@ -1618,11 +1666,10 @@ class MultiElectrodeBiasCorrector:
         (see that method for the rho-access/deposit pattern this mirrors),
         evaluated here against the ADJOINT Psi (the same table
         ``load_psi_table()`` supplies for the absorption ledger) rather than
-        being offered as a separate opt-in cross-check. Requires the ADJOINT
-        table: the ordinary/plain ``psi_unit_k`` is the wrong basis for a
-        non-symmetric cut-cell operator (Section 3b), so ``qg_mode=
-        "reciprocity"`` raises immediately if ``load_psi_table()`` has not
-        been called. Uses the RAW (unfiltered) nodal Psi table -- the SAME
+        being offered as a separate opt-in cross-check. Setup automatically
+        builds the ADJOINT fields; the ordinary/plain Dirichlet basis is the
+        wrong basis for a non-symmetric cut-cell operator (Section 3b). Uses
+        the RAW (unfiltered) nodal Psi field -- the SAME
         one ``accumulate_absorption()`` would use with ``gather_mode="node"``
         -- and NOT the ``gather_mode="deposit"`` binomial-filtered table
         ``_psi_for_gather()`` builds for particle-position gathers: ``rho_a``
@@ -1631,17 +1678,11 @@ class MultiElectrodeBiasCorrector:
         already been through whatever filtering the deposit performs, so
         filtering Psi again on top would double-apply it.
 
-        MPI DISCIPLINE. ``mpc.get_charge_density(lev, False)[:, :, :]``, like
-        the psi-table reads elsewhere in this module, performs an MPI
-        allgather in pyAMReX's ``MultiFab.__getitem__`` -- a COLLECTIVE call
-        every rank must issue. It is invoked unconditionally whenever
-        ``qg_mode="reciprocity"`` (no rank-locally-conditioned branch guards
-        it), the same discipline ``accumulate_absorption()``'s psi prefetch
-        documents. Because the allgather makes both ``rho`` and each
-        ``Psi_k`` table full GLOBAL arrays identically on every rank, the
-        dot product ``sum(rho * psi_k)`` is computed redundantly but
-        IDENTICALLY on every rank -- it is already rank-symmetric and needs
-        no further MPI reduction afterward.
+        MPI DISCIPLINE. The production path deposits and synchronizes
+        ``rho_fp``, then evaluates the pairing in C++ on the distributed
+        MultiFabs. An AMReX OwnerMask counts shared nodal box-boundary values
+        once and ``sum_unique`` performs the MPI reduction. Every rank must
+        call the observer collectively, as it does from the step callback.
 
         MEASURED ACCURACY -- VALIDATED, AFTER A RHO-SOURCE FIX
         -----------------------------------------------------------------
@@ -1823,7 +1864,7 @@ class MultiElectrodeBiasCorrector:
         ng = libwarpx.amr.IntVect(4)
         mfr.alloc_init("rho_fp", lev, nba, eref.dm(), 2, ng, 0.0, True, True)
 
-    def _deposit_and_read_rho_fp(self, lev):
+    def _deposit_and_read_rho_fp(self, lev, read_back=True):
         """Deposit EVERY species' charge into the registered ``rho_fp`` and
         return it as a numpy array -- the SAME filtered nodal density
         ``solve_poisson_efield()`` itself consumes as its RHS, unlike
@@ -1864,12 +1905,10 @@ class MultiElectrodeBiasCorrector:
         species and continuing to add more would NOT equal filtering the
         completed sum once.
 
-        COLLECTIVE. Depositing is a local per-tile operation, but
-        ``sync_rho()`` performs the guard-cell MPI exchange, and reading the
-        result back via ``mf[:, :, :, 0]`` performs the same MPI allgather as
-        every other MultiFab read in this module -- called unconditionally
-        on every rank, exactly like the psi prefetch in
-        ``accumulate_absorption()``.
+        COLLECTIVE. Depositing is local per tile and ``sync_rho()`` performs
+        the guard-cell MPI exchange. The normal observer leaves rho
+        distributed; a NumPy readback occurs only for an explicitly supplied
+        external Psi table.
 
         COMPONENT 0, EXPLICITLY. ``rho_fp`` has 2 components (see
         ``_ensure_rho_fp()``'s docstring for why 1 is not enough once this
@@ -1902,8 +1941,6 @@ class MultiElectrodeBiasCorrector:
         treat ``rho_fp`` as owned by whichever of {this method, the main PIC
         loop} last wrote it, not as a stable snapshot.
         """
-        import numpy as np  # noqa: PLC0415
-
         from pywarpx.particle_containers import (  # noqa: PLC0415
             ParticleContainerWrapper,
         )
@@ -1929,11 +1966,22 @@ class MultiElectrodeBiasCorrector:
                 # attribute-lookup cost) again every measure_voltages() call.
                 self._species_pcw_cache[name] = ParticleContainerWrapper(name)
             self._species_pcw_cache[name].deposit_charge_density(
-                level=lev, clear_rho=(i == 0), sync_rho=False
+                level=lev,
+                clear_rho=(i == 0),
+                sync_rho=False,
+                apply_volume_scaling=False,
+            )
+        if self._geometry_dim() == "rz":
+            # Apply the nonlinear-in-index cylindrical normalization once to
+            # the completed multi-species sum. Applying it after each species
+            # would rescale the earlier species repeatedly.
+            self._warpx().apply_inverse_volume_scaling_to_charge_density(
+                self._mfr().get("rho_fp", level=lev), lev
             )
         self._warpx().sync_rho()   # single filter/exchange pass -- see above
-        mfr = self._mfr()
-        return np.asarray(mfr.get("rho_fp", level=lev)[:, :, :, 0])
+        if read_back:
+            return self._read_scalar_field("rho_fp", lev=lev)
+        return None
 
     def _grounded_charge_via_reciprocity(self, lev):
         """``qg_mode="reciprocity"``: Q_g,k = -sum_a rho_a * dV * Psi_k[a].
@@ -1947,16 +1995,16 @@ class MultiElectrodeBiasCorrector:
         """
         import numpy as np  # noqa: PLC0415
 
-        if self._psi_override is None:
+        if self._psi_override is None and not self._adjoint_fields_available:
             raise RuntimeError(
-                "qg_mode='reciprocity' requires adjoint Psi tables to be "
-                "loaded via load_psi_table() before measure_voltages() is "
-                "first called -- there is nothing to dot rho against "
+                "qg_mode='reciprocity' requires adjoint Psi fields. Call "
+                "setup_after_init() first so they are built automatically, "
+                "or load an external table via load_psi_table(); there is "
+                "nothing to dot rho against "
                 "without them, and the plain psi_unit_k basis is the wrong "
                 "one for this identity on a non-symmetric cut-cell operator "
-                "(Section 3b of the report). Call load_psi_table(...) (e.g. "
-                "after a solve_adjoint_weighting pass, as T8's "
-                "_build_adjoint() does) first, or use qg_mode='grounded'."
+                "(Section 3b of the report). Alternatively use "
+                "qg_mode='grounded'."
             )
 
         warpx = self._warpx()
@@ -1964,11 +2012,37 @@ class MultiElectrodeBiasCorrector:
         # reading the result back), called unconditionally -- see
         # _deposit_and_read_rho_fp's docstring for why this, and NOT
         # mpc.get_charge_density(), is the rho the identity needs.
+        if self._adjoint_fields_available:
+            # Keep both fields distributed. The C++ reduction applies an
+            # OwnerMask so shared nodal box boundaries contribute exactly
+            # once, and uses the same RZ nodal volumes as the adjoint
+            # normalization. A Python MultiFab slice is only a box-local FAB
+            # for a decomposed mesh and cannot implement this global pairing.
+            self._deposit_and_read_rho_fp(lev, read_back=False)
+            return np.asarray(
+                [
+                    -warpx.integrate_rho_psi(
+                        psi_field=self._psi_names[k], rho_field="rho_fp", lev=lev
+                    )
+                    for k in range(self.n)
+                ]
+            )
+
         rho = self._deposit_and_read_rho_fp(lev)
 
         geom_data = warpx.Geom(lev=lev).data()
-        dxs = geom_data.CellSize()
-        dV = dxs[0] * dxs[1] * dxs[2]
+        dxs = np.asarray(geom_data.CellSize())
+        if self._geometry_dim() == "rz":
+            lo = np.asarray(geom_data.ProbLo())
+            radius = lo[0] + np.arange(rho.shape[0]) * dxs[0]
+            radial_measure = 2.0 * np.pi * radius
+            if radius[0] == 0.0:
+                radial_measure[0] = (
+                    np.pi * dxs[0] * warpx.rz_axis_volume_factor()
+                )
+            node_volume = radial_measure[:, None] * dxs[0] * dxs[1]
+        else:
+            node_volume = dxs[0] * dxs[1] * dxs[2]
 
         q_g = np.empty(self.n)
         for k in range(self.n):
@@ -1984,7 +2058,7 @@ class MultiElectrodeBiasCorrector:
                     "the loaded Psi table and the charge density must share "
                     "the nodal grid."
                 )
-            q_g[k] = -np.sum(rho * psi_k) * dV
+            q_g[k] = -np.sum(rho * psi_k * node_volume)
         return q_g
 
     def correct_field(self):

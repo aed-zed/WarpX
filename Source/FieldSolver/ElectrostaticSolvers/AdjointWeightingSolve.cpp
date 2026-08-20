@@ -79,9 +79,15 @@ void ApplyOp (amrex::MultiFab& y, amrex::MultiFab const& x,
     auto const& levset = eb_fact.getLevelSet();
 
     const auto dx = warpx.Geom(lev).CellSizeArray();
+#ifdef WARPX_DIM_RZ
+    const amrex::Real dr = dx[0];
+    const amrex::Real dz = dx[1];
+    const amrex::Real rlo = warpx.Geom(lev).ProbLo(0);
+#else
     const amrex::Real bx = amrex::Real(1.0) / (dx[0] * dx[0]);
     const amrex::Real by = amrex::Real(1.0) / (dx[1] * dx[1]);
     const amrex::Real bz = amrex::Real(1.0) / (dx[2] * dx[2]);
+#endif
 
     y.setVal(0.0);
     // Ghost handling is load-bearing here. FillBoundary only fills ghosts that
@@ -97,6 +103,8 @@ void ApplyOp (amrex::MultiFab& y, amrex::MultiFab const& x,
     xg.setVal(0.0);
     amrex::MultiFab::Copy(xg, x, 0, 0, 1, 0);
     xg.FillBoundary(warpx.Geom(lev).periodicity());
+    const amrex::Periodicity& period = warpx.Geom(lev).periodicity();
+    auto const owner = x.OwnerMask(period);
 
     for (amrex::MFIter mfi(y); mfi.isValid(); ++mfi) {
         const amrex::Box& vbx = mfi.validbox();
@@ -104,51 +112,71 @@ void ApplyOp (amrex::MultiFab& y, amrex::MultiFab const& x,
         auto const& xa = xg.const_array(mfi);
         auto const& ls = levset.const_array(mfi);
         auto const& dm = dmsk.const_array(mfi);
+        auto const& own = owner->const_array(mfi);
         auto const& ecx = edge_cent[0]->const_array(mfi);
         auto const& ecy = edge_cent[1]->const_array(mfi);
+#ifndef WARPX_DIM_RZ
         auto const& ecz = edge_cent[2]->const_array(mfi);
+#endif
 
         if (transpose) {
             amrex::ParallelFor(vbx,
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
+                    // A nodal row on a box interface is valid in both FABs,
+                    // but it is one global degree of freedom. Scatter that
+                    // row exactly once; SumBoundary below collects its
+                    // contributions onto the unique target nodes.
+                    if (own(i,j,k) == 0) { return; }
+#ifdef WARPX_DIM_RZ
+                    warpx_mlebndfdlap_adotx_rz_transpose_eb(
+                        i, j, k, ya, xa, ls, dm, ecx, ecy, dr, dz, rlo,
+                        scatter_from);
+#else
                     warpx_mlebndfdlap_adotx_transpose_eb(
                         i, j, k, ya, xa, ls, dm, ecx, ecy, ecz, bx, by, bz,
                         scatter_from);
-                });
-            // Constrained rows carry no equation: restrict the scatter output
-            // to FREE rows, exactly as the validated numpy transliteration
-            // does (check_transpose_kernel.py, "constrained nodes carry no
-            // equation"). Without this the scatter leaves values on Dirichlet
-            // rows -- the diag term each scatter_from=1 source node writes
-            // onto ITSELF, and spill into wall/covered neighbours -- and the
-            // system A^T psi = rhs acquires equations no psi can satisfy:
-            // rows where the scatter_from=0 operator is identically zero but
-            // the RHS is not. That inconsistency is precisely the 2.004e-02
-            // least-squares plateau the first version stalled at (identical
-            // at max_iter 2000/20000). Q7 (check_adjoint_wiring_status.py)
-            // always validated the FREE-NODE RESTRICTION of the RHS; this
-            // makes the code compute the object Q7 validated.
-            amrex::ParallelFor(vbx,
-                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-                {
-                    if (dm(i,j,k) != 0) { ya(i,j,k) = amrex::Real(0.0); }
+#endif
                 });
         } else {
             amrex::ParallelFor(vbx,
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
+#ifdef WARPX_DIM_RZ
+                    warpx_mlebndfdlap_adotx_rz_forward_eb(
+                        i, j, k, ya, xa, ls, dm, ecx, ecy, dr, dz, rlo);
+#else
                     warpx_mlebndfdlap_adotx_forward_eb(
                         i, j, k, ya, xa, ls, dm, ecx, ecy, ecz, bx, by, bz);
+#endif
                 });
         }
     }
-    y.FillBoundary(warpx.Geom(lev).periodicity());
+    if (transpose) {
+        y.SumBoundary(0, 1, amrex::IntVect(1), amrex::IntVect(0), period);
+        y.OverrideSync(period);
+        // Constrained rows carry no equation: restrict the assembled scatter
+        // output to free rows. This must happen after SumBoundary, otherwise
+        // a neighbouring FAB can add a contribution back onto a wall row.
+        for (amrex::MFIter mfi(y); mfi.isValid(); ++mfi) {
+            const amrex::Box& vbx = mfi.validbox();
+            auto const& ya = y.array(mfi);
+            auto const& dm = dmsk.const_array(mfi);
+            amrex::ParallelFor(vbx,
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (dm(i,j,k) != 0) { ya(i,j,k) = amrex::Real(0.0); }
+                });
+        }
+        y.OverrideSync(period);
+    }
+    y.FillBoundary(period);
 }
 
 amrex::Real Dot (amrex::MultiFab const& a, amrex::MultiFab const& b)
 {
-    amrex::Real s = amrex::MultiFab::Dot(a, 0, b, 0, 1, 0);
+    auto const owner = a.OwnerMask(WarpX::GetInstance().Geom(0).periodicity());
+    amrex::Real s = amrex::MultiFab::Dot(*owner, a, 0, b, 0, 1, 0);
     return s;
 }
 
@@ -179,12 +207,22 @@ std::unique_ptr<amrex::MLEBNodeFDLaplacian> BuildAdjointPrecondLinOp (
         amrex::Vector<amrex::EBFArrayBoxFactory const*>{&eb_fact});
 
     linop->setSigma({AMREX_D_DECL(amrex::Real(1.0), amrex::Real(1.0), amrex::Real(1.0))});
+#ifdef WARPX_DIM_RZ
+    linop->setRZ(true);
+#endif
     linop->setEBDirichlet(amrex::Real(0.0));
 
+#ifdef WARPX_DIM_RZ
+    amrex::Array<amrex::LinOpBCType,AMREX_SPACEDIM> const lobc = {
+        amrex::LinOpBCType::Neumann, amrex::LinOpBCType::Dirichlet};
+    amrex::Array<amrex::LinOpBCType,AMREX_SPACEDIM> const hibc = {
+        amrex::LinOpBCType::Dirichlet, amrex::LinOpBCType::Dirichlet};
+#else
     amrex::Array<amrex::LinOpBCType,AMREX_SPACEDIM> const lobc = {AMREX_D_DECL(
         amrex::LinOpBCType::Dirichlet, amrex::LinOpBCType::Dirichlet,
         amrex::LinOpBCType::Dirichlet)};
     amrex::Array<amrex::LinOpBCType,AMREX_SPACEDIM> const hibc = lobc;
+#endif
     linop->setDomainBC(lobc, hibc);
 
     return linop;
@@ -209,7 +247,9 @@ void ComputeNodeMinScale (amrex::MultiFab& scale_mf, int lev)
         auto const& sa = scale_mf.array(mfi);
         auto const& ecx = edge_cent[0]->const_array(mfi);
         auto const& ecy = edge_cent[1]->const_array(mfi);
+#ifndef WARPX_DIM_RZ
         auto const& ecz = edge_cent[2]->const_array(mfi);
+#endif
         amrex::ParallelFor(vbx,
             [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
@@ -222,13 +262,17 @@ void ComputeNodeMinScale (amrex::MultiFab& scale_mf, int lev)
                                : (Real(1.0) + Real(2.0)*ecy(i,j  ,k));
                 const Real hmy = (ecy(i,j-1,k) == Real(1.0)) ? Real(1.0)
                                : (Real(1.0) - Real(2.0)*ecy(i,j-1,k));
+#ifndef WARPX_DIM_RZ
                 const Real hpz = (ecz(i,j,k  ) == Real(1.0)) ? Real(1.0)
                                : (Real(1.0) + Real(2.0)*ecz(i,j,k  ));
                 const Real hmz = (ecz(i,j,k-1) == Real(1.0)) ? Real(1.0)
                                : (Real(1.0) - Real(2.0)*ecz(i,j,k-1));
+#endif
                 Real scale = amrex::min(hmx, hpx);
                 scale = amrex::min(scale, hmy, hpy);
+#ifndef WARPX_DIM_RZ
                 scale = amrex::min(scale, hmz, hpz);
+#endif
                 sa(i,j,k) = scale;
             });
     }
@@ -260,6 +304,27 @@ void ApplyPrecond (amrex::MultiFab& z, amrex::MultiFab const& v,
         amrex::MultiFab vscaled(v.boxArray(), v.DistributionMap(), 1, v.nGrowVect());
         amrex::MultiFab::Copy(vscaled, v, 0, 0, 1, 0);
         amrex::MultiFab::Multiply(vscaled, *sinv, 0, 0, 1, 0);
+#ifdef WARPX_DIM_RZ
+        // Away from EB cuts, the RZ operator is self-adjoint under the radial
+        // measure W: A^T = W A W^{-1}.  Therefore W A^{-1} W^{-1} is the
+        // natural transpose preconditioner.  The axis row coefficient 4/dr^2
+        // corresponds to the finite-volume weight W(0)=dr/8; normalize all W
+        // by dr so only the dimensionless {1/8,1,2,...} remains.
+        const amrex::Real dr = warpx.Geom(lev).CellSize(0);
+        const amrex::Real rlo = warpx.Geom(lev).ProbLo(0);
+        for (amrex::MFIter mfi(vscaled); mfi.isValid(); ++mfi) {
+            const amrex::Box& bx = mfi.validbox();
+            auto const& va = vscaled.array(mfi);
+            amrex::ParallelFor(bx,
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    const amrex::Real r = rlo + amrex::Real(i)*dr;
+                    const amrex::Real w = (r == amrex::Real(0.0))
+                        ? amrex::Real(1.0/8.0) : r/dr;
+                    va(i,j,k) /= w;
+                });
+        }
+#endif
         try {
             mlmg.solve({&z}, {&vscaled}, prec_rtol, amrex::Real(0.0));
         } catch (std::exception const& e) {
@@ -276,6 +341,25 @@ void ApplyPrecond (amrex::MultiFab& z, amrex::MultiFab const& v,
                            << e.what() << "); using its last iterate.\n";
         }
     }
+
+#ifdef WARPX_DIM_RZ
+    if (variant == PrecondVariant::PreDivideS) {
+        const amrex::Real dr = warpx.Geom(lev).CellSize(0);
+        const amrex::Real rlo = warpx.Geom(lev).ProbLo(0);
+        for (amrex::MFIter mfi(z); mfi.isValid(); ++mfi) {
+            const amrex::Box& bx = mfi.validbox();
+            auto const& za = z.array(mfi);
+            amrex::ParallelFor(bx,
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    const amrex::Real r = rlo + amrex::Real(i)*dr;
+                    const amrex::Real w = (r == amrex::Real(0.0))
+                        ? amrex::Real(1.0/8.0) : r/dr;
+                    za(i,j,k) *= w;
+                });
+        }
+    }
+#endif
 
     // Keep the preconditioner output in the free-row space, matching
     // ApplyOp's convention (dmsk!=0 rows carry no equation).
@@ -363,6 +447,182 @@ void WarpXBuildAdjointRHSChargeFunctional (amrex::MultiFab& rhs,
     auto const& eb_fact = warpx.fieldEBFactory(lev);
     auto const& levset = eb_fact.getLevelSet();
     auto const& edge_cent = eb_fact.getEdgeCent();
+
+#ifdef WARPX_DIM_RZ
+    // Axisymmetric counterpart of the 3D construction below.  The boundary
+    // functional is the exact transpose of ComputeEBChargeWeighted's RZ
+    // surface-flux stencil, including its 2*pi*r_bnd surface metric.
+    auto const& eb_flag = eb_fact.getMultiEBCellFlagFab();
+    auto const& eb_bnd_cent = eb_fact.getBndryCent();
+    auto const& eb_bnd_normal = eb_fact.getBndryNormal();
+    auto const eb_area_fraction = eb_fact.getAreaFrac();
+
+    const auto dx = warpx.Geom(lev).CellSizeArray();
+    const amrex::Real dr = dx[0];
+    const amrex::Real dz = dx[1];
+    const amrex::Real rmin = warpx.Geom(lev).ProbLo(0);
+    const amrex::Real zmin = warpx.Geom(lev).ProbLo(1);
+    const amrex::Periodicity& period = warpx.Geom(lev).periodicity();
+    constexpr amrex::Real two_pi = amrex::Real(2.0) * MathConst::pi;
+
+    amrex::Parser rparser = utils::parser::makeParser(region, {"x","y","z"});
+    auto fun_w = utils::parser::compileParser<3>(&rparser);
+
+    const amrex::MultiFab& Er =
+        *warpx.m_fields.get(FieldType::Efield_fp, Direction{0}, lev);
+    const amrex::MultiFab& Ez =
+        *warpx.m_fields.get(FieldType::Efield_fp, Direction{2}, lev);
+    amrex::MultiFab fr(Er.boxArray(), Er.DistributionMap(), 1, 1);
+    amrex::MultiFab fz(Ez.boxArray(), Ez.DistributionMap(), 1, 1);
+    fr.setVal(0.0);
+    fz.setVal(0.0);
+
+    for (amrex::MFIter mfi(Er); mfi.isValid(); ++mfi) {
+        const amrex::Box& box = mfi.tilebox(amrex::IntVect::TheCellVector());
+        const amrex::FabType fab_type = eb_flag[mfi].getType(box);
+        if (fab_type == amrex::FabType::regular ||
+            fab_type == amrex::FabType::covered) { continue; }
+
+        auto const& flag = eb_flag.const_array(mfi);
+        auto const& normal = eb_bnd_normal.const_array(mfi);
+        auto const& cent = eb_bnd_cent.const_array(mfi);
+        auto const& ar = eb_area_fraction[0]->const_array(mfi);
+        auto const& az = eb_area_fraction[1]->const_array(mfi);
+        auto const& fra = fr.array(mfi);
+        auto const& fza = fz.array(mfi);
+
+        amrex::For(box,
+            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                if (flag(i,j,k).isRegular() || flag(i,j,k).isCovered()) { return; }
+
+                const int in = (normal(i,j,k,0) > amrex::Real(0.0)) ? i : i+1;
+                const int jn = (normal(i,j,k,1) > amrex::Real(0.0)) ? j : j+1;
+                int ic = i;
+                if (normal(i,j,k,0) > amrex::Real(0.0) &&
+                    cent(i,j,k,0) <= amrex::Real(0.0)) { --ic; }
+                if (normal(i,j,k,0) < amrex::Real(0.0) &&
+                    cent(i,j,k,0) >= amrex::Real(0.0)) { ++ic; }
+                int jc = j;
+                if (normal(i,j,k,1) > amrex::Real(0.0) &&
+                    cent(i,j,k,1) <= amrex::Real(0.0)) { --jc; }
+                if (normal(i,j,k,1) < amrex::Real(0.0) &&
+                    cent(i,j,k,1) >= amrex::Real(0.0)) { ++jc; }
+
+                const amrex::Real rb =
+                    (i + amrex::Real(0.5) + cent(i,j,k,0))*dr + rmin;
+                const amrex::Real zb =
+                    (j + amrex::Real(0.5) + cent(i,j,k,1))*dz + zmin;
+                const amrex::Real pref = PhysConst::epsilon_0 * two_pi * rb
+                    * fun_w(rb, amrex::Real(0.0), zb);
+                amrex::Gpu::Atomic::AddNoRet(
+                    &fra(ic,jn,k), pref*dz*(ar(i+1,j,k)-ar(i,j,k)));
+                amrex::Gpu::Atomic::AddNoRet(
+                    &fza(in,jc,k), pref*dr*(az(i,j+1,k)-az(i,j,k)));
+            });
+    }
+    fr.SumBoundary(period);
+    fz.SumBoundary(period);
+    auto const fr_owner = fr.OwnerMask(period);
+    auto const fz_owner = fz.OwnerMask(period);
+
+    rhs.setVal(0.0);
+    amrex::Gpu::Buffer<amrex::Long> skip_buf({amrex::Long(0)});
+    amrex::Long* skip_ptr = skip_buf.data();
+    constexpr amrex::Real singular_tol = amrex::Real(1.0e-12);
+
+    for (amrex::MFIter mfi(fr); mfi.isValid(); ++mfi) {
+        const amrex::Box& bx = mfi.validbox();
+        auto const& fa = fr.const_array(mfi);
+        auto const& ls = levset.const_array(mfi);
+        auto const& ec = edge_cent[0]->const_array(mfi);
+        auto const& ra = rhs.array(mfi);
+        auto const& own = fr_owner->const_array(mfi);
+        amrex::ParallelFor(bx,
+            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                if (own(i,j,k) == 0) { return; }
+                const amrex::Real f = fa(i,j,k);
+                if (f == amrex::Real(0.0)) { return; }
+                const bool lo_cov = ls(i,j,k) >= amrex::Real(0.0);
+                const bool hi_cov = ls(i+1,j,k) >= amrex::Real(0.0);
+                if (!lo_cov && !hi_cov) {
+                    amrex::Gpu::Atomic::AddNoRet(&ra(i+1,j,k), -f/dr);
+                    amrex::Gpu::Atomic::AddNoRet(&ra(i,j,k), f/dr);
+                } else if (lo_cov && !hi_cov) {
+                    const amrex::Real den = amrex::Real(1.0)-amrex::Real(2.0)*ec(i,j,k);
+                    if (amrex::Math::abs(den) < singular_tol) {
+                        amrex::HostDevice::Atomic::Add(skip_ptr, amrex::Long(1));
+                    } else {
+                        amrex::Gpu::Atomic::AddNoRet(&ra(i+1,j,k), -f/(dr*den));
+                    }
+                } else if (hi_cov && !lo_cov) {
+                    const amrex::Real den = amrex::Real(1.0)+amrex::Real(2.0)*ec(i,j,k);
+                    if (amrex::Math::abs(den) < singular_tol) {
+                        amrex::HostDevice::Atomic::Add(skip_ptr, amrex::Long(1));
+                    } else {
+                        amrex::Gpu::Atomic::AddNoRet(&ra(i,j,k), f/(dr*den));
+                    }
+                }
+            });
+    }
+    for (amrex::MFIter mfi(fz); mfi.isValid(); ++mfi) {
+        const amrex::Box& bx = mfi.validbox();
+        auto const& fa = fz.const_array(mfi);
+        auto const& ls = levset.const_array(mfi);
+        auto const& ec = edge_cent[1]->const_array(mfi);
+        auto const& ra = rhs.array(mfi);
+        auto const& own = fz_owner->const_array(mfi);
+        amrex::ParallelFor(bx,
+            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                if (own(i,j,k) == 0) { return; }
+                const amrex::Real f = fa(i,j,k);
+                if (f == amrex::Real(0.0)) { return; }
+                const bool lo_cov = ls(i,j,k) >= amrex::Real(0.0);
+                const bool hi_cov = ls(i,j+1,k) >= amrex::Real(0.0);
+                if (!lo_cov && !hi_cov) {
+                    amrex::Gpu::Atomic::AddNoRet(&ra(i,j+1,k), -f/dz);
+                    amrex::Gpu::Atomic::AddNoRet(&ra(i,j,k), f/dz);
+                } else if (lo_cov && !hi_cov) {
+                    const amrex::Real den = amrex::Real(1.0)-amrex::Real(2.0)*ec(i,j,k);
+                    if (amrex::Math::abs(den) < singular_tol) {
+                        amrex::HostDevice::Atomic::Add(skip_ptr, amrex::Long(1));
+                    } else {
+                        amrex::Gpu::Atomic::AddNoRet(&ra(i,j+1,k), -f/(dz*den));
+                    }
+                } else if (hi_cov && !lo_cov) {
+                    const amrex::Real den = amrex::Real(1.0)+amrex::Real(2.0)*ec(i,j,k);
+                    if (amrex::Math::abs(den) < singular_tol) {
+                        amrex::HostDevice::Atomic::Add(skip_ptr, amrex::Long(1));
+                    } else {
+                        amrex::Gpu::Atomic::AddNoRet(&ra(i,j,k), f/(dz*den));
+                    }
+                }
+            });
+    }
+    rhs.SumBoundary(period);
+    for (amrex::MFIter mfi(rhs); mfi.isValid(); ++mfi) {
+        const amrex::Box& bx = mfi.validbox();
+        auto const& ra = rhs.array(mfi);
+        auto const& dm = dmsk.const_array(mfi);
+        amrex::ParallelFor(bx,
+            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+                if (dm(i,j,k) != 0) { ra(i,j,k) = amrex::Real(0.0); }
+            });
+    }
+    rhs.FillBoundary(period);
+    skip_buf.copyToHost();
+    amrex::Long skipped = *skip_buf.hostData();
+    amrex::ParallelDescriptor::ReduceLongSum(skipped);
+    if (skipped > 0) {
+        amrex::Print() << "WarpXBuildAdjointRHSChargeFunctional: skipped "
+                       << skipped << " RZ cut edge(s) with a near-singular "
+                       << "transpose denominator.\n";
+    }
+    return;
+#else
 
     amrex::FabArray<amrex::EBCellFlagFab> const& eb_flag = eb_fact.getMultiEBCellFlagFab();
     amrex::MultiCutFab const& eb_bnd_cent = eb_fact.getBndryCent();
@@ -474,6 +734,9 @@ void WarpXBuildAdjointRHSChargeFunctional (amrex::MultiFab& rhs,
     fx.SumBoundary(period);
     fy.SumBoundary(period);
     fz.SumBoundary(period);
+    auto const fx_owner = fx.OwnerMask(period);
+    auto const fy_owner = fy.OwnerMask(period);
+    auto const fz_owner = fz.OwnerMask(period);
 
     // ---- Pass B: edge coefficients -> nodal rhs (transpose of compGrad) ---
     // Per-edge rule (x shown; y, z analogous with the obvious index shifts).
@@ -505,9 +768,11 @@ void WarpXBuildAdjointRHSChargeFunctional (amrex::MultiFab& rhs,
         auto const& ls = levset.const_array(mfi);
         auto const& ecx = edge_cent[0]->const_array(mfi);
         auto const& rhsa = rhs.array(mfi);
+        auto const& own = fx_owner->const_array(mfi);
         amrex::ParallelFor(bx,
             [=] AMREX_GPU_DEVICE (int i, int j, int k)
             {
+                if (own(i,j,k) == 0) { return; }
                 const amrex::Real f = fxa(i,j,k);
                 if (f == amrex::Real(0.0)) { return; }
                 const bool lo_cov = (ls(i,  j,k) >= amrex::Real(0.0));
@@ -541,9 +806,11 @@ void WarpXBuildAdjointRHSChargeFunctional (amrex::MultiFab& rhs,
         auto const& ls = levset.const_array(mfi);
         auto const& ecy = edge_cent[1]->const_array(mfi);
         auto const& rhsa = rhs.array(mfi);
+        auto const& own = fy_owner->const_array(mfi);
         amrex::ParallelFor(bx,
             [=] AMREX_GPU_DEVICE (int i, int j, int k)
             {
+                if (own(i,j,k) == 0) { return; }
                 const amrex::Real f = fya(i,j,k);
                 if (f == amrex::Real(0.0)) { return; }
                 const bool lo_cov = (ls(i,j,  k) >= amrex::Real(0.0));
@@ -576,9 +843,11 @@ void WarpXBuildAdjointRHSChargeFunctional (amrex::MultiFab& rhs,
         auto const& ls = levset.const_array(mfi);
         auto const& ecz = edge_cent[2]->const_array(mfi);
         auto const& rhsa = rhs.array(mfi);
+        auto const& own = fz_owner->const_array(mfi);
         amrex::ParallelFor(bx,
             [=] AMREX_GPU_DEVICE (int i, int j, int k)
             {
+                if (own(i,j,k) == 0) { return; }
                 const amrex::Real f = fza(i,j,k);
                 if (f == amrex::Real(0.0)) { return; }
                 const bool lo_cov = (ls(i,j,k  ) >= amrex::Real(0.0));
@@ -632,6 +901,7 @@ void WarpXBuildAdjointRHSChargeFunctional (amrex::MultiFab& rhs,
                        << "transpose denominator (|1 -+ 2*ec| < "
                        << singular_tol << ").\n";
     }
+#endif
 }
 
 /** Solve A^T Psi = rhs by CG on the normal equations (A A^T) Psi = A rhs.
@@ -923,15 +1193,24 @@ void WarpXFinalizeChargeFunctionalPsi (amrex::MultiFab& psi, int lev)
     auto const& edge_cent = eb_fact.getEdgeCent();
 
     const auto dx = warpx.Geom(lev).CellSizeArray();
+#ifdef WARPX_DIM_RZ
+    const amrex::Real dr = dx[0];
+    const amrex::Real dz = dx[1];
+    const amrex::Real rlo = warpx.Geom(lev).ProbLo(0);
+    const amrex::Real axis_factor = warpx.RZAxisVolumeFactor();
+#else
     const amrex::Real dV = dx[0] * dx[1] * dx[2];
     const amrex::Real global_const = amrex::Real(1.0) / (PhysConst::epsilon_0 * dV);
+#endif
 
     for (amrex::MFIter mfi(psi); mfi.isValid(); ++mfi) {
         const amrex::Box& vbx = mfi.validbox();
         auto const& pa = psi.array(mfi);
         auto const& ecx = edge_cent[0]->const_array(mfi);
         auto const& ecy = edge_cent[1]->const_array(mfi);
+#ifndef WARPX_DIM_RZ
         auto const& ecz = edge_cent[2]->const_array(mfi);
+#endif
         amrex::ParallelFor(vbx,
             [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
@@ -946,15 +1225,83 @@ void WarpXFinalizeChargeFunctionalPsi (amrex::MultiFab& psi, int lev)
                                : (Real(1.0) + Real(2.0)*ecy(i,j  ,k));
                 const Real hmy = (ecy(i,j-1,k) == Real(1.0)) ? Real(1.0)
                                : (Real(1.0) - Real(2.0)*ecy(i,j-1,k));
+#ifndef WARPX_DIM_RZ
                 const Real hpz = (ecz(i,j,k  ) == Real(1.0)) ? Real(1.0)
                                : (Real(1.0) + Real(2.0)*ecz(i,j,k  ));
                 const Real hmz = (ecz(i,j,k-1) == Real(1.0)) ? Real(1.0)
                                : (Real(1.0) - Real(2.0)*ecz(i,j,k-1));
+#endif
                 Real scale = amrex::min(hmx, hpx);
                 scale = amrex::min(scale, hmy, hpy);
+#ifdef WARPX_DIM_RZ
+                const Real r = rlo + Real(i)*dr;
+                const Real radial_measure = (r == Real(0.0))
+                    ? MathConst::pi*dr*axis_factor
+                    : Real(2.0)*MathConst::pi*r;
+                const Real node_volume = dr*dz*radial_measure;
+                pa(i,j,k) *= scale/(PhysConst::epsilon_0*node_volume);
+#else
                 scale = amrex::min(scale, hmz, hpz);
                 pa(i,j,k) *= scale * global_const;
+#endif
             });
     }
     psi.FillBoundary(warpx.Geom(lev).periodicity());
+}
+
+/** Evaluate the discrete Shockley--Ramo pairing on the distributed nodal
+ * fields without assembling either field in Python.
+ *
+ * Nodal valid boxes overlap at box boundaries.  A plain MultiFab dot product
+ * (and a NumPy view of one FAB) therefore either double-counts shared nodes or
+ * sees only a box-local fragment.  Multiplying locally and using sum_unique()
+ * applies AMReX's OwnerMask, so every physical node contributes exactly once
+ * before the MPI reduction.  The measure is the same cylindrical nodal volume
+ * used to normalize WarpXFinalizeChargeFunctionalPsi above.
+ */
+amrex::Real WarpXIntegrateRhoPsi (
+    amrex::MultiFab const& rho, amrex::MultiFab const& psi, int lev)
+{
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        rho.boxArray() == psi.boxArray() &&
+        rho.DistributionMap() == psi.DistributionMap() &&
+        rho.ixType() == psi.ixType(),
+        "WarpXIntegrateRhoPsi: rho and psi must use the same nodal layout");
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        rho.nComp() >= 1 && psi.nComp() >= 1,
+        "WarpXIntegrateRhoPsi: rho and psi must each have at least one component");
+
+    auto& warpx = WarpX::GetInstance();
+    amrex::MultiFab product(rho.boxArray(), rho.DistributionMap(), 1, 0);
+    const auto dx = warpx.Geom(lev).CellSizeArray();
+#ifdef WARPX_DIM_RZ
+    const amrex::Real dr = dx[0];
+    const amrex::Real dz = dx[1];
+    const amrex::Real rlo = warpx.Geom(lev).ProbLo(0);
+    const amrex::Real axis_factor = warpx.RZAxisVolumeFactor();
+#else
+    const amrex::Real node_volume = dx[0] * dx[1] * dx[2];
+#endif
+
+    for (amrex::MFIter mfi(product); mfi.isValid(); ++mfi) {
+        const amrex::Box& vbx = mfi.validbox();
+        auto const& qa = rho.const_array(mfi);
+        auto const& pa = psi.const_array(mfi);
+        auto const& wa = product.array(mfi);
+        amrex::ParallelFor(vbx,
+            [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+            {
+#ifdef WARPX_DIM_RZ
+                const amrex::Real r = rlo + amrex::Real(i)*dr;
+                const amrex::Real radial_measure = (r == amrex::Real(0.0))
+                    ? MathConst::pi*dr*axis_factor
+                    : amrex::Real(2.0)*MathConst::pi*r;
+                const amrex::Real node_volume = dr*dz*radial_measure;
+#endif
+                wa(i,j,k) = qa(i,j,k,0) * pa(i,j,k,0) * node_volume;
+            });
+    }
+
+    return product.sum_unique(
+        0, false, warpx.Geom(lev).periodicity());
 }

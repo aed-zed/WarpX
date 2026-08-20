@@ -235,4 +235,159 @@ void warpx_mlebndfdlap_adotx_forward_eb (
     y(i,j,k) = out * scale;
 }
 
+#if (AMREX_SPACEDIM == 2)
+/** Exact row-wise transpose of AMReX's metric-aware RZ EB nodal Laplacian.
+ *
+ * Unlike the Cartesian stencil above, the radial coefficients contain the
+ * cylindrical metric r+/-dr/2 and the axis row uses the regularity limit
+ * 4*(phi_1-phi_0)/dr^2.  Writing the transpose as a scatter of each forward
+ * row keeps those factors on the row where AMReX evaluates them.
+ */
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void warpx_mlebndfdlap_adotx_rz_transpose_eb (
+    int i, int j, int k,
+    amrex::Array4<amrex::Real> const& y,
+    amrex::Array4<amrex::Real const> const& x,
+    amrex::Array4<amrex::Real const> const& levset,
+    amrex::Array4<int const> const& dmsk,
+    amrex::Array4<amrex::Real const> const& ecr,
+    amrex::Array4<amrex::Real const> const& ecz,
+    amrex::Real dr, amrex::Real dz, amrex::Real rlo,
+    int scatter_from = 0) noexcept
+{
+    using amrex::Real;
+
+    const bool is_d = (dmsk(i,j,k) != 0);
+    if (scatter_from == 0 && is_d) { return; }
+    if (scatter_from == 1 && !is_d) { return; }
+
+    const Real r = rlo + Real(i)*dr;
+    const Real hpr = (ecr(i  ,j,k) == Real(1.0)) ? Real(1.0)
+                   : Real(1.0) + Real(2.0)*ecr(i  ,j,k);
+    const Real hmr = (ecr(i-1,j,k) == Real(1.0)) ? Real(1.0)
+                   : Real(1.0) - Real(2.0)*ecr(i-1,j,k);
+    const Real hpz = (ecz(i,j  ,k) == Real(1.0)) ? Real(1.0)
+                   : Real(1.0) + Real(2.0)*ecz(i,j  ,k);
+    const Real hmz = (ecz(i,j-1,k) == Real(1.0)) ? Real(1.0)
+                   : Real(1.0) - Real(2.0)*ecz(i,j-1,k);
+
+    Real scale;
+    Real diag = Real(0.0);
+    const Real x0 = x(i,j,k);
+    Real crp = Real(0.0);
+    Real crm = Real(0.0);
+
+    if (r == Real(0.0)) {
+        if (levset(i+1,j,k) < Real(0.0)) {
+            const Real c = Real(4.0)/(dr*dr);
+            crp = c;
+            diag -= c;
+            scale = Real(1.0);
+        } else {
+            diag -= Real(4.0)/(dr*dr*hpr*hpr);
+            scale = hpr;
+        }
+    } else {
+        const Real fac = Real(2.0)/((hpr+hmr)*r*dr*dr);
+        if (levset(i+1,j,k) < Real(0.0)) {
+            const Real c = fac*(r + Real(0.5)*dr);
+            crp = c;
+            diag -= c;
+        } else {
+            diag -= fac*(r + Real(0.5)*hpr*dr)/hpr;
+        }
+        if (levset(i-1,j,k) < Real(0.0)) {
+            const Real c = fac*(r - Real(0.5)*dr);
+            crm = c;
+            diag -= c;
+        } else {
+            diag -= fac*(r - Real(0.5)*hmr*dr)/hmr;
+        }
+        scale = amrex::min(hmr, hpr);
+    }
+
+    const Real facz = Real(2.0)/((hpz+hmz)*dz*dz);
+    const bool zp_free = (levset(i,j+1,k) < Real(0.0));
+    const bool zm_free = (levset(i,j-1,k) < Real(0.0));
+    diag -= facz * ((levset(i,j+1,k) < Real(0.0)) ? Real(1.0) : Real(1.0)/hpz);
+    diag -= facz * ((levset(i,j-1,k) < Real(0.0)) ? Real(1.0) : Real(1.0)/hmz);
+
+    scale = amrex::min(scale, hmz, hpz);
+    if (crp != Real(0.0)) {
+        amrex::Gpu::Atomic::AddNoRet(&y(i+1,j,k), x0*crp*scale);
+    }
+    if (crm != Real(0.0)) {
+        amrex::Gpu::Atomic::AddNoRet(&y(i-1,j,k), x0*crm*scale);
+    }
+    if (zp_free) {
+        amrex::Gpu::Atomic::AddNoRet(&y(i,j+1,k), x0*facz*scale);
+    }
+    if (zm_free) {
+        amrex::Gpu::Atomic::AddNoRet(&y(i,j-1,k), x0*facz*scale);
+    }
+    amrex::Gpu::Atomic::AddNoRet(&y(i,j,k), x0*diag*scale);
+}
+
+/** Forward RZ row, matching mlebndfdlap_adotx_rz_eb_doit (alpha=0). */
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+void warpx_mlebndfdlap_adotx_rz_forward_eb (
+    int i, int j, int k,
+    amrex::Array4<amrex::Real> const& y,
+    amrex::Array4<amrex::Real const> const& x,
+    amrex::Array4<amrex::Real const> const& levset,
+    amrex::Array4<int const> const& dmsk,
+    amrex::Array4<amrex::Real const> const& ecr,
+    amrex::Array4<amrex::Real const> const& ecz,
+    amrex::Real dr, amrex::Real dz, amrex::Real rlo) noexcept
+{
+    using amrex::Real;
+    if (dmsk(i,j,k)) { y(i,j,k) = Real(0.0); return; }
+
+    const Real r = rlo + Real(i)*dr;
+    const Real hpr = (ecr(i  ,j,k) == Real(1.0)) ? Real(1.0)
+                   : Real(1.0) + Real(2.0)*ecr(i  ,j,k);
+    const Real hmr = (ecr(i-1,j,k) == Real(1.0)) ? Real(1.0)
+                   : Real(1.0) - Real(2.0)*ecr(i-1,j,k);
+    const Real hpz = (ecz(i,j  ,k) == Real(1.0)) ? Real(1.0)
+                   : Real(1.0) + Real(2.0)*ecz(i,j  ,k);
+    const Real hmz = (ecz(i,j-1,k) == Real(1.0)) ? Real(1.0)
+                   : Real(1.0) - Real(2.0)*ecz(i,j-1,k);
+    const Real x0 = x(i,j,k);
+    Real out;
+    Real scale;
+
+    if (r == Real(0.0)) {
+        if (levset(i+1,j,k) < Real(0.0)) {
+            out = Real(4.0)*(x(i+1,j,k)-x0)/(dr*dr);
+            scale = Real(1.0);
+        } else {
+            out = -Real(4.0)*x0/(dr*dr*hpr*hpr);
+            scale = hpr;
+        }
+    } else {
+        Real tmp;
+        if (levset(i+1,j,k) < Real(0.0)) {
+            tmp = (x(i+1,j,k)-x0)*(r + Real(0.5)*dr);
+        } else {
+            tmp = -x0/hpr*(r + Real(0.5)*hpr*dr);
+        }
+        if (levset(i-1,j,k) < Real(0.0)) {
+            tmp += (x(i-1,j,k)-x0)*(r - Real(0.5)*dr);
+        } else {
+            tmp += -x0/hmr*(r - Real(0.5)*hmr*dr);
+        }
+        out = tmp*Real(2.0)/((hpr+hmr)*r*dr*dr);
+        scale = amrex::min(hmr,hpr);
+    }
+
+    Real tmpz = (levset(i,j+1,k) < Real(0.0))
+        ? x(i,j+1,k)-x0 : -x0/hpz;
+    tmpz += (levset(i,j-1,k) < Real(0.0))
+        ? x(i,j-1,k)-x0 : -x0/hmz;
+    out += tmpz*Real(2.0)/((hpz+hmz)*dz*dz);
+    scale = amrex::min(scale,hmz,hpz);
+    y(i,j,k) = out*scale;
+}
+#endif
+
 #endif // WARPX_ADJOINT_WEIGHTING_POTENTIAL_H_
