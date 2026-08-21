@@ -18,6 +18,10 @@ import numpy as np
 
 from pywarpx import picmi
 from pywarpx.multi_electrode_corrector import MultiElectrodeBiasCorrector
+from pywarpx.multi_electrode_logger import (
+    GroundedChargeCrossCheck,
+    MultiElectrodeClampTelemetry,
+)
 
 nr, nz = 32, 64
 grid = picmi.CylindricalGrid(
@@ -79,7 +83,8 @@ corrector = MultiElectrodeBiasCorrector(
     particle_shape=1,
     filter_passes=0,
     adjoint_tolerance=2.0e-10,
-    adjoint_max_iterations=12000,
+    adjoint_solver="pmlmg",
+    adjoint_max_iterations=200,
     verbose=True,
 )
 
@@ -109,4 +114,32 @@ assert np.signbit(q_adjoint) == np.signbit(q_solve), (
 assert rel_error < 2.0e-6, (
     "RZ discrete adjoint identity failed: "
     f"relative error {rel_error:.3e} >= 2e-6"
+)
+
+# Exercise the production callback path as well as the identity above. Routine
+# telemetry must consume the cached state without another measurement; the
+# sparse cross-check intentionally performs one grounded solve and restores E.
+telemetry = MultiElectrodeClampTelemetry(
+    corrector,
+    out_csv="clamp_telemetry_test.csv",
+    setup_json="clamp_setup_test.json",
+)
+cross_check = GroundedChargeCrossCheck(
+    corrector,
+    period=1,
+    out_csv="clamp_grounded_crosscheck_test.csv",
+)
+telemetry.setup()
+cross_check.setup()
+corrector.correct_field()
+telemetry.log()
+cross_check.log()
+
+state = corrector.last_correction_state()
+assert state is not None
+np.testing.assert_allclose(
+    state["voltage_after_predicted"],
+    np.asarray(corrector.v_target),
+    atol=1.0e-12,
+    rtol=0.0,
 )

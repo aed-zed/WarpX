@@ -145,10 +145,12 @@ class MultiElectrodeBiasCorrector:
     adjoint_solver : {"auto", "pmlmg", "cgnr"}, optional
         Solver used when setup automatically builds the adjoint weighting
         potentials required by absorption booking or reciprocity observation.
+        Defaults to the validated right-preconditioned ``"pmlmg"`` path.
     adjoint_tolerance : float, optional
         Relative residual tolerance for the adjoint weighting solves.
     adjoint_max_iterations : int, optional
-        Maximum iteration count for the adjoint solver or its CGNR fallback.
+        Maximum iteration count for the adjoint solver or its CGNR fallback
+        (default 200).
     """
 
     def __init__(
@@ -171,9 +173,9 @@ class MultiElectrodeBiasCorrector:
         track_absorption_deficit=True,
         apply_ledger_correction=False,
         qg_mode="grounded",
-        adjoint_solver="auto",
+        adjoint_solver="pmlmg",
         adjoint_tolerance=1.0e-10,
-        adjoint_max_iterations=30000,
+        adjoint_max_iterations=200,
     ):
         import numpy as np  # noqa: PLC0415
 
@@ -206,6 +208,11 @@ class MultiElectrodeBiasCorrector:
 
         self._ready = False
         self._capacitance = None  # numpy (n, n) matrix C_jk
+        self._capacitance_condition = None
+        self._adjoint_residuals = None
+        # Snapshot of the most recent correction. Diagnostics consume this
+        # instead of re-running the collective rho/Psi observer.
+        self._last_correction_state = None
         self._unit_names = [f"Efield_unit_{k}" for k in range(self.n)]
         # Nodal scalar weighting potentials psi_k, stored directly at setup
         # instead of being reconstructed from Efield_unit_k by a line integral.
@@ -457,6 +464,7 @@ class MultiElectrodeBiasCorrector:
                     weighting=self.regions[j], field=self._unit_names[k]
                 )
         cond = float(np.linalg.cond(self._capacitance))
+        self._capacitance_condition = cond
         if not np.isfinite(cond) or cond > 1.0e12:
             raise RuntimeError(
                 f"Capacitance matrix is singular/ill-conditioned (cond={cond:.3e}). "
@@ -475,6 +483,7 @@ class MultiElectrodeBiasCorrector:
         """Build the discrete Shockley--Ramo weighting potentials."""
 
         warpx = self._warpx()
+        self._adjoint_residuals = []
         for k, region in enumerate(self.regions):
             name = self._psi_names[k]
             ok, residual = warpx.solve_adjoint_weighting(
@@ -491,6 +500,7 @@ class MultiElectrodeBiasCorrector:
                     f"Adjoint weighting solve for electrode {self.names[k]!r} "
                     f"did not converge (relative residual {residual:.3e})."
                 )
+            self._adjoint_residuals.append(float(residual))
             if self.verbose:
                 print(
                     f"[MultiElectrode] adjoint Psi[{self.names[k]}]: "
@@ -1538,6 +1548,51 @@ class MultiElectrodeBiasCorrector:
         return i_g
 
     # -- per-step correction -------------------------------------------------
+    def measure_voltage_state(self):
+        """Measure the complete charge/voltage state used by the feedback.
+
+        Returns a dictionary with ``voltage``, ``field_charge``,
+        ``ledger_charge`` and ``grounded_charge`` arrays.  This is the public
+        diagnostic counterpart of :meth:`measure_voltages`: callers that need
+        telemetry can inspect the exact quantities used by the correction
+        without repeating the collective charge deposit and rho/Psi pairing.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        warpx = self._warpx()
+        lev = 0
+
+        field_charge = np.array(
+            [
+                warpx.compute_eb_charge(weighting=r, field="Efield_fp")
+                for r in self.regions
+            ]
+        )
+        ledger_charge = np.zeros(self.n)
+
+        if self.apply_ledger_correction:
+            # COLLECTIVE: see accumulate_absorption() and absorption_totals().
+            self.accumulate_absorption()
+            totals = self.absorption_totals(reduce=True)
+            if totals is not None:
+                ledger_charge = totals["booked"].sum(axis=1)
+
+        if self.qg_mode == "grounded":
+            grounded_charge = self._grounded_charge_via_solve(lev)
+        else:
+            grounded_charge = self._grounded_charge_via_reciprocity(lev)
+
+        voltage = np.linalg.solve(
+            self._capacitance,
+            field_charge + ledger_charge - grounded_charge,
+        )
+        return {
+            "voltage": voltage,
+            "field_charge": field_charge,
+            "ledger_charge": ledger_charge,
+            "grounded_charge": grounded_charge,
+        }
+
     def measure_voltages(self):
         """Return the present per-electrode effective voltages V = C^-1 (Q - Q_g).
 
@@ -1757,37 +1812,7 @@ class MultiElectrodeBiasCorrector:
         charge_reciprocity()``'s docstring gives for its own timing
         comparison.
         """
-        import numpy as np  # noqa: PLC0415
-
-        warpx = self._warpx()
-        lev = 0
-
-        # Live-field induced charge per electrode.
-        q_now = np.array(
-            [warpx.compute_eb_charge(weighting=r, field="Efield_fp") for r in self.regions]
-        )
-
-        if self.apply_ledger_correction:
-            # Keep the ledger current at measurement time. COLLECTIVE: every
-            # rank must reach this the same number of times in the same order
-            # (accumulate_absorption() itself prefetches every electrode's
-            # psi table unconditionally before any rank-locally-conditioned
-            # skip logic, for exactly this reason -- see its docstring). Since
-            # __init__ refuses apply_ledger_correction=True without
-            # book_absorption=True, this is never a silent no-op by
-            # construction, though accumulate_absorption() can still no-op
-            # per-call if there is nothing new to read.
-            self.accumulate_absorption()
-            totals = self.absorption_totals(reduce=True)   # also collective
-            if totals is not None:
-                q_now = q_now + totals["booked"].sum(axis=1)
-
-        if self.qg_mode == "grounded":
-            q_g = self._grounded_charge_via_solve(lev)
-        else:  # "reciprocity" -- validated at construction to be one or the other
-            q_g = self._grounded_charge_via_reciprocity(lev)
-
-        return np.linalg.solve(self._capacitance, q_now - q_g)
+        return self.measure_voltage_state()["voltage"]
 
     def _grounded_charge_via_solve(self, lev):
         """``qg_mode="grounded"``: the original save/solve/restore Q_g.
@@ -1809,6 +1834,60 @@ class MultiElectrodeBiasCorrector:
         self._restore_efield(saved, lev)
         warpx.set_potential_on_eb(self.potential_expression)
         return q_g
+
+    def compare_grounded_charge(self, reciprocity_charge=None):
+        """Compare the adjoint observer with a real grounded Poisson solve.
+
+        This is a collective, deliberately expensive diagnostic operation.
+        Pass the ``grounded_charge`` from :meth:`measure_voltage_state` to
+        reuse the correction's already-computed adjoint result.  If omitted,
+        the distributed rho/Psi observer is evaluated once here.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        if reciprocity_charge is None:
+            reciprocity_charge = self._grounded_charge_via_reciprocity(0)
+        reciprocity_charge = np.asarray(reciprocity_charge, dtype=float)
+        solved_charge = self._grounded_charge_via_solve(0)
+        difference = reciprocity_charge - solved_charge
+        scale = np.maximum(
+            np.maximum(np.abs(reciprocity_charge), np.abs(solved_charge)),
+            np.finfo(float).tiny,
+        )
+        return {
+            "reciprocity_charge": reciprocity_charge,
+            "solved_charge": solved_charge,
+            "difference": difference,
+            "relative_difference": np.abs(difference) / scale,
+        }
+
+    def setup_state(self):
+        """Return serializable setup data for diagnostics after initialization."""
+        if not self._ready:
+            raise RuntimeError("The multi-electrode corrector is not initialized yet.")
+        return {
+            "electrode_names": list(self.names),
+            "electrode_regions": list(self.regions),
+            "target_voltages": list(self.v_target),
+            "capacitance_matrix": self._capacitance.copy(),
+            "capacitance_condition": float(self._capacitance_condition),
+            "adjoint_residuals": (
+                None
+                if self._adjoint_residuals is None
+                else list(self._adjoint_residuals)
+            ),
+            "qg_mode": self.qg_mode,
+            "current_step": int(self._warpx().getistep(lev=0)),
+        }
+
+    def last_correction_state(self):
+        """Return a copy of the most recent correction state, or ``None``."""
+        if self._last_correction_state is None:
+            return None
+        return {
+            key: value.copy() if hasattr(value, "copy") else value
+            for key, value in self._last_correction_state.items()
+        }
 
     def _ensure_rho_fp(self, lev):
         """Allocate the registered ``rho_fp`` MultiFab if it does not already
@@ -2073,14 +2152,37 @@ class MultiElectrodeBiasCorrector:
         if not self._ready:
             return
 
-        v_now = self.measure_voltages()
+        state = self.measure_voltage_state()
+        v_now = state["voltage"]
         dv = self.relaxation * (np.array(self.v_target) - v_now)
         self._apply_bias(dv)
+
+        try:
+            time = float(warpx.gett_new(0))
+        except Exception:  # noqa: BLE001
+            time = float("nan")
+        self._last_correction_state = {
+            "step": int(step + 1),
+            "time": time,
+            "voltage_before": np.array(v_now, copy=True),
+            # The harmonic basis is normalized by the same capacitance matrix
+            # used above, so this is the exact linear prediction after saxpy.
+            "voltage_after_predicted": np.array(v_now + dv, copy=True),
+            "target_voltage": np.array(self.v_target, copy=True),
+            "voltage_error_before": np.array(self.v_target - v_now, copy=True),
+            "voltage_error_after_predicted": np.array(
+                self.v_target - (v_now + dv), copy=True
+            ),
+            "delta_voltage": np.array(dv, copy=True),
+            "field_charge": np.array(state["field_charge"], copy=True),
+            "ledger_charge": np.array(state["ledger_charge"], copy=True),
+            "grounded_charge": np.array(state["grounded_charge"], copy=True),
+        }
 
         if self.verbose:
             with np.printoptions(precision=2):
                 print(
-                    f"[MultiElectrode] step {step}: V_now={v_now}, "
+                    f"[MultiElectrode] step {step + 1}: V_now={v_now}, "
                     f"target={np.array(self.v_target)}, dV={dv}"
                 )
 
