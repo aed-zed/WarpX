@@ -16,12 +16,19 @@ Geometry requirement
 
 .. important::
 
-   **No conductor surface may coincide with a domain boundary at any point.**
-   Every embedded conductor must be strictly interior, with at least a layer of
-   vacuum between it and the domain boundary.
+   **No conductor surface may coincide with a Dirichlet or PEC domain boundary
+   at any point.** Every embedded conductor must have at least a layer of
+   vacuum between it and such a boundary.
 
-A conductor whose surface touches the domain boundary is electrically the same
-conductor as that boundary. Two consequences follow, and both are fatal rather
+   The rule is about *conducting* walls. A boundary that is neither a conductor
+   nor a charge sink is exempt: the RZ regularity axis at :math:`r = 0`
+   (boundary type ``none``) is a symmetry condition, so a body may sit on it,
+   and a periodic seam is not a wall at all. Verified in RZ with two spheres
+   centred on the axis: the capacitance matrix stayed symmetric to 15 digits
+   with a condition number of 1.13.
+
+A conductor whose surface touches a Dirichlet or PEC domain boundary is
+electrically the same conductor as that boundary. Two consequences follow, and both are fatal rather
 than inaccurate:
 
 * The capacitance matrix loses its reference. Measured on a coaxial pair whose

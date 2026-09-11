@@ -101,10 +101,13 @@ class MultiElectrodeBiasCorrector:
     """Maintain several driven EB electrode potentials in EM mode.
 
     .. important::
-       **No conductor surface may coincide with a domain boundary at any
-       point.** Every embedded conductor must be strictly interior, with a
-       layer of vacuum between it and the domain boundary. A conductor touching
-       the boundary is electrically the same conductor as that boundary: the
+       **No conductor surface may coincide with a Dirichlet or PEC domain
+       boundary at any point.** Such a conductor must have a layer of vacuum
+       between it and that boundary. The rule is about *conducting* walls: the
+       RZ regularity axis at r = 0 (boundary type "none") is a symmetry
+       condition rather than a charge sink, so a body may sit on it, and a
+       periodic seam is not a wall. A conductor touching a Dirichlet or PEC
+       boundary is electrically the same conductor as that boundary: the
        capacitance matrix then loses its reference, becomes non-symmetric and
        ill-conditioned (measured condition number 1.6e12 against 8.1 when
        separated), and no closed surface around the electrode can be drawn in
