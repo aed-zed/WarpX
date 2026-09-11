@@ -456,7 +456,40 @@ void ApplyPrecond (amrex::MultiFab& z, amrex::MultiFab const& v,
  * and reduced with sum_unique, which applies AMReX's owner mask. The measure is
  * the same cylindrical nodal volume used to normalize Psi.
  */
-amrex::Real IntegrateRhoPsi (amrex::MultiFab const& rho, amrex::MultiFab const& psi, int lev)
+/** The axis measure that makes sum rho V equal the deposited charge. */
+amrex::Real DepositionAxisFactor ()
+{
+#ifdef WARPX_DIM_RZ
+    return WarpX::GetInstance().RZAxisVolumeFactor();
+#else
+    return amrex::Real(0.25);
+#endif
+}
+
+/** The axis node's geometric control-volume factor, for a Gauss-law integral. */
+constexpr amrex::Real GaussAxisFactor () { return amrex::Real(0.25); }
+
+/* Nodal inner product sum_a f[a] g[a] V_a. The axis measure is supplied by the
+ * caller because the two uses need DIFFERENT volumes:
+ *
+ *   deposition measure   V_axis = pi dr^2 dz * RZAxisVolumeFactor()
+ *       what makes sum rho V equal the deposited charge: 1/3 with the
+ *       Verboncoeur correction, which is on by default, otherwise 1/4.
+ *
+ *   Gauss measure        V_axis = pi dr^2 dz / 4
+ *       the axis node's geometric control volume, a cylinder of radius dr/2 and
+ *       height dz. That is the volume the on-axis stencil 4 Er/dr is the
+ *       divergence over: (4 Er/dr)(pi dr^2 dz/4) = pi dr dz Er, which is exactly
+ *       the flux Er(dr/2) * 2 pi (dr/2) dz through its curved surface.
+ *
+ * Off the axis the two coincide. Using the deposition measure for a divergence
+ * integral breaks Gauss's law at the axis node by 4/3 at the default setting:
+ * the flux through an enclosing surface can be zero while the reported enclosed
+ * charge is not. An adjoint can match that wrong integral perfectly, so the
+ * pairing check cannot detect it.
+ */
+amrex::Real IntegrateRhoPsi (amrex::MultiFab const& rho, amrex::MultiFab const& psi,
+                             int lev, amrex::Real axis_factor)
 {
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
         rho.boxArray() == psi.boxArray() &&
@@ -471,8 +504,8 @@ amrex::Real IntegrateRhoPsi (amrex::MultiFab const& rho, amrex::MultiFab const& 
     const amrex::Real dr = dx[0];
     const amrex::Real dz = dx[1];
     const amrex::Real rlo = warpx.Geom(lev).ProbLo(0);
-    const amrex::Real axis_factor = warpx.RZAxisVolumeFactor();
 #else
+    amrex::ignore_unused(axis_factor);
     const amrex::Real node_volume = dx[0] * dx[1] * dx[2];
 #endif
 
@@ -797,7 +830,12 @@ void WarpXBuildAdjointRHSVolumeFunctional (amrex::MultiFab& rhs,
     g.setVal(0.0);
 
 #ifdef WARPX_DIM_RZ
-    const Real axis_factor = warpx.RZAxisVolumeFactor();
+    // The Gauss measure, matching WarpXDivEChargeInRegions: this row is the
+    // adjoint of THAT integral, so the two must use the same control volume.
+    // (WarpXFinalizeChargeFunctionalPsi separately uses the DEPOSITION measure,
+    // because the identity it normalizes for, Q = -sum_a rho_a Psi_a dV, is
+    // evaluated against a deposited charge density.)
+    const Real axis_factor = GaussAxisFactor();
 #endif
     for (MFIter mfi(g); mfi.isValid(); ++mfi) {
         auto const& ga = g.array(mfi);
@@ -903,6 +941,32 @@ void WarpXBuildAdjointRHSVolumeFunctional (amrex::MultiFab& rhs,
                         fa(i,j,k) = 0._rt;
                     });
             }
+        }
+    }
+
+    // Pass B begins with f.SumBoundary(), which is right for the surface row:
+    // that one accumulates partial contributions from cut cells with atomic
+    // adds, so a cut cell near a box face legitimately targets a neighbour's
+    // edge. This row is different -- every box computes the COMPLETE value of
+    // each edge it owns from its own ghosted g -- so summing the shared copies
+    // double counts. Zero the non-owned entries first; the owner's value is
+    // already complete, and SumBoundary then adds zeros.
+    //
+    // Measured before this correction, Q_g from the adjoint moved with the
+    // partition while the grounded Poisson reference did not: agreement with it
+    // fell from 1.4e-10 of the bias at one box to 1.2e-03 at 27 boxes and
+    // 4.3e-02 at 216. The forward integral's partition independence does not
+    // establish the adjoint's.
+    for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
+        auto const owner = f[idim].OwnerMask(period);
+        for (MFIter mfi(f[idim]); mfi.isValid(); ++mfi) {
+            auto const& fa = f[idim].array(mfi);
+            auto const& own = owner->const_array(mfi);
+            amrex::ParallelFor(mfi.validbox(),
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (own(i,j,k) == 0) { fa(i,j,k) = 0._rt; }
+                });
         }
     }
 
@@ -1105,7 +1169,9 @@ WarpXGroundedChargeFromAdjoint (std::vector<std::string> const& psi_fields, int 
         amrex::MultiFab const* psi = warpx.m_fields.get(name, lev);
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(psi != nullptr,
             "WarpXGroundedChargeFromAdjoint: weighting potential field not registered");
-        q_grounded.push_back(-IntegrateRhoPsi(*rho, *psi, lev));
+        // rho against Psi: the deposition measure
+        q_grounded.push_back(
+            -IntegrateRhoPsi(*rho, *psi, lev, DepositionAxisFactor()));
     }
     return q_grounded;
 }
@@ -1156,8 +1222,18 @@ namespace
         auto& warpx = WarpX::GetInstance();
         amrex::BoxArray nodal_ba = warpx.boxArray(lev);
         nodal_ba.surroundingNodes();
+        // ComputeDivECylindrical writes 2*nmodes-1 components, so allocating
+        // one would be an out-of-bounds write for nmodes > 1. Allocate what the
+        // solver writes, and refuse the modes this integral does not handle:
+        // only the m = 0 component is integrated below, and a region weight
+        // w(x,y,z) carries no azimuthal dependence to pair with m > 0.
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            WarpX::ncomps == 1,
+            "The volume charge observer supports a single azimuthal mode only "
+            "(n_rz_azimuthal_modes = 1); the m > 0 contributions to the enclosed "
+            "charge are not integrated.");
         auto div_e = std::make_unique<amrex::MultiFab>(
-            nodal_ba, warpx.DistributionMap(lev), 1, 0);
+            nodal_ba, warpx.DistributionMap(lev), WarpX::ncomps, 0);
 
         // The divergence stencil at a node on a box boundary reaches into the
         // guard cells, and after a field push or a Poisson solve WarpX leaves
@@ -1191,7 +1267,9 @@ WarpXDivEChargeInRegions (std::vector<std::string> const& regions, int lev)
     q.reserve(regions.size());
     for (auto const& expr : regions) {
         FillNodalWeight(weight, expr, lev);
-        q.push_back(PhysConst::epsilon_0 * IntegrateRhoPsi(*div_e, weight, lev));
+        // a divergence integral: the Gauss measure, not the deposition one
+        q.push_back(PhysConst::epsilon_0
+                    * IntegrateRhoPsi(*div_e, weight, lev, GaussAxisFactor()));
     }
     return q;
 }
@@ -1207,7 +1285,8 @@ WarpXLiveChargeInRegions (std::vector<std::string> const& regions, int lev)
     q.reserve(regions.size());
     for (auto const& expr : regions) {
         FillNodalWeight(weight, expr, lev);
-        q.push_back(IntegrateRhoPsi(*rho, weight, lev));
+        // deposited charge: the deposition measure
+        q.push_back(IntegrateRhoPsi(*rho, weight, lev, DepositionAxisFactor()));
     }
     return q;
 }
