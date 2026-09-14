@@ -225,6 +225,30 @@ endif()
 
 if(WarpX_EB)
     add_warpx_test(
+        test_rz_staircase_bias_decomposed_picmi  # name
+        RZ  # dims
+        2  # nprocs (six boxes split across both ranks)
+        "inputs_test_rz_staircase_bias_picmi.py --max-grid-size 8"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_bias_picmi  # name
+        RZ  # dims
+        1  # nprocs
+        "inputs_test_rz_staircase_bias_picmi.py --max-grid-size 1024"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
         test_rz_adjoint_weighting_decomposed_picmi  # name
         RZ  # dims
         2  # nprocs (the domain also splits radially, off the conductor)

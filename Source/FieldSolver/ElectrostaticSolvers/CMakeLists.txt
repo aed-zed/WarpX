@@ -6,7 +6,9 @@ foreach(D IN LISTS WarpX_DIMS)
         EffectivePotentialES.cpp
         ElectrostaticSolver.cpp
         LabFrameExplicitES.cpp
+        NodalChargeMeasurement.cpp
         PoissonBoundaryHandler.cpp
         RelativisticExplicitES.cpp
+        StaircaseBias.cpp
     )
 endforeach()

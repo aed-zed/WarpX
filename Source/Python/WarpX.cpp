@@ -13,6 +13,7 @@
 #include <Diagnostics/MultiDiagnostics.H>
 #include <Diagnostics/ReducedDiags/ChargeOnEB.H>
 #include <FieldSolver/ElectrostaticSolvers/AdjointWeightingSolve.H>
+#include <FieldSolver/ElectrostaticSolvers/StaircaseBias.H>
 #include <Diagnostics/ReducedDiags/MultiReducedDiags.H>
 #include <EmbeddedBoundary/WarpXFaceInfoBox.H>
 #include <FieldSolver/FiniteDifferenceSolver/FiniteDifferenceSolver.H>
@@ -285,6 +286,47 @@ void init_WarpX (py::module& m)
             "Induced charge eps0 * oint w(x,y,z) E.n dS over the embedded boundary for "
             "the named field, with an optional weighting w(x,y,z) selecting one "
             "electrode. 3D and RZ with EB only."
+        )
+        .def("solve_staircase_unit_bias",
+            [] (WarpX&, std::string const& selector, std::string const& out_phi,
+                std::string const& out_weight, std::string const& out_efield,
+                amrex::Real rtol, int max_iter) {
+                return WarpXSolveStaircaseUnitBias(
+                    selector, out_phi, out_weight, out_efield, rtol, max_iter);
+            },
+            py::arg("selector"), py::arg("out_phi"), py::arg("out_weight"),
+            py::arg("out_efield"), py::arg("rtol") = 1.e-12,
+            py::arg("max_iter") = 200,
+            "Research RZ Yee staircase unit bias. Fill already registered nodal "
+            "potential/fixed-node weight and staggered E fields using native frozen "
+            "edges and AMReX's regular FD Laplacian. Does not change live E or EB "
+            "potential parsers. Selector must be binary and constant on every "
+            "connected frozen-edge component. Returns the absolute solve residual."
+        )
+        .def("staircase_charge_state",
+            [] (WarpX&, std::vector<std::string> const& psi_fields,
+                std::vector<std::string> const& weight_fields) {
+                auto const q = WarpXStaircaseChargeState(psi_fields, weight_fields);
+                std::vector<std::vector<amrex::Real>> result;
+                for (auto const& row : q) {
+                    result.emplace_back(row.begin(), row.end());
+                }
+                return result;
+            },
+            py::arg("psi_fields"), py::arg("weight_fields"),
+            "Research staircase charge observer: returns (total Gauss charge, live "
+            "charge on fixed nodes, grounded all-node pairing), in coulombs. "
+            "Collective, with unique nodal ownership and separate Gauss/deposition "
+            "axis measures. No Poisson solve."
+        )
+        .def("validate_staircase_weights",
+            [] (WarpX&, std::vector<std::string> const& weight_fields) {
+                return WarpXValidateStaircaseWeights(weight_fields);
+            },
+            py::arg("weight_fields"),
+            "Research setup check: global maximum error from assigning exactly "
+            "one electrode weight to each native frozen-edge endpoint node. "
+            "Zero means complete, non-overlapping coverage."
         )
         .def("deposit_scratch_rho",
             [] (WarpX& wx, int const lev) {
