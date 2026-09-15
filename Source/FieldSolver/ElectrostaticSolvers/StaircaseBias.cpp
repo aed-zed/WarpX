@@ -468,13 +468,18 @@ amrex::Real SolveStaircaseBias (
         amrex::iMultiFab::Copy(trace_overset, overset, 0, 0, 1, 0);
         trace_phi = std::make_unique<amrex::MultiFab>(
             phi->boxArray(), phi->DistributionMap(), 1, phi->nGrowVect());
-        amrex::MultiFab::Copy(*trace_phi, *phi, 0, 0, 1, phi->nGrowVect());
+        trace_phi->setVal(0._rt);
         for (amrex::MFIter mfi(*trace_phi); mfi.isValid(); ++mfi) {
             auto const pa = trace_phi->array(mfi);
+            auto const observer = phi->const_array(mfi);
             auto const ma = trace_overset.array(mfi);
             amrex::ParallelFor(mfi.validbox(),
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
+                    // With zero RHS, MLMG scales convergence by the initial residual.
+                    // A nearly identical observer warm start can request sub-roundoff
+                    // accuracy. Start free nodes at zero, retaining all fixed values.
+                    pa(i,j,k) = ma(i,j,k) == 0 ? observer(i,j,k) : 0._rt;
                     if (j == dlo[1] || j == dhi[1]) {
                         int const side = (j == dhi[1]);
                         pa(i,j,k) = trace[side*nr_nodes+i-dlo[0]];

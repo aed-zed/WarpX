@@ -157,14 +157,19 @@ def electrode_list(case):
 
 
 def main():
+    global NZ, Z_HALF
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-grid-size", type=int, default=16)
+    parser.add_argument("--long-coax", action="store_true")
     parser.add_argument(
         "--case",
         choices=("positive", "legacy", "omit-island", "driven-wall", "split"),
         default="positive",
     )
     args = parser.parse_args()
+    if args.long_coax:
+        NZ, Z_HALF = 400, 0.5
     grid = picmi.CylindricalGrid(
         number_of_cells=[NR, NZ], n_azimuthal_modes=1,
         lower_bound=[0.0, -Z_HALF], upper_bound=[R_WALL, Z_HALF],

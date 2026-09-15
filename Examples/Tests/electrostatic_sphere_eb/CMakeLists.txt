@@ -309,6 +309,18 @@ endif()
 
 if(WarpX_EB)
     add_warpx_test(
+        test_rz_staircase_bias_ground_reference_long_coax_picmi  # name
+        RZ  # dims
+        2  # nprocs (long coax split across axial boxes and ranks)
+        "inputs_test_rz_ground_reference_picmi.py --long-coax --max-grid-size 64"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
         test_rz_adjoint_weighting_decomposed_picmi  # name
         RZ  # dims
         2  # nprocs (the domain also splits radially, off the conductor)
