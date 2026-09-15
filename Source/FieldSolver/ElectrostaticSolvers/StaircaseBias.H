@@ -26,7 +26,8 @@ amrex::Real WarpXSolveStaircaseUnitBias (
     std::string const& out_efield,
     amrex::Real rtol,
     int max_iter,
-    bool insulating_endcaps = false);
+    bool insulating_endcaps = false,
+    bool grounded_wall_reference = false);
 
 /** Build an insulating-endcap observer and a distinct fringing-field actuator.
  *
@@ -43,11 +44,17 @@ amrex::Real WarpXSolveStaircaseInsulatorBias (
     std::string const& out_weight,
     std::string const& out_efield,
     amrex::Real rtol,
-    int max_iter);
+    int max_iter,
+    bool grounded_wall_reference = false);
 
-/** Return the maximum fixed-node error in the sum of all unit weights. */
+/** Return the maximum fixed-node error in the sum of all unit weights.
+ * With grounded_wall_reference, components joined by frozen edges to the
+ * outer PEC radius require zero weight; all other components require one.
+ * This setup-only RZ audit replicates the graph on each host rank.
+ */
 amrex::Real WarpXValidateStaircaseWeights (
-    std::vector<std::string> const& weight_fields);
+    std::vector<std::string> const& weight_fields,
+    bool grounded_wall_reference = false);
 
 /** Research staircase observer: total Gauss charge, deposited live charge on
  * fixed electrode nodes, and the all-node grounded pairing, respectively.

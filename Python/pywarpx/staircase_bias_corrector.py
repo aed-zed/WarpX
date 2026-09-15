@@ -63,6 +63,13 @@ class StaircaseBiasCorrector:
     outward electric flux; it is not just a live-particle charge pairing and
     is not a collected-particle ledger. General fringing unit fields require the
     explicit ``insulating_endcap_model="harmonic_trace"`` research option.
+
+    ``grounded_wall_reference=True`` identifies frozen-edge components connected
+    to the grounded outer PEC radius. Omit those components from ``electrodes``:
+    they share the domain reference and have no independent actuator or voltage
+    row. Disconnected zero-volt electrodes still need their own entries. Setup
+    checks connectivity on a replicated host RZ graph; time stepping stays native.
+    This option currently requires the insulating ``harmonic_trace`` model.
     """
 
     def __init__(
@@ -76,6 +83,7 @@ class StaircaseBiasCorrector:
         max_iterations=200,
         insulating_endcaps=False,
         insulating_endcap_model="z_uniform",
+        grounded_wall_reference=False,
         prefix="staircase",
         verbose=False,
     ):
@@ -95,6 +103,12 @@ class StaircaseBiasCorrector:
             )
         if insulating_endcap_model != "z_uniform" and not insulating_endcaps:
             raise ValueError("harmonic_trace requires insulating_endcaps=True")
+        if not isinstance(grounded_wall_reference, bool):
+            raise ValueError("grounded_wall_reference must be a boolean")
+        if grounded_wall_reference and (
+            not insulating_endcaps or insulating_endcap_model != "harmonic_trace"
+        ):
+            raise ValueError("grounded_wall_reference requires insulating harmonic_trace")
         if not prefix.isidentifier():
             raise ValueError("prefix must be a Python-style identifier")
         if not 0.0 < relaxation <= 1.0:
@@ -113,6 +127,7 @@ class StaircaseBiasCorrector:
         self.actuator_gradient = "staircase"
         self.insulating_endcaps = insulating_endcaps
         self.insulating_endcap_model = insulating_endcap_model
+        self.grounded_wall_reference = grounded_wall_reference
 
         self.n = len(electrodes)
         self.regions = [entry["region"] for entry in electrodes]
@@ -278,6 +293,10 @@ class StaircaseBiasCorrector:
             # fringing actuator. No extra solve occurs during correction.
             unit_solver = wx.solve_staircase_insulator_bias
             boundary_options = {}
+        reference_options = (
+            {"grounded_wall_reference": True} if self.grounded_wall_reference else {}
+        )
+        boundary_options.update(reference_options)
         for k, region in enumerate(self.regions):
             residuals.append(
                 float(
@@ -292,10 +311,11 @@ class StaircaseBiasCorrector:
                     )
                 )
             )
-        if wx.validate_staircase_weights(self._weight_names) != 0.0:
+        if wx.validate_staircase_weights(self._weight_names, **reference_options) != 0.0:
             raise ValueError(
-                "Every staircase component must belong to exactly one electrode; "
-                "list grounded embedded electrodes too"
+                "Every non-reference staircase component must belong to exactly one "
+                "electrode; list disconnected zero-volt electrodes too. Components "
+                "connected to the enabled grounded-wall reference must be unselected."
             )
 
         saved = self._save_efield(0)
@@ -526,6 +546,7 @@ class StaircaseBiasCorrector:
             "research_only": True,
             "insulating_endcaps": self.insulating_endcaps,
             "insulating_endcap_model": self.insulating_endcap_model,
+            "grounded_wall_reference": self.grounded_wall_reference,
         }
 
     def last_correction_state(self):

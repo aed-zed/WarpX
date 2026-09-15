@@ -290,15 +290,17 @@ void init_WarpX (py::module& m)
         .def("solve_staircase_unit_bias",
             [] (WarpX&, std::string const& selector, std::string const& out_phi,
                 std::string const& out_weight, std::string const& out_efield,
-                amrex::Real rtol, int max_iter, bool insulating_endcaps) {
+                amrex::Real rtol, int max_iter, bool insulating_endcaps,
+                bool grounded_wall_reference) {
                 return WarpXSolveStaircaseUnitBias(
                     selector, out_phi, out_weight, out_efield, rtol, max_iter,
-                    insulating_endcaps);
+                    insulating_endcaps, grounded_wall_reference);
             },
             py::arg("selector"), py::arg("out_phi"), py::arg("out_weight"),
             py::arg("out_efield"), py::arg("rtol") = 1.e-12,
             py::arg("max_iter") = 200,
             py::arg("insulating_endcaps") = false,
+            py::arg("grounded_wall_reference") = false,
             "Research RZ Yee staircase unit bias. Fill already registered nodal "
             "potential/fixed-node weight and staggered E fields using native frozen "
             "edges and AMReX's regular FD Laplacian. Does not change live E or EB "
@@ -310,13 +312,15 @@ void init_WarpX (py::module& m)
         .def("solve_staircase_insulator_bias",
             [] (WarpX&, std::string const& selector, std::string const& out_psi,
                 std::string const& out_weight, std::string const& out_efield,
-                amrex::Real rtol, int max_iter) {
+                amrex::Real rtol, int max_iter, bool grounded_wall_reference) {
                 return WarpXSolveStaircaseInsulatorBias(
-                    selector, out_psi, out_weight, out_efield, rtol, max_iter);
+                    selector, out_psi, out_weight, out_efield, rtol, max_iter,
+                    grounded_wall_reference);
             },
             py::arg("selector"), py::arg("out_psi"), py::arg("out_weight"),
             py::arg("out_efield"), py::arg("rtol") = 1.e-12,
             py::arg("max_iter") = 200,
+            py::arg("grounded_wall_reference") = false,
             "Research RZ Yee insulating-endcap staircase bias. out_psi is the "
             "homogeneous-Neumann charge-observer potential, not the actuator "
             "potential. out_efield comes from a second harmonic solve with exact "
@@ -345,13 +349,18 @@ void init_WarpX (py::module& m)
             "This observer does not repair native endpoint particle-current handling."
         )
         .def("validate_staircase_weights",
-            [] (WarpX&, std::vector<std::string> const& weight_fields) {
-                return WarpXValidateStaircaseWeights(weight_fields);
+            [] (WarpX&, std::vector<std::string> const& weight_fields,
+                bool grounded_wall_reference) {
+                return WarpXValidateStaircaseWeights(weight_fields, grounded_wall_reference);
             },
             py::arg("weight_fields"),
+            py::arg("grounded_wall_reference") = false,
             "Research setup check: global maximum error from assigning exactly "
             "one electrode weight to each native frozen-edge endpoint node. "
-            "Zero means complete, non-overlapping coverage."
+            "Zero means complete, non-overlapping coverage. With grounded_wall_reference, "
+            "frozen-edge components connected to the outer PEC radius must instead have "
+            "zero weight. Other components still need exactly one weight. This opt-in "
+            "requires insulating axial faces and replicates the RZ setup graph on host."
         )
         .def("deposit_scratch_rho",
             [] (WarpX& wx, int const lev) {

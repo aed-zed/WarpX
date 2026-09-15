@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -102,6 +103,76 @@ namespace
             }
         }
     }
+
+    // Setup-only connectivity audit. Traverse actual frozen edges, NOT adjacent
+    // fixed nodes: two such nodes can be separated by a live, voltage-bearing edge.
+    // The global RZ graph is deliberately replicated on the host. No particle or
+    // time-step data are gathered, and no reference voltage is fitted to fields.
+    amrex::Gpu::DeviceVector<int> GroundedWallNodes (
+        amrex::iMultiFab const& radial, amrex::iMultiFab const& axial,
+        amrex::Geometry const& geom)
+    {
+        auto const domain = amrex::surroundingNodes(geom.Domain());
+        auto const lo = domain.smallEnd();
+        auto const hi = domain.bigEnd();
+        amrex::Long const size = domain.numPts();
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(size <= std::numeric_limits<int>::max()/2,
+            "The research grounded-reference setup graph is too large");
+        int const count = static_cast<int>(size);
+        int const nr = domain.length(0);
+        amrex::Gpu::DeviceVector<int> device_edges(2*count, 0);
+        int* const edges = device_edges.data();
+        for (amrex::MFIter mfi(radial); mfi.isValid(); ++mfi) {
+            auto const ur = radial.const_array(mfi);
+            auto const uz = axial.const_array(mfi);
+            auto const box = amrex::surroundingNodes(
+                amrex::enclosedCells(mfi.validbox()));
+            amrex::For(box,
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    int const node = i-lo[0] + nr*(j-lo[1]);
+                    if (i < hi[0] && ur(i,j,k) == 0) {
+                        amrex::Gpu::Atomic::Max(edges+node, 1);
+                    }
+                    if (j < hi[1] && uz(i,j,k) == 0) {
+                        amrex::Gpu::Atomic::Max(edges+count+node, 1);
+                    }
+                });
+        }
+        std::vector<int> host_edges(2*count);
+        amrex::Gpu::copy(amrex::Gpu::deviceToHost, device_edges.begin(),
+                         device_edges.end(), host_edges.begin());
+        amrex::ParallelDescriptor::ReduceIntMax(host_edges.data(), 2*count);
+        std::vector<int> grounded(count, 0);
+        std::vector<int> queue;
+        for (int node = nr-1; node < count; node += nr) {
+            bool const incident = host_edges[node-1] ||
+                (node+nr < count && host_edges[count+node]) ||
+                (node >= nr && host_edges[count+node-nr]);
+            if (incident) {
+                grounded[node] = 1;
+                queue.push_back(node);
+            }
+        }
+        auto visit = [&] (int node) {
+            if (grounded[node] == 0) {
+                grounded[node] = 1;
+                queue.push_back(node);
+            }
+        };
+        for (std::size_t next = 0; next < queue.size(); ++next) {
+            int const node = queue[next];
+            int const i = node % nr;
+            if (i < nr-1 && host_edges[node]) { visit(node+1); }
+            if (i > 0 && host_edges[node-1]) { visit(node-1); }
+            if (node+nr < count && host_edges[count+node]) { visit(node+nr); }
+            if (node >= nr && host_edges[count+node-nr]) { visit(node-nr); }
+        }
+        amrex::Gpu::DeviceVector<int> result(count);
+        amrex::Gpu::copy(amrex::Gpu::hostToDevice, grounded.begin(), grounded.end(),
+                         result.begin());
+        return result;
+    }
 #endif
 }
 
@@ -111,11 +182,11 @@ amrex::Real SolveStaircaseBias (
     std::string const& selector, std::string const& out_phi,
     std::string const& out_weight, std::string const& out_efield,
     amrex::Real const rtol, int const max_iter, bool const insulating_endcaps,
-    bool const harmonic_trace)
+    bool const harmonic_trace, bool const grounded_wall_reference)
 {
 #ifndef WARPX_DIM_RZ
     amrex::ignore_unused(selector, out_phi, out_weight, out_efield, rtol, max_iter,
-                        insulating_endcaps, harmonic_trace);
+                        insulating_endcaps, harmonic_trace, grounded_wall_reference);
     WARPX_ABORT_WITH_MESSAGE("The staircase unit-bias solve is implemented only in RZ");
     return amrex::Real(0.0);
 #else
@@ -129,6 +200,8 @@ amrex::Real SolveStaircaseBias (
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!harmonic_trace || insulating_endcaps,
         "A harmonic endpoint trace requires native insulating endcaps");
     if (insulating_endcaps) { ValidateInsulatingEndcaps(); }
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!grounded_wall_reference || insulating_endcaps,
+        "Grounded-wall reference currently requires insulating RZ endcaps");
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(rtol > 0._rt && rtol < 1._rt && max_iter > 0,
         "The staircase unit-bias solve needs 0 < rtol < 1 and max_iter > 0");
 
@@ -250,7 +323,7 @@ amrex::Real SolveStaircaseBias (
                 wa(i,j,k) = pa(i,j,k);
                 ma(i,j,k) = incident || wall ? 0 : 1; // overset: 1 unknown, 0 fixed
                 ca(i,j,k,0) = incident && !binary;
-                ca(i,j,k,1) = incident && wall;
+                ca(i,j,k,1) = incident && wall && (!grounded_wall_reference || s != 0._rt);
                 ca(i,j,k,2) =
                     i < dhi[0] && ur(i,j,k) == 0 &&
                     s != select(r+dx[0], 0._rt, z);
@@ -265,7 +338,8 @@ amrex::Real SolveStaircaseBias (
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(checks.max(0) == 0._rt,
         "The staircase selector must be binary on every frozen-edge endpoint");
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(checks.max(1) == 0._rt,
-        "A frozen staircase component touches a nonperiodic PEC wall");
+        "A frozen staircase component touches a nonperiodic PEC wall: only an "
+        "unselected grounded reference is allowed with grounded_wall_reference enabled");
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(checks.max(2) == 0._rt && checks.max(3) == 0._rt,
         "The staircase selector changes value across a frozen Er or Ez edge");
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(checks.max(4) == 0._rt,
@@ -457,26 +531,27 @@ amrex::Real SolveStaircaseBias (
 amrex::Real WarpXSolveStaircaseUnitBias (
     std::string const& selector, std::string const& out_phi,
     std::string const& out_weight, std::string const& out_efield,
-    amrex::Real const rtol, int const max_iter, bool const insulating_endcaps)
+    amrex::Real const rtol, int const max_iter, bool const insulating_endcaps,
+    bool const grounded_wall_reference)
 {
     return SolveStaircaseBias(selector, out_phi, out_weight, out_efield, rtol, max_iter,
-                              insulating_endcaps, false);
+                              insulating_endcaps, false, grounded_wall_reference);
 }
 
 amrex::Real WarpXSolveStaircaseInsulatorBias (
     std::string const& selector, std::string const& out_psi,
     std::string const& out_weight, std::string const& out_efield,
-    amrex::Real const rtol, int const max_iter)
+    amrex::Real const rtol, int const max_iter, bool const grounded_wall_reference)
 {
     return SolveStaircaseBias(selector, out_psi, out_weight, out_efield, rtol, max_iter,
-                              true, true);
+                              true, true, grounded_wall_reference);
 }
 
 amrex::Real WarpXValidateStaircaseWeights (
-    std::vector<std::string> const& weight_fields)
+    std::vector<std::string> const& weight_fields, bool const grounded_wall_reference)
 {
 #ifndef WARPX_DIM_RZ
-    amrex::ignore_unused(weight_fields);
+    amrex::ignore_unused(weight_fields, grounded_wall_reference);
     WARPX_ABORT_WITH_MESSAGE("Staircase weights are implemented only in RZ");
     return amrex::Real(0.0);
 #else
@@ -528,6 +603,16 @@ amrex::Real WarpXValidateStaircaseWeights (
     auto const dlo = ndomain.smallEnd();
     auto const dhi = ndomain.bigEnd();
     bool const z_periodic = warpx.Geom(lev).isPeriodic(1);
+    amrex::Gpu::DeviceVector<int> reference;
+    if (grounded_wall_reference) {
+        ValidateInsulatingEndcaps();
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            WarpX::field_boundary_hi[0] == FieldBoundaryType::PEC,
+            "The connected reference requires a grounded outer PEC radius");
+        reference = GroundedWallNodes(*update[0], *update[2], warpx.Geom(lev));
+    }
+    int const* const grounded = reference.data();
+    int const nr = ndomain.length(0);
     for (amrex::MFIter mfi(sum); mfi.isValid(); ++mfi) {
         auto const s = sum.array(mfi);
         auto const ur = update[0]->const_array(mfi);
@@ -540,7 +625,10 @@ amrex::Real WarpXValidateStaircaseWeights (
                     (i < dhi[0] && ur(i,j,k) == 0) ||
                     ((z_periodic || j > dlo[1]) && uz(i,j-1,k) == 0) ||
                     ((z_periodic || j < dhi[1]) && uz(i,j,k) == 0);
-                s(i,j,k) = fixed ? amrex::Math::abs(s(i,j,k)-1._rt) : 0._rt;
+                bool const is_reference = grounded_wall_reference &&
+                    grounded[i-dlo[0]+nr*(j-dlo[1])] != 0;
+                amrex::Real const expected = is_reference ? 0._rt : 1._rt;
+                s(i,j,k) = fixed ? amrex::Math::abs(s(i,j,k)-expected) : 0._rt;
             });
     }
     return sum.norm0();

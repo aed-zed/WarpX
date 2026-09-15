@@ -285,6 +285,30 @@ endif()
 
 if(WarpX_EB)
     add_warpx_test(
+        test_rz_staircase_bias_ground_reference_decomposed_picmi  # name
+        RZ  # dims
+        2  # nprocs (the reference crosses radial and axial box interfaces)
+        "inputs_test_rz_ground_reference_picmi.py --max-grid-size 16"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_bias_ground_reference_picmi  # name
+        RZ  # dims
+        1  # nprocs (one-box reference)
+        "inputs_test_rz_ground_reference_picmi.py --max-grid-size 1024"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
         test_rz_adjoint_weighting_decomposed_picmi  # name
         RZ  # dims
         2  # nprocs (the domain also splits radially, off the conductor)
