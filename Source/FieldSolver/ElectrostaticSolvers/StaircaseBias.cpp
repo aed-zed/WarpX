@@ -26,6 +26,7 @@
 #include <AMReX_MLEBNodeFDLaplacian.H>
 #include <AMReX_MLMG.H>
 #include <AMReX_MultiFab.H>
+#include <AMReX_ParmParse.H>
 #include <AMReX_iMultiFab.H>
 
 #include <algorithm>
@@ -45,10 +46,6 @@ namespace
 
     void ValidateStaircaseMode (WarpX const& warpx)
     {
-#ifdef AMREX_USE_GPU
-        WARPX_ABORT_WITH_MESSAGE(
-            "The research staircase unit-bias path has not passed its GPU validation gate");
-#endif
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(EB::enabled(),
             "The staircase unit-bias path requires an embedded boundary");
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(warpx.maxLevel() == 0,
@@ -80,16 +77,38 @@ namespace
             WarpX::gamma_boost == amrex::Real(1.0),
             "The staircase unit-bias path currently supports the laboratory frame only");
     }
+
+    void ValidateInsulatingEndcaps ()
+    {
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            WarpX::field_boundary_lo[1] == FieldBoundaryType::PEC_Insulator &&
+            WarpX::field_boundary_hi[1] == FieldBoundaryType::PEC_Insulator,
+            "insulating_endcaps requires two native pec_insulator z boundaries");
+        amrex::ParmParse const pp("insulator");
+        for (auto const* side : {"lo", "hi"}) {
+            std::string area;
+            utils::parser::Query_parserString(pp, std::string("area_z_")+side+"(x,y)", area);
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(area == "1",
+                "The research insulating-endcap clamp requires area_z_lo(x,y) = 1 "
+                "and area_z_hi(x,y) = 1; metal footprints are supplied by the EB");
+            for (auto const* component : {"Ex", "Ey", "Bx", "By"}) {
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+                    !pp.contains(std::string(component)+"_z_"+side+"(x,y,t)"),
+                    "The insulating-endcap clamp cannot prescribe tangential boundary fields");
+            }
+        }
+    }
 #endif
 }
 
 amrex::Real WarpXSolveStaircaseUnitBias (
     std::string const& selector, std::string const& out_phi,
     std::string const& out_weight, std::string const& out_efield,
-    amrex::Real const rtol, int const max_iter)
+    amrex::Real const rtol, int const max_iter, bool const insulating_endcaps)
 {
 #ifndef WARPX_DIM_RZ
-    amrex::ignore_unused(selector, out_phi, out_weight, out_efield, rtol, max_iter);
+    amrex::ignore_unused(selector, out_phi, out_weight, out_efield, rtol, max_iter,
+                        insulating_endcaps);
     WARPX_ABORT_WITH_MESSAGE("The staircase unit-bias solve is implemented only in RZ");
     return amrex::Real(0.0);
 #else
@@ -100,6 +119,7 @@ amrex::Real WarpXSolveStaircaseUnitBias (
 
     auto& warpx = WarpX::GetInstance();
     ValidateStaircaseMode(warpx);
+    if (insulating_endcaps) { ValidateInsulatingEndcaps(); }
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(rtol > 0._rt && rtol < 1._rt && max_iter > 0,
         "The staircase unit-bias solve needs 0 < rtol < 1 and max_iter > 0");
 
@@ -109,11 +129,11 @@ amrex::Real WarpXSolveStaircaseUnitBias (
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
         WarpX::field_boundary_lo[0] == FieldBoundaryType::None &&
         WarpX::field_boundary_hi[0] == FieldBoundaryType::PEC &&
-        (z_periodic ||
+        (z_periodic || insulating_endcaps ||
          (WarpX::field_boundary_lo[1] == FieldBoundaryType::PEC &&
           WarpX::field_boundary_hi[1] == FieldBoundaryType::PEC)),
         "Supported staircase boundaries are the RZ axis, a PEC outer radius, and "
-        "either two PEC or two periodic z boundaries");
+        "either two PEC, two periodic, or explicitly enabled insulating z boundaries");
 
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
         out_phi != out_weight && out_phi != out_efield && out_weight != out_efield,
@@ -216,7 +236,7 @@ amrex::Real WarpXSolveStaircaseUnitBias (
                 const amrex::Real s = select(r, 0._rt, z);
                 const bool binary = s == 0._rt || s == 1._rt;
                 const bool wall = i == dhi[0] ||
-                    (!z_periodic && (j == dlo[1] || j == dhi[1]));
+                    (!z_periodic && !insulating_endcaps && (j == dlo[1] || j == dhi[1]));
                 pa(i,j,k) = incident && s == 1._rt ? 1._rt : 0._rt;
                 wa(i,j,k) = pa(i,j,k);
                 ma(i,j,k) = incident || wall ? 0 : 1; // overset: 1 unknown, 0 fixed
@@ -267,9 +287,17 @@ amrex::Real WarpXSolveStaircaseUnitBias (
     linop.setRZ(true);
     linop.setSigma({1._rt, 1._rt});
     linop.setAlpha(0._rt);
-    auto& handler = *warpx.GetElectrostaticSolver().m_poisson_boundary_handler;
-    handler.DefinePhiBCs(warpx.Geom(lev));
-    linop.setDomainBC(handler.lobc, handler.hibc);
+    if (insulating_endcaps) {
+        // This Neumann solve is ONLY a constructor for z-independent unit fields.
+        // Native insulator E guards do not implement general scalar Neumann BCs.
+        // The axial-field rejection below is essential, not a solver tolerance workaround.
+        linop.setDomainBC({amrex::LinOpBCType::Neumann, amrex::LinOpBCType::Neumann},
+                          {amrex::LinOpBCType::Dirichlet, amrex::LinOpBCType::Neumann});
+    } else {
+        auto& handler = *warpx.GetElectrostaticSolver().m_poisson_boundary_handler;
+        handler.DefinePhiBCs(warpx.Geom(lev));
+        linop.setDomainBC(handler.lobc, handler.hibc);
+    }
     linop.setOversetMask(lev, overset);
 
     amrex::MLMG mlmg(linop);
@@ -282,8 +310,32 @@ amrex::Real WarpXSolveStaircaseUnitBias (
     MultiLevelScalarField phi_levels{phi};
     warpx.GetElectrostaticSolver().computeE(
         efield_levels, phi_levels, {0._rt, 0._rt, 0._rt});
+    if (insulating_endcaps) {
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            efield[2]->norm0() <= std::max(100._rt*rtol, 1.e-12_rt)*efield[0]->norm0(),
+            "The insulating-endcap clamp currently requires z-independent unit potentials; "
+            "axially varying/fringing geometries need a matched boundary construction");
+    }
     for (auto* field : efield) {
         field->FillBoundary(warpx.Geom(lev).periodicity());
+    }
+    if (insulating_endcaps) {
+        // Also check the transverse field itself, including across MPI boxes.
+        // Do not post-mask or flatten a field that fails this compatibility gate.
+        for (amrex::MFIter mfi(checks); mfi.isValid(); ++mfi) {
+            auto const error = checks.array(mfi);
+            auto const er = efield[0]->const_array(mfi);
+            amrex::ParallelFor(mfi.validbox(),
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    error(i,j,k,0) = i < dhi[0] && j < dhi[1]
+                        ? amrex::Math::abs(er(i,j+1,k)-er(i,j,k)) : 0._rt;
+                });
+        }
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            checks.norm0(0) <= std::max(100._rt*rtol, 1.e-12_rt)*efield[0]->norm0() &&
+            efield[1]->norm0() == 0._rt,
+            "Insulating-endcap unit fields must have z-independent Er and zero Etheta");
     }
     return residual;
 #endif
@@ -366,14 +418,12 @@ amrex::Real WarpXValidateStaircaseWeights (
 
 amrex::Vector<amrex::Vector<amrex::Real>>
 WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
-                          std::vector<std::string> const& weight_fields)
+                          std::vector<std::string> const& weight_fields,
+                          bool const insulating_endcaps)
 {
 #ifndef WARPX_DIM_RZ
+    amrex::ignore_unused(insulating_endcaps);
     WARPX_ABORT_WITH_MESSAGE("The research staircase observer is implemented only in RZ");
-#endif
-#ifdef AMREX_USE_GPU
-    WARPX_ABORT_WITH_MESSAGE(
-        "The research staircase observer has not passed its GPU validation gate");
 #endif
     using namespace amrex::literals;
     using warpx::electrostatic::DepositionAxisFactor;
@@ -382,6 +432,16 @@ WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
     using warpx::electrostatic::NodalDivEFromFp;
 
     auto& warpx = WarpX::GetInstance();
+#ifdef WARPX_DIM_RZ
+    if (insulating_endcaps) {
+        ValidateInsulatingEndcaps();
+    } else {
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            WarpX::field_boundary_lo[1] != FieldBoundaryType::PEC_Insulator &&
+            WarpX::field_boundary_hi[1] != FieldBoundaryType::PEC_Insulator,
+            "Native insulator faces require the insulating_endcaps charge convention");
+    }
+#endif
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(EB::enabled() && warpx.maxLevel() == 0
         && WarpX::ncomps == 1 && warpx.evolve_scheme == EvolveScheme::Explicit
         && WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::Yee
@@ -417,8 +477,37 @@ WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
                 "Staircase charge fields must be scalar native nodal fields on level zero");
         }
     }
+    std::unique_ptr<amrex::MultiFab> axial_flux_density;
+#ifdef WARPX_DIM_RZ
+    if (insulating_endcaps) {
+        // Reuse the native even-normal/linear-tangential guard extension.
+        // For a boundary-compatible field in this whole-face, no-parser mode,
+        // reapplying the axis, PEC and insulator rules leaves valid E unchanged.
+        auto const e = warpx.m_fields.get_alldirs("Efield_fp", 0);
+        warpx.ApplyEfieldBoundary(0, PatchType::fine, warpx.gett_new(0));
+        axial_flux_density = std::make_unique<amrex::MultiFab>(
+            rho->boxArray(), rho->DistributionMap(), 1, 0);
+        auto const ndomain = amrex::surroundingNodes(warpx.Geom(0).Domain());
+        int const zlo = ndomain.smallEnd(1);
+        int const zhi = ndomain.bigEnd(1);
+        auto const dz = warpx.Geom(0).CellSize(1);
+        for (amrex::MFIter mfi(*axial_flux_density); mfi.isValid(); ++mfi) {
+            auto const f = axial_flux_density->array(mfi);
+            auto const ez = e[2]->const_array(mfi);
+            amrex::ParallelFor(mfi.validbox(),
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    // The native even Ez guard makes its face value equal to
+                    // the adjacent cell value. This is outward axial flux / dz,
+                    // not a new material-charge density or a particle ledger.
+                    f(i,j,k) = j == zlo ? -ez(i,j,k)/dz :
+                        (j == zhi ? ez(i,j-1,k)/dz : 0._rt);
+                });
+        }
+    }
+#endif
     auto const div_e = NodalDivEFromFp(0);
-    amrex::Vector<amrex::Vector<amrex::Real>> result(3);
+    amrex::Vector<amrex::Vector<amrex::Real>> result(insulating_endcaps ? 4 : 3);
 
 #ifdef WARPX_DIM_RZ
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(warpx.Geom(0).ProbLo(0) == 0._rt,
@@ -448,11 +537,17 @@ WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
         auto const* psi = warpx.m_fields.get(psi_fields[k], 0);
         auto const* weight = warpx.m_fields.get(weight_fields[k], 0);
         result[0].push_back(PhysConst::epsilon_0
-            * IntegrateRhoPsi(*div_e, *weight, 0, GaussAxisFactor()));
+            * IntegrateRhoPsi(*div_e, *weight, 0, GaussAxisFactor(), insulating_endcaps));
         result[1].push_back(IntegrateRhoPsi(*rho, *weight, 0, DepositionAxisFactor()));
         // Include fixed-node source support: the caller subtracts result[1]
         // from result[0], so Q_g must include the corresponding -q_fixed term.
         result[2].push_back(-IntegrateRhoPsi(*rho, *psi, 0, DepositionAxisFactor()));
+        if (insulating_endcaps) {
+            auto const boundary_charge = PhysConst::epsilon_0
+                * IntegrateRhoPsi(*axial_flux_density, *psi, 0, GaussAxisFactor());
+            result[2].back() += boundary_charge;
+            result[3].push_back(boundary_charge);
+        }
     }
     return result;
 }

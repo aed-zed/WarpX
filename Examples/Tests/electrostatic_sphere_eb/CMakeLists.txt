@@ -237,6 +237,30 @@ endif()
 
 if(WarpX_EB)
     add_warpx_test(
+        test_rz_staircase_bias_insulating_endcaps_decomposed_picmi  # name
+        RZ  # dims
+        2  # nprocs (same six boxes split across both ranks)
+        "inputs_test_rz_staircase_bias_picmi.py --max-grid-size 8 --insulating-endcaps"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_bias_insulating_endcaps_picmi  # name
+        RZ  # dims
+        1  # nprocs (one-box reference)
+        "inputs_test_rz_staircase_bias_picmi.py --max-grid-size 1024 --insulating-endcaps"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
         test_rz_staircase_bias_picmi  # name
         RZ  # dims
         1  # nprocs

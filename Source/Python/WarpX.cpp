@@ -290,23 +290,28 @@ void init_WarpX (py::module& m)
         .def("solve_staircase_unit_bias",
             [] (WarpX&, std::string const& selector, std::string const& out_phi,
                 std::string const& out_weight, std::string const& out_efield,
-                amrex::Real rtol, int max_iter) {
+                amrex::Real rtol, int max_iter, bool insulating_endcaps) {
                 return WarpXSolveStaircaseUnitBias(
-                    selector, out_phi, out_weight, out_efield, rtol, max_iter);
+                    selector, out_phi, out_weight, out_efield, rtol, max_iter,
+                    insulating_endcaps);
             },
             py::arg("selector"), py::arg("out_phi"), py::arg("out_weight"),
             py::arg("out_efield"), py::arg("rtol") = 1.e-12,
             py::arg("max_iter") = 200,
+            py::arg("insulating_endcaps") = false,
             "Research RZ Yee staircase unit bias. Fill already registered nodal "
             "potential/fixed-node weight and staggered E fields using native frozen "
             "edges and AMReX's regular FD Laplacian. Does not change live E or EB "
             "potential parsers. Selector must be binary and constant on every "
-            "connected frozen-edge component. Returns the absolute solve residual."
+            "connected frozen-edge component. Returns the absolute solve residual. "
+            "insulating_endcaps enables a separate, z-independent whole-face "
+            "pec_insulator research mode; it does not model dielectric charging."
         )
         .def("staircase_charge_state",
             [] (WarpX&, std::vector<std::string> const& psi_fields,
-                std::vector<std::string> const& weight_fields) {
-                auto const q = WarpXStaircaseChargeState(psi_fields, weight_fields);
+                std::vector<std::string> const& weight_fields, bool insulating_endcaps) {
+                auto const q = WarpXStaircaseChargeState(
+                    psi_fields, weight_fields, insulating_endcaps);
                 std::vector<std::vector<amrex::Real>> result;
                 for (auto const& row : q) {
                     result.emplace_back(row.begin(), row.end());
@@ -314,10 +319,14 @@ void init_WarpX (py::module& m)
                 return result;
             },
             py::arg("psi_fields"), py::arg("weight_fields"),
+            py::arg("insulating_endcaps") = false,
             "Research staircase charge observer: returns (total Gauss charge, live "
             "charge on fixed nodes, grounded all-node pairing), in coulombs. "
             "Collective, with unique nodal ownership and separate Gauss/deposition "
-            "axis measures. No Poisson solve."
+            "axis measures. No Poisson solve. With insulating_endcaps, the third "
+            "row includes the outward weighted axial electric flux, also returned "
+            "separately as a fourth row; field endpoint volumes are halved. "
+            "This observer does not repair native endpoint particle-current handling."
         )
         .def("validate_staircase_weights",
             [] (WarpX&, std::vector<std::string> const& weight_fields) {

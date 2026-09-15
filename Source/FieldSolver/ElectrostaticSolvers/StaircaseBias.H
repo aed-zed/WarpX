@@ -25,7 +25,8 @@ amrex::Real WarpXSolveStaircaseUnitBias (
     std::string const& out_weight,
     std::string const& out_efield,
     amrex::Real rtol,
-    int max_iter);
+    int max_iter,
+    bool insulating_endcaps = false);
 
 /** Return the maximum fixed-node error in the sum of all unit weights. */
 amrex::Real WarpXValidateStaircaseWeights (
@@ -39,6 +40,7 @@ amrex::Real WarpXValidateStaircaseWeights (
  */
 amrex::Vector<amrex::Vector<amrex::Real>>
 WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
-                          std::vector<std::string> const& weight_fields);
+                          std::vector<std::string> const& weight_fields,
+                          bool insulating_endcaps = false);
 
 #endif // WARPX_STAIRCASE_BIAS_H_

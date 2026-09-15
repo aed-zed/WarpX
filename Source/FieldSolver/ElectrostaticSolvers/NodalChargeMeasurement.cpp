@@ -48,7 +48,8 @@ namespace warpx::electrostatic
         amrex::MultiFab const& rho,
         amrex::MultiFab const& psi,
         int lev,
-        amrex::Real axis_factor)
+        amrex::Real axis_factor,
+        bool half_axial_endpoints)
     {
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
             rho.boxArray() == psi.boxArray() &&
@@ -63,8 +64,14 @@ namespace warpx::electrostatic
         const amrex::Real dr = dx[0];
         const amrex::Real dz = dx[1];
         const amrex::Real rlo = warpx.Geom(lev).ProbLo(0);
+        auto const ndomain = amrex::surroundingNodes(warpx.Geom(lev).Domain());
+        int const zlo = ndomain.smallEnd(1);
+        int const zhi = ndomain.bigEnd(1);
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            !half_axial_endpoints || !warpx.Geom(lev).isPeriodic(1),
+            "Half axial endpoint volumes require nonperiodic z");
 #else
-        amrex::ignore_unused(axis_factor);
+        amrex::ignore_unused(axis_factor, half_axial_endpoints);
         const amrex::Real node_volume = dx[0] * dx[1] * dx[2];
 #endif
 
@@ -79,7 +86,9 @@ namespace warpx::electrostatic
                     const amrex::Real r = rlo + amrex::Real(i)*dr;
                     const amrex::Real radial_measure = (r == 0._rt)
                         ? MathConst::pi*dr*axis_factor : 2._rt*MathConst::pi*r;
-                    const amrex::Real node_volume = dr*dz*radial_measure;
+                    const amrex::Real axial_factor = half_axial_endpoints &&
+                        (j == zlo || j == zhi) ? 0.5_rt : 1._rt;
+                    const amrex::Real node_volume = dr*dz*radial_measure*axial_factor;
 #endif
                     wa(i,j,k) = qa(i,j,k,0) * pa(i,j,k,0) * node_volume;
                 });

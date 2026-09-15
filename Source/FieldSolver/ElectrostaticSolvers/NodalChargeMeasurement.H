@@ -25,7 +25,8 @@ namespace warpx::electrostatic
         amrex::MultiFab const& rho,
         amrex::MultiFab const& psi,
         int lev,
-        amrex::Real axis_factor);
+        amrex::Real axis_factor,
+        bool half_axial_endpoints = false);
 
     /** Nodal divergence of Efield_fp, on the level's nodal BoxArray. */
     std::unique_ptr<amrex::MultiFab> NodalDivEFromFp (int lev);
