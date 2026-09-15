@@ -28,6 +28,23 @@ amrex::Real WarpXSolveStaircaseUnitBias (
     int max_iter,
     bool insulating_endcaps = false);
 
+/** Build an insulating-endcap observer and a distinct fringing-field actuator.
+ *
+ * ``out_psi`` is the homogeneous-Neumann harmonic weighting potential used by
+ * the charge observer; it is not the actuator potential.  ``out_efield`` is
+ * computed from a second harmonic potential whose two endpoint traces solve the
+ * exact one-dimensional RZ nodal resistance network between fixed metal nodes.
+ * All output fields must already be registered.  Returns the larger absolute
+ * residual of the observer and actuator solves.
+ */
+amrex::Real WarpXSolveStaircaseInsulatorBias (
+    std::string const& selector,
+    std::string const& out_psi,
+    std::string const& out_weight,
+    std::string const& out_efield,
+    amrex::Real rtol,
+    int max_iter);
+
 /** Return the maximum fixed-node error in the sum of all unit weights. */
 amrex::Real WarpXValidateStaircaseWeights (
     std::vector<std::string> const& weight_fields);

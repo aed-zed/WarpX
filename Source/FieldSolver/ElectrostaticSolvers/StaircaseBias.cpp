@@ -21,11 +21,15 @@
 #include <AMReX_EB2.H>
 #include <AMReX_EB2_IF_AllRegular.H>
 #include <AMReX_EBFabFactory.H>
+#include <AMReX_GpuAtomic.H>
+#include <AMReX_GpuContainers.H>
+#include <AMReX_GpuLaunch.H>
 #include <AMReX_MFIter.H>
 #include <AMReX_Math.H>
 #include <AMReX_MLEBNodeFDLaplacian.H>
 #include <AMReX_MLMG.H>
 #include <AMReX_MultiFab.H>
+#include <AMReX_ParallelDescriptor.H>
 #include <AMReX_ParmParse.H>
 #include <AMReX_iMultiFab.H>
 
@@ -101,14 +105,17 @@ namespace
 #endif
 }
 
-amrex::Real WarpXSolveStaircaseUnitBias (
+namespace
+{
+amrex::Real SolveStaircaseBias (
     std::string const& selector, std::string const& out_phi,
     std::string const& out_weight, std::string const& out_efield,
-    amrex::Real const rtol, int const max_iter, bool const insulating_endcaps)
+    amrex::Real const rtol, int const max_iter, bool const insulating_endcaps,
+    bool const harmonic_trace)
 {
 #ifndef WARPX_DIM_RZ
     amrex::ignore_unused(selector, out_phi, out_weight, out_efield, rtol, max_iter,
-                        insulating_endcaps);
+                        insulating_endcaps, harmonic_trace);
     WARPX_ABORT_WITH_MESSAGE("The staircase unit-bias solve is implemented only in RZ");
     return amrex::Real(0.0);
 #else
@@ -119,6 +126,8 @@ amrex::Real WarpXSolveStaircaseUnitBias (
 
     auto& warpx = WarpX::GetInstance();
     ValidateStaircaseMode(warpx);
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!harmonic_trace || insulating_endcaps,
+        "A harmonic endpoint trace requires native insulating endcaps");
     if (insulating_endcaps) { ValidateInsulatingEndcaps(); }
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(rtol > 0._rt && rtol < 1._rt && max_iter > 0,
         "The staircase unit-bias solve needs 0 < rtol < 1 and max_iter > 0");
@@ -281,36 +290,139 @@ amrex::Real WarpXSolveStaircaseUnitBias (
     auto regular_factory = amrex::makeEBFabFactory(
         regular_index.get(), warpx.Geom(lev), warpx.boxArray(lev),
         warpx.DistributionMap(lev), {1, 1, 1}, amrex::EBSupport::full);
-    amrex::MLEBNodeFDLaplacian linop(
-        {warpx.Geom(lev)}, {warpx.boxArray(lev)}, {warpx.DistributionMap(lev)}, info,
-        {regular_factory.get()});
-    linop.setRZ(true);
-    linop.setSigma({1._rt, 1._rt});
-    linop.setAlpha(0._rt);
-    if (insulating_endcaps) {
-        // This Neumann solve is ONLY a constructor for z-independent unit fields.
-        // Native insulator E guards do not implement general scalar Neumann BCs.
-        // The axial-field rejection below is essential, not a solver tolerance workaround.
-        linop.setDomainBC({amrex::LinOpBCType::Neumann, amrex::LinOpBCType::Neumann},
-                          {amrex::LinOpBCType::Dirichlet, amrex::LinOpBCType::Neumann});
-    } else {
-        auto& handler = *warpx.GetElectrostaticSolver().m_poisson_boundary_handler;
-        handler.DefinePhiBCs(warpx.Geom(lev));
-        linop.setDomainBC(handler.lobc, handler.hibc);
-    }
-    linop.setOversetMask(lev, overset);
+    auto solve_potential = [&] (amrex::MultiFab* potential, amrex::iMultiFab const& mask)
+    {
+        // Construct a fresh operator because nodal Dirichlet masks are cached by MLMG.
+        amrex::MLEBNodeFDLaplacian linop(
+            {warpx.Geom(lev)}, {warpx.boxArray(lev)}, {warpx.DistributionMap(lev)}, info,
+            {regular_factory.get()});
+        linop.setRZ(true);
+        linop.setSigma({1._rt, 1._rt});
+        linop.setAlpha(0._rt);
+        if (insulating_endcaps) {
+            // The observer uses homogeneous Neumann endpoint faces. The trace actuator
+            // preloads every endpoint node and removes those equations with the mask.
+            linop.setDomainBC({amrex::LinOpBCType::Neumann, amrex::LinOpBCType::Neumann},
+                              {amrex::LinOpBCType::Dirichlet, amrex::LinOpBCType::Neumann});
+        } else {
+            auto& handler = *warpx.GetElectrostaticSolver().m_poisson_boundary_handler;
+            handler.DefinePhiBCs(warpx.Geom(lev));
+            linop.setDomainBC(handler.lobc, handler.hibc);
+        }
+        linop.setOversetMask(lev, mask);
+        amrex::MLMG mlmg(linop);
+        mlmg.setMaxIter(max_iter);
+        return mlmg.solve({potential}, {&rhs}, rtol, 0._rt);
+    };
 
-    amrex::MLMG mlmg(linop);
-    mlmg.setMaxIter(max_iter);
-    amrex::Real const residual = mlmg.solve({phi}, {&rhs}, rtol, 0._rt);
+    amrex::Real residual = solve_potential(phi, overset);
     phi->FillBoundary(warpx.Geom(lev).periodicity());
+
+    std::unique_ptr<amrex::MultiFab> trace_phi;
+    amrex::MultiFab* actuator_phi = phi;
+    if (harmonic_trace) {
+        int const nr_nodes = dhi[0] - dlo[0] + 1;
+        int const face_size = 2 * nr_nodes;
+        amrex::Gpu::DeviceVector<int> device_flags(2 * face_size, 0);
+        int* const flags = device_flags.data();
+        for (amrex::MFIter mfi(*phi); mfi.isValid(); ++mfi) {
+            auto const ma = overset.const_array(mfi);
+            auto const wa = weight->const_array(mfi);
+            amrex::For(mfi.validbox(),
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (j == dlo[1] || j == dhi[1]) {
+                        int const side = (j == dhi[1]);
+                        int const index = side * nr_nodes + i - dlo[0];
+                        amrex::Gpu::Atomic::Max(flags + index, int(ma(i,j,k) == 0));
+                        amrex::Gpu::Atomic::Max(flags + face_size + index,
+                                               int(wa(i,j,k) != 0._rt));
+                    }
+                });
+        }
+        std::vector<int> host_flags(device_flags.size());
+        amrex::Gpu::copy(amrex::Gpu::deviceToHost, device_flags.begin(),
+                         device_flags.end(), host_flags.begin());
+        amrex::ParallelDescriptor::ReduceIntMax(
+            host_flags.data(), static_cast<int>(host_flags.size()));
+
+        std::vector<amrex::Real> host_trace(face_size, 0._rt);
+        for (int side = 0; side < 2; ++side) {
+            int const base = side * nr_nodes;
+            auto fixed = [&] (int i) { return host_flags[base+i] != 0; };
+            auto selected = [&] (int i) { return host_flags[face_size+base+i] != 0; };
+            for (int i = 0; i < nr_nodes; ++i) {
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!selected(i) || fixed(i),
+                    "An insulating-face electrode weight is not on a fixed staircase node");
+            }
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(fixed(nr_nodes-1) && !selected(nr_nodes-1),
+                "The PEC outer radius must ground both insulating-face traces");
+
+            int left = 0;
+            while (left < nr_nodes && !fixed(left)) { ++left; }
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(left < nr_nodes,
+                "Each insulating-face trace needs at least one fixed-potential anchor");
+            amrex::Real const first_value = selected(left) ? 1._rt : 0._rt;
+            for (int i = 0; i <= left; ++i) { host_trace[base+i] = first_value; }
+            while (left < nr_nodes-1) {
+                int right = left + 1;
+                while (right < nr_nodes && !fixed(right)) { ++right; }
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(right < nr_nodes,
+                    "An insulating-face interval is not bounded by fixed-potential nodes");
+                amrex::Real resistance = 0._rt;
+                for (int edge = left; edge < right; ++edge) {
+                    resistance += 1._rt / (amrex::Real(edge) + 0.5_rt);
+                }
+                amrex::Real accumulated = 0._rt;
+                amrex::Real const left_value = selected(left) ? 1._rt : 0._rt;
+                amrex::Real const right_value = selected(right) ? 1._rt : 0._rt;
+                for (int i = left + 1; i < right; ++i) {
+                    accumulated += 1._rt / (amrex::Real(i-1) + 0.5_rt);
+                    host_trace[base+i] = left_value
+                        + (right_value-left_value) * accumulated/resistance;
+                }
+                host_trace[base+right] = right_value;
+                left = right;
+            }
+        }
+
+        amrex::Gpu::DeviceVector<amrex::Real> device_trace(face_size);
+        amrex::Gpu::copy(amrex::Gpu::hostToDevice, host_trace.begin(), host_trace.end(),
+                         device_trace.begin());
+        amrex::Real const* const trace = device_trace.data();
+        amrex::iMultiFab trace_overset(nodal_ba, warpx.DistributionMap(lev), 1, 0);
+        amrex::iMultiFab::Copy(trace_overset, overset, 0, 0, 1, 0);
+        trace_phi = std::make_unique<amrex::MultiFab>(
+            phi->boxArray(), phi->DistributionMap(), 1, phi->nGrowVect());
+        amrex::MultiFab::Copy(*trace_phi, *phi, 0, 0, 1, phi->nGrowVect());
+        for (amrex::MFIter mfi(*trace_phi); mfi.isValid(); ++mfi) {
+            auto const pa = trace_phi->array(mfi);
+            auto const ma = trace_overset.array(mfi);
+            amrex::ParallelFor(mfi.validbox(),
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    if (j == dlo[1] || j == dhi[1]) {
+                        int const side = (j == dhi[1]);
+                        pa(i,j,k) = trace[side*nr_nodes+i-dlo[0]];
+                        ma(i,j,k) = 0;
+                    }
+                });
+        }
+        trace_phi->OverrideSync(warpx.Geom(lev).periodicity());
+        trace_phi->FillBoundary(warpx.Geom(lev).periodicity());
+        trace_overset.OverrideSync(warpx.Geom(lev).periodicity());
+        residual = std::max(amrex::Math::abs(residual),
+                            amrex::Math::abs(solve_potential(trace_phi.get(), trace_overset)));
+        trace_phi->FillBoundary(warpx.Geom(lev).periodicity());
+        actuator_phi = trace_phi.get();
+    }
 
     for (auto* field : efield) { field->setVal(0._rt); }
     MultiLevelVectorField efield_levels{efield};
-    MultiLevelScalarField phi_levels{phi};
+    MultiLevelScalarField phi_levels{actuator_phi};
     warpx.GetElectrostaticSolver().computeE(
         efield_levels, phi_levels, {0._rt, 0._rt, 0._rt});
-    if (insulating_endcaps) {
+    if (insulating_endcaps && !harmonic_trace) {
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
             efield[2]->norm0() <= std::max(100._rt*rtol, 1.e-12_rt)*efield[0]->norm0(),
             "The insulating-endcap clamp currently requires z-independent unit potentials; "
@@ -319,7 +431,7 @@ amrex::Real WarpXSolveStaircaseUnitBias (
     for (auto* field : efield) {
         field->FillBoundary(warpx.Geom(lev).periodicity());
     }
-    if (insulating_endcaps) {
+    if (insulating_endcaps && !harmonic_trace) {
         // Also check the transverse field itself, including across MPI boxes.
         // Do not post-mask or flatten a field that fails this compatibility gate.
         for (amrex::MFIter mfi(checks); mfi.isValid(); ++mfi) {
@@ -339,6 +451,25 @@ amrex::Real WarpXSolveStaircaseUnitBias (
     }
     return residual;
 #endif
+}
+}
+
+amrex::Real WarpXSolveStaircaseUnitBias (
+    std::string const& selector, std::string const& out_phi,
+    std::string const& out_weight, std::string const& out_efield,
+    amrex::Real const rtol, int const max_iter, bool const insulating_endcaps)
+{
+    return SolveStaircaseBias(selector, out_phi, out_weight, out_efield, rtol, max_iter,
+                              insulating_endcaps, false);
+}
+
+amrex::Real WarpXSolveStaircaseInsulatorBias (
+    std::string const& selector, std::string const& out_psi,
+    std::string const& out_weight, std::string const& out_efield,
+    amrex::Real const rtol, int const max_iter)
+{
+    return SolveStaircaseBias(selector, out_psi, out_weight, out_efield, rtol, max_iter,
+                              true, true);
 }
 
 amrex::Real WarpXValidateStaircaseWeights (

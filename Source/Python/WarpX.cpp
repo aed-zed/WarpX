@@ -307,6 +307,22 @@ void init_WarpX (py::module& m)
             "insulating_endcaps enables a separate, z-independent whole-face "
             "pec_insulator research mode; it does not model dielectric charging."
         )
+        .def("solve_staircase_insulator_bias",
+            [] (WarpX&, std::string const& selector, std::string const& out_psi,
+                std::string const& out_weight, std::string const& out_efield,
+                amrex::Real rtol, int max_iter) {
+                return WarpXSolveStaircaseInsulatorBias(
+                    selector, out_psi, out_weight, out_efield, rtol, max_iter);
+            },
+            py::arg("selector"), py::arg("out_psi"), py::arg("out_weight"),
+            py::arg("out_efield"), py::arg("rtol") = 1.e-12,
+            py::arg("max_iter") = 200,
+            "Research RZ Yee insulating-endcap staircase bias. out_psi is the "
+            "homogeneous-Neumann charge-observer potential, not the actuator "
+            "potential. out_efield comes from a second harmonic solve with exact "
+            "one-dimensional RZ endpoint traces between fixed metal nodes. Returns "
+            "the larger absolute residual of the two solves. Does not change live E."
+        )
         .def("staircase_charge_state",
             [] (WarpX&, std::vector<std::string> const& psi_fields,
                 std::vector<std::string> const& weight_fields, bool insulating_endcaps) {

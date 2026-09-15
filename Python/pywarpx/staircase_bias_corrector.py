@@ -19,12 +19,14 @@ restart from other models is not supported. Field recovery at absorbing outer
 domain walls and higher shapes remain separate validation gates. CPU/MPI and
 single-GPU fixtures are distinct from multi-GPU production validation.
 
-``insulating_endcaps=True`` is a separate experimental, z-independent unit-field
-mode using whole-face native pec_insulator boundaries with no field parsers.
-It includes a weighted normal-E end flux in the observation and calibration.
-Vacuum tests pass, but native particle-current handling at these faces fails
-full collection/source recovery. This option is NOT production-ready and
-does not model dielectric polarization or trapped surface charge.
+``insulating_endcaps=True`` uses whole-face native pec_insulator boundaries with
+no field parsers. The default ``insulating_endcap_model="z_uniform"`` retains
+the restricted coax construction. The separate experimental ``"harmonic_trace"``
+model allows fringing fields: radial harmonic end-face potentials determine the
+actuator, while a separate Neumann harmonic potential remains the observer.
+Both include weighted normal-E end flux in observation and calibration. Particle
+source normalization is a separate opt-in; particle exit accounting still needs
+validation. Neither model represents dielectric polarization or trapped charge.
 """
 
 
@@ -59,7 +61,8 @@ class StaircaseBiasCorrector:
     With experimental insulating endcaps, measured state additionally exposes
     ``axial_boundary_flux_charge`` in coulombs. The grounded row includes that
     outward electric flux; it is not just a live-particle charge pairing and
-    is not a collected-particle ledger. General fringing unit fields are rejected.
+    is not a collected-particle ledger. General fringing unit fields require the
+    explicit ``insulating_endcap_model="harmonic_trace"`` research option.
     """
 
     def __init__(
@@ -72,6 +75,7 @@ class StaircaseBiasCorrector:
         tolerance=1.0e-12,
         max_iterations=200,
         insulating_endcaps=False,
+        insulating_endcap_model="z_uniform",
         prefix="staircase",
         verbose=False,
     ):
@@ -85,6 +89,12 @@ class StaircaseBiasCorrector:
             raise ValueError("max_iterations must be a positive integer")
         if not isinstance(insulating_endcaps, bool):
             raise ValueError("insulating_endcaps must be a boolean")
+        if insulating_endcap_model not in ("z_uniform", "harmonic_trace"):
+            raise ValueError(
+                "insulating_endcap_model must be 'z_uniform' or 'harmonic_trace'"
+            )
+        if insulating_endcap_model != "z_uniform" and not insulating_endcaps:
+            raise ValueError("harmonic_trace requires insulating_endcaps=True")
         if not prefix.isidentifier():
             raise ValueError("prefix must be a Python-style identifier")
         if not 0.0 < relaxation <= 1.0:
@@ -102,6 +112,7 @@ class StaircaseBiasCorrector:
         self.observer = "staircase"
         self.actuator_gradient = "staircase"
         self.insulating_endcaps = insulating_endcaps
+        self.insulating_endcap_model = insulating_endcap_model
 
         self.n = len(electrodes)
         self.regions = [entry["region"] for entry in electrodes]
@@ -117,6 +128,8 @@ class StaircaseBiasCorrector:
         self._capacitance = None
         self._capacitance_condition = None
         self._capacitance_asymmetry = None
+        self._raw_gauss_actuator_matrix = None
+        self._boundary_flux_actuator_matrix = None
         self._adjoint_residuals = None
         self._last_correction_state = None
         self._unit_names = [f"{prefix}_E_{k}" for k in range(self.n)]
@@ -126,6 +139,8 @@ class StaircaseBiasCorrector:
         self._initialization_confirmed = False
         self._last_corrected_step = None
         self._source_charge = np.zeros(self.n)
+        self._raw_gauss_actuation_charge = np.zeros(self.n)
+        self._boundary_flux_actuation_charge = np.zeros(self.n)
         self._axial_boundary_flux_charge = np.zeros(self.n)
 
     # -- native field plumbing ----------------------------------------------
@@ -139,7 +154,7 @@ class StaircaseBiasCorrector:
         return _get_libwarpx().libwarpx_so.Direction(comp)
 
     def _alloc_psi_fields(self, lev):
-        """Allocate one nodal scalar MultiFab per unit potential."""
+        """Allocate one nodal scalar MultiFab per observation weight potential."""
         libwarpx = _get_libwarpx()
         mfr = self._mfr()
         ref = mfr.get("Efield_fp", dir=self._Direction(0), level=lev)
@@ -256,10 +271,16 @@ class StaircaseBiasCorrector:
 
         residuals = []
         boundary_options = {"insulating_endcaps": True} if self.insulating_endcaps else {}
+        unit_solver = wx.solve_staircase_unit_bias
+        if self.insulating_endcap_model == "harmonic_trace":
+            # This setup solves separately for the Neumann observer and the
+            # fringing actuator. No extra solve occurs during correction.
+            unit_solver = wx.solve_staircase_insulator_bias
+            boundary_options = {}
         for k, region in enumerate(self.regions):
             residuals.append(
                 float(
-                    wx.solve_staircase_unit_bias(
+                    unit_solver(
                         region,
                         self._psi_names[k],
                         self._weight_names[k],
@@ -279,6 +300,8 @@ class StaircaseBiasCorrector:
         saved = self._save_efield(0)
         try:
             columns = []
+            raw_columns = []
+            flux_columns = []
             for name in self._unit_names:
                 for k in range(3):
                     d = self._Direction(k)
@@ -288,8 +311,9 @@ class StaircaseBiasCorrector:
                 # Raw Gauss charge of a vacuum UNIT FIELD. Live particles are
                 # not part of the calibration even when setup runs on restart.
                 raw = self._native_charge_state()[0]
-                # Insulating-endcap unit Ez is zero up to solve roundoff. Still
-                # calibrate the actual observer, including that measured flux;
+                raw_columns.append(raw.copy())
+                flux_columns.append(self._axial_boundary_flux_charge.copy())
+                # Calibrate the actual observer, including its measured end flux;
                 # never include the unrelated live-particle terms on restart.
                 if self.insulating_endcaps:
                     raw = raw - self._axial_boundary_flux_charge
@@ -310,6 +334,8 @@ class StaircaseBiasCorrector:
                 "Staircase unit fields failed charge reciprocity/sign checks"
             )
         self._capacitance = cap
+        self._raw_gauss_actuator_matrix = np.column_stack(raw_columns)
+        self._boundary_flux_actuator_matrix = np.column_stack(flux_columns)
         self._capacitance_condition = condition
         self._capacitance_asymmetry = asymmetry
         self._setup_absolute_residuals = residuals
@@ -401,7 +427,12 @@ class StaircaseBiasCorrector:
         target = np.asarray(self.v_target)
         dv = self.relaxation * (target - voltage)
         self._apply_bias(dv)
+        # Legacy telemetry name: this is the OBSERVER coordinate increment.
+        # With fringing end flux it is not the raw electrode Gauss increment,
+        # and neither quantity alone proves a physical wire-current budget.
         self._source_charge += self._capacitance @ dv
+        self._raw_gauss_actuation_charge += self._raw_gauss_actuator_matrix @ dv
+        self._boundary_flux_actuation_charge += self._boundary_flux_actuator_matrix @ dv
         self._last_corrected_step = step
         self._last_correction_state = {
             "step": step,
@@ -417,6 +448,8 @@ class StaircaseBiasCorrector:
             "raw_gauss_charge": raw,
             "live_fixed_charge": live_fixed,
             "source_charge_since_initialization": self._source_charge.copy(),
+            "raw_gauss_actuation_charge": self._raw_gauss_actuation_charge.copy(),
+            "boundary_flux_actuation_charge": self._boundary_flux_actuation_charge.copy(),
             "axial_boundary_flux_charge": self._axial_boundary_flux_charge.copy(),
         }
 
@@ -469,6 +502,11 @@ class StaircaseBiasCorrector:
             "electrode_regions": list(self.regions),
             "target_voltages": list(self.v_target),
             "capacitance_matrix": self._capacitance.copy(),
+            "raw_gauss_actuator_matrix": self._raw_gauss_actuator_matrix.copy(),
+            "boundary_flux_actuator_matrix": self._boundary_flux_actuator_matrix.copy(),
+            "source_charge_definition": (
+                "observer-coordinate actuation charge C*dV; not a measured wire current"
+            ),
             "capacitance_condition": float(self._capacitance_condition),
             "adjoint_residuals": (
                 None
@@ -482,8 +520,11 @@ class StaircaseBiasCorrector:
             "current_step": int(self._warpx().getistep(lev=0)),
             "harmonic_absolute_residuals": list(self._setup_absolute_residuals),
             "fixed_node_weight_fields": list(self._weight_names),
+            "observer_weight_potential_fields": list(self._psi_names),
+            "actuator_field_names": list(self._unit_names),
             "research_only": True,
             "insulating_endcaps": self.insulating_endcaps,
+            "insulating_endcap_model": self.insulating_endcap_model,
         }
 
     def last_correction_state(self):
