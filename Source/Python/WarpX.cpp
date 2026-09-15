@@ -381,7 +381,10 @@ void init_WarpX (py::module& m)
             "particles."
         )
         .def("compute_div_e",
-            [] (WarpX& wx, int const lev) {
+            [] (WarpX& wx, int const lev, std::string const& field) {
+                if (field != "Efield_fp" && field != "Efield_aux") {
+                    throw py::value_error("compute_div_e field must be Efield_fp or Efield_aux");
+                }
                 // WarpX computes divE on the nodes, matching nodal rho and the
                 // operator the nodal Poisson solver inverts. ComputeDivE
                 // dispatches per geometry, so the cylindrical
@@ -392,15 +395,19 @@ void init_WarpX (py::module& m)
                 nodal_ba.surroundingNodes();
                 amrex::MultiFab div_e(
                     nodal_ba, wx.DistributionMap(lev), WarpX::ncomps, 0);
-                wx.ComputeDivE(div_e, lev);
+                wx.ComputeDivE(div_e, lev,
+                    field == "Efield_fp" ? warpx::fields::FieldType::Efield_fp
+                                         : warpx::fields::FieldType::Efield_aux);
                 return div_e;
             },
-            py::arg("lev") = 0,
+            py::arg("lev") = 0, py::arg("field") = "Efield_fp",
             py::return_value_policy::move,
             "Native discrete divergence of Efield_fp on the nodes, as a new "
             "MultiFab. Uses WarpX::ComputeDivE, so the cylindrical form is "
             "applied in RZ. The caller supplies the control-volume measure; in "
-            "RZ that is the cylindrical nodal volume, not dr*dz."
+            "RZ that is the cylindrical nodal volume, not dr*dz. Optional "
+            "field='Efield_aux' reproduces the full diagnostic's operator input; "
+            "it is not a Maxwell-grid Gauss-law check when aux is nodal."
         )
         .def("refresh_staircase_efield_guards",
             [] (WarpX& wx) {

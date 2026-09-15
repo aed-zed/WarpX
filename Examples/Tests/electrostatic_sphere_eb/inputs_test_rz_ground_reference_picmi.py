@@ -106,9 +106,8 @@ def frozen_max(fields, masks):
     return COMM.allreduce(local, op=MPI.MAX)
 
 
-def free_divergence_max(div_e, fixed):
+def free_divergence_max(divergence, fixed):
     """Measure all physical free nodes; exclusion comes from masks, not weights."""
-    divergence = global_array(div_e, (NR + 1, NZ + 1))
     radial_interior = np.arange(NR + 1)[:, None] < NR
     free = ~fixed & radial_interior
     end = free & ((np.arange(NZ + 1)[None, :] == 0) |
@@ -162,6 +161,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-grid-size", type=int, default=16)
     parser.add_argument("--long-coax", action="store_true")
+    parser.add_argument("--momentum-gather", action="store_true")
     parser.add_argument(
         "--case",
         choices=("positive", "legacy", "omit-island", "driven-wall", "split"),
@@ -180,12 +180,15 @@ def main():
         warpx_blocking_factor=8, warpx_max_grid_size=args.max_grid_size,
     )
     solver = picmi.ElectromagneticSolver(grid=grid, method="Yee", cfl=0.9)
+    simulation_options = {}
+    if args.momentum_gather:
+        simulation_options["warpx_field_gathering_algo"] = "momentum-conserving"
     sim = picmi.Simulation(
         solver=solver, max_steps=STEPS, particle_shape="linear",
         warpx_embedded_boundary=picmi.EmbeddedBoundary(
             implicit_function=implicit_geometry(args.case)
         ),
-        warpx_use_filter=False, verbose=0,
+        warpx_use_filter=False, verbose=0, **simulation_options,
     )
     initialized = False
     saved = live_e = live_b = masks = units = weights = corrector = None
@@ -199,6 +202,12 @@ def main():
         sim.initialize_warpx()
         initialized = True
         wx = libwarpx.libwarpx_so.get_instance()
+        try:
+            wx.compute_div_e(0, field="not_a_registered_e_field")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid compute_div_e field unexpectedly accepted")
         direction = libwarpx.libwarpx_so.Direction
         mfr = wx.multifab_register()
         live_e = [mfr.get("Efield_fp", dir=direction(k), level=0) for k in range(3)]
@@ -226,6 +235,8 @@ def main():
             for name in corrector._unit_names
         ]
         div_errors = []
+        fixed_divergence = []
+        auxiliary_divergence = []
         saved = [field.copy() for field in live_e]
         for unit in units:
             scale = max(field.norm0(0, 0, False, False) for field in unit)
@@ -236,7 +247,24 @@ def main():
                 corrector._psi_names, corrector._weight_names,
                 insulating_endcaps=True,
             )
-            end_error, bulk_error = free_divergence_max(wx.compute_div_e(0), fixed)
+            default_div = global_array(wx.compute_div_e(0), (NR + 1, NZ + 1))
+            explicit_div = global_array(
+                wx.compute_div_e(0, field="Efield_fp"), (NR + 1, NZ + 1)
+            )
+            assert np.array_equal(default_div, explicit_div)
+            derivative_scale = scale / (R_WALL / NR)
+            fixed_error = np.max(np.abs(explicit_div[fixed]), initial=0.0)
+            assert fixed_error > 1.0e-4 * derivative_scale
+            fixed_divergence.append(fixed_error / derivative_scale)
+            if args.momentum_gather:
+                aux_div = global_array(
+                    wx.compute_div_e(0, field="Efield_aux"), (NR + 1, NZ + 1)
+                )
+                assert np.all(np.isfinite(aux_div))
+                auxiliary_divergence.append(
+                    np.max(np.abs(aux_div), initial=0.0) / derivative_scale
+                )
+            end_error, bulk_error = free_divergence_max(explicit_div, fixed)
             limit = max(1000.0 * SOLVE_TOL, 1.0e-8) * scale / (R_WALL / NR)
             assert end_error < limit and bulk_error < limit
             div_errors.append((end_error / (scale / (R_WALL / NR)),
@@ -290,6 +318,7 @@ def main():
                 "RZ grounded-wall reference PASS:",
                 f"reference_nodes={np.count_nonzero(reference)},",
                 f"G-B-C={gb_error:.3e}, div(end,bulk)={div_errors},",
+                f"fixed_div={fixed_divergence}, aux_div={auxiliary_divergence},",
                 f"paths={path_voltages.tolist()}, dE/E={change/scale:.3e},",
                 f"cB/E={magnetic:.3e}",
             )
