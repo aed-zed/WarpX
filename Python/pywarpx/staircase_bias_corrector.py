@@ -205,6 +205,7 @@ class StaircaseBiasCorrector:
                 field = mfr.get("Efield_fp", dir=direction, level=0)
                 unit = mfr.get(self._unit_names[k], dir=direction, level=0)
                 field.saxpy(float(dv[k]), unit, 0, 0, 1, 0)
+        self._warpx().refresh_staircase_efield_guards()
 
     def setup_after_init(self):
         """Build the harmonic basis; collective, idempotent, preserves live E."""

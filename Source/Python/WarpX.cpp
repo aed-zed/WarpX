@@ -393,6 +393,17 @@ void init_WarpX (py::module& m)
             "applied in RZ. The caller supplies the control-volume measure; in "
             "RZ that is the cylindrical nodal volume, not dr*dz."
         )
+        .def("refresh_staircase_efield_guards",
+            [] (WarpX& wx) {
+                // A staircase correction is added to the valid E region after
+                // the field push.  Refresh physical guards first, then exchange
+                // inter-box guards, in the same order as an explicit field push.
+                wx.ApplyEfieldBoundary(0, PatchType::fine, wx.gett_new(0));
+                wx.FillBoundaryE(0, wx.getngEB(), true);
+            },
+            "Refresh level-zero Efield_fp physical and inter-box guard cells after "
+            "a direct staircase-bias field update."
+        )
 #if defined(WARPX_DIM_RZ)
         .def("rz_axis_volume_factor",
             [] (WarpX const & wx) { return wx.RZAxisVolumeFactor(); },

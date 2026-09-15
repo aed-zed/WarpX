@@ -77,6 +77,23 @@ def free_divergence_max(div_e, weights):
     )
 
 
+def refreshed_divergence_error(wx, corrector, fields):
+    """Compare immediate div(E) with the observer's guard-refreshed value."""
+    direct = wx.compute_div_e(0)
+    before = [field.copy() for field in fields]
+    wx.staircase_charge_state(
+        corrector._psi_names, corrector._weight_names,
+        insulating_endcaps=True,
+    )
+    refreshed = wx.compute_div_e(0)
+    direct.saxpy(-1.0, refreshed, 0, 0, 1, 0)
+    field_change = 0.0
+    for field, saved in zip(fields, before):
+        saved.saxpy(-1.0, field, 0, 0, 1, 0)
+        field_change = max(field_change, saved.norm0(0, 0, False, False))
+    return direct.norm0(0, 0, False, False), field_change
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-grid-size", type=int, default=16)
@@ -164,6 +181,19 @@ def main():
         assert gb_error < 2.0e-12
 
         corrector.initialize_vacuum_bias()
+        e_scale = max(field.norm0(0, 0, False, False) for field in live_e)
+        div_guard_error, observer_e_change = refreshed_divergence_error(
+            wx, corrector, live_e
+        )
+        roundoff = 64.0 * np.finfo(float).eps
+        div_guard_limit = roundoff * e_scale / dr
+        observer_e_limit = roundoff * e_scale
+        assert div_guard_error < div_guard_limit, (
+            f"stale E guards changed div(E): {div_guard_error} >= {div_guard_limit}"
+        )
+        assert observer_e_change < observer_e_limit, (
+            f"observer refresh changed valid E: {observer_e_change} >= {observer_e_limit}"
+        )
         rod_nodes = np.flatnonzero(global_line(weights[0], 1, NR + 1) > 0.5)
         ring_nodes = np.flatnonzero(global_line(weights[1], NZ // 2, NR + 1) > 0.5)
         assert rod_nodes.size and ring_nodes.size
@@ -191,7 +221,8 @@ def main():
         if COMM.rank == 0:
             print(
                 "RZ insulator ring PASS:", f"G-B-C={gb_error:.3e},",
-                f"div(end,bulk)={div_metrics}, dE/E={e_change:.3e}, cB/E={magnetic:.3e}",
+                f"div(end,bulk)={div_metrics}, guard={div_guard_error:.3e},",
+                f"dE/E={e_change:.3e}, cB/E={magnetic:.3e}",
             )
     finally:
         refs = live_e = live_b = masks = units = weights = div_e = corrector = None
