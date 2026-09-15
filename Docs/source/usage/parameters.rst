@@ -858,6 +858,19 @@ Domain Boundary Conditions
 
       * ``insulator.area_z_hi(x,y)``: For the upper z boundary, expression specifying the insulator location
 
+      * ``insulator.normalize_nodal_sources`` (``bool``; default: ``0``):
+        Research-only normalization of charge and tangential current by the half
+        axial volume at endpoint nodes, after the existing source folding.
+        Defaults and the field/particle boundary rules are unchanged when disabled.
+        Currently restricted to one-level, fixed-domain, explicit staggered RZ Yee,
+        one azimuthal mode, Esirkepov deposition, linear particle shapes, no filter,
+        and two whole insulating z faces (literal ``area_z_lo/hi(x,y) = 1``), with
+        absorbing particle boundaries and no prescribed tangential fields.
+        It does not implement dielectric surface charging, arbitrary cut-cell
+        source volumes, or conservative deletion at an absorbing endcap.
+        Tests of particles remaining inside the axial domain must be distinguished
+        from particles leaving it. This candidate is not production approval.
+
       * ``insulator.Ey_x_lo(y,z,t)``, ``insulator.Ez_x_lo(y,z,t)``, ``insulator.By_x_lo(y,z,t)``, ``insulator.Bz_x_lo(y,z,t)``: expressions of the tangential field values for the lower x (or r) boundary
 
       * ``insulator.Ey_x_hi(y,z,t)``, ``insulator.Ez_x_hi(y,z,t)``, ``insulator.By_x_hi(y,z,t)``, ``insulator.Bz_x_hi(y,z,t)``: expressions of the tangential field values for the upper x (or r) boundary

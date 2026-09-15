@@ -370,6 +370,49 @@ PEC_Insulator::PEC_Insulator ()
 {
 
     amrex::ParmParse const pp_insulator("insulator");
+    pp_insulator.query("normalize_nodal_sources", m_normalize_nodal_sources);
+    if (m_normalize_nodal_sources) {
+#if defined(WARPX_DIM_RZ)
+        amrex::ParmParse const pp_amr("amr");
+        int max_level = 0;
+        pp_amr.query("max_level", max_level);
+        amrex::ParmParse const pp_algo("algo");
+        auto evolve_scheme = EvolveScheme::Explicit;
+        pp_algo.query_enum_case_insensitive("evolve_scheme", evolve_scheme);
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            max_level == 0 && WarpX::n_rz_azimuthal_modes == 1 &&
+            WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::Yee &&
+            WarpX::grid_type == GridType::Staggered && evolve_scheme == EvolveScheme::Explicit &&
+            WarpX::current_deposition_algo == CurrentDepositionAlgo::Esirkepov &&
+            WarpX::nox == 1 && WarpX::noz == 1 && !WarpX::use_filter &&
+            WarpX::do_moving_window == 0,
+            "insulator.normalize_nodal_sources is a research RZ m=0, single-level, "
+            "explicit staggered-Yee Esirkepov/CIC/no-filter option for a fixed domain");
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            WarpX::field_boundary_lo[1] == FieldBoundaryType::PEC_Insulator &&
+            WarpX::field_boundary_hi[1] == FieldBoundaryType::PEC_Insulator &&
+            WarpX::field_boundary_lo[0] != FieldBoundaryType::PEC_Insulator &&
+            WarpX::field_boundary_hi[0] != FieldBoundaryType::PEC_Insulator &&
+            WarpX::particle_boundary_lo[1] == ParticleBoundaryType::Absorbing &&
+            WarpX::particle_boundary_hi[1] == ParticleBoundaryType::Absorbing,
+            "Nodal source normalization requires two insulating z faces with absorbing "
+            "particle boundaries; radial insulating faces are not supported");
+        for (auto const* side : {"lo", "hi"}) {
+            std::string area;
+            utils::parser::Query_parserString(
+                pp_insulator, std::string("area_z_") + side + "(x,y)", area);
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(area == "1",
+                "Nodal source normalization requires literal whole-face area_z_lo/hi = 1");
+            for (auto const* component : {"Ex", "Ey", "Bx", "By"}) {
+                WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+                    !pp_insulator.contains(std::string(component) + "_z_" + side + "(x,y,t)"),
+                    "Nodal source normalization does not support prescribed tangential fields");
+            }
+        }
+#else
+        WARPX_ABORT_WITH_MESSAGE("insulator.normalize_nodal_sources currently requires RZ");
+#endif
+    }
 
 #ifndef WARPX_DIM_1D_Z
     std::string str_area_x_lo = "0";
@@ -454,6 +497,47 @@ PEC_Insulator::PEC_Insulator ()
                         m_set_Ex_hi, m_set_Ey_hi, m_set_Ez_hi,
                         m_Ex_parsers_lo, m_Ey_parsers_lo, m_Ez_parsers_lo,
                         m_Ex_parsers_hi, m_Ey_parsers_hi, m_Ez_parsers_hi);
+}
+
+void
+PEC_Insulator::NormalizeNodalSources (
+    amrex::MultiFab& source, amrex::Geometry const& geom) const
+{
+    if (!m_normalize_nodal_sources) { return; }
+#if defined(WARPX_DIM_RZ)
+    constexpr int axial_dir = 1;
+    if (!source.ixType().nodeCentered(axial_dir)) { return; }
+    int const lo = geom.Domain().smallEnd(axial_dir);
+    int const hi = geom.Domain().bigEnd(axial_dir) + 1;
+    // The endpoint's axial dual measure is half the interior measure. Apply
+    // its inverse AFTER the existing affine source fold, to rho and J_parallel.
+    // Normal J is cell-centred in z and is deliberately unchanged. No mirror
+    // particles, surface-charge model, or arbitrary cut-cell volume is implied.
+    amrex::Real constexpr axial_support_fraction = amrex::Real(0.5);
+    amrex::Real constexpr inverse_support = amrex::Real(1.0) / axial_support_fraction;
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+    for (amrex::MFIter mfi(source, false); mfi.isValid(); ++mfi) {
+        auto const values = source.array(mfi);
+        // Include transverse guard copies of the physical endpoint plane.
+        // Each FAB owns its allocation; every endpoint entry is scaled once.
+        for (int const endpoint : {lo, hi}) {
+            auto box = mfi.fabbox();
+            if (endpoint < box.smallEnd(axial_dir) || endpoint > box.bigEnd(axial_dir)) {
+                continue;
+            }
+            box.setSmall(axial_dir, endpoint);
+            box.setBig(axial_dir, endpoint);
+            amrex::ParallelFor(box, source.nComp(),
+                [=] AMREX_GPU_DEVICE (int i, int j, int k, int n) {
+                    values(i,j,k,n) *= inverse_support;
+                });
+        }
+    }
+#else
+    amrex::ignore_unused(source, geom);
+#endif
 }
 
 int

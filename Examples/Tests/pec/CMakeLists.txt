@@ -2,6 +2,26 @@
 #
 
 add_warpx_test(
+    test_rz_insulator_uniform_picmi
+    RZ
+    2
+    "inputs_test_rz_insulator_uniform_picmi.py --normalize 1"
+    OFF
+    OFF
+    OFF
+)
+
+add_warpx_test(
+    test_rz_insulator_uniform_legacy_picmi
+    RZ
+    2
+    "inputs_test_rz_insulator_uniform_picmi.py --normalize 0"
+    OFF
+    OFF
+    OFF
+)
+
+add_warpx_test(
     test_3d_pec_field  # name
     3  # dims
     2  # nprocs

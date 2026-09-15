@@ -273,6 +273,7 @@ void WarpX::ApplyRhofieldBoundary (const int lev, MultiFab* rho,
         pec_insulator_boundary->ZeroParallelScalarInConductor(rho,
             field_boundary_lo, field_boundary_hi,
             Geom(lev), lev, patch_type, ref_ratio);
+        pec_insulator_boundary->NormalizeNodalSources(*rho, Geom(lev));
     }
 }
 
@@ -298,6 +299,9 @@ void WarpX::ApplyJfieldBoundary (const int lev, amrex::MultiFab* Jx,
             field_boundary_lo, field_boundary_hi,
             get_ng_fieldgather(), Geom(lev),
             lev, patch_type, ref_ratio);
+        for (auto* current : {Jx, Jy, Jz}) {
+            pec_insulator_boundary->NormalizeNodalSources(*current, Geom(lev));
+        }
     }
 }
 

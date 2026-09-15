@@ -18,6 +18,12 @@ public:
 
     PEC_Insulator();
 
+    /** Research opt-in: convert folded nodal sources to axial half-volume densities.
+     * This does not modify the source fold, particle trajectories or field boundary.
+     * Only whole-face RZ m=0 explicit-Yee CIC tests are admitted.
+     */
+    void NormalizeNodalSources (amrex::MultiFab& source, amrex::Geometry const& geom) const;
+
     /**
      * \brief Apply either the PEC or insulator boundary condition on the boundary and in the
      *        guard cells.
@@ -194,6 +200,8 @@ public:
 
 private:
 
+
+    bool m_normalize_nodal_sources = false;
 
     // Parsers specifying the region of each boundary that is insulator
     amrex::Vector<std::unique_ptr<amrex::Parser>> m_insulator_area_lo;
