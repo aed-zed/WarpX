@@ -41,7 +41,7 @@
 using namespace amrex;
 
 /**
- * \brief Update the F field, over one timestep
+ * \brief Compute the finite-difference divergence of E.
  */
 void FiniteDifferenceSolver::ComputeDivE (
     ablastr::fields::VectorField const & Efield,
@@ -70,6 +70,17 @@ void FiniteDifferenceSolver::ComputeDivE (
     } else if (m_fdtd_algo == ElectromagneticSolverAlgo::Yee ||
                m_fdtd_algo == ElectromagneticSolverAlgo::HybridPIC) {
 
+        ComputeDivECartesian <CartesianYeeAlgorithm> ( Efield, divEfield );
+
+    } else if (m_fdtd_algo == ElectromagneticSolverAlgo::ECT) {
+
+        // ECT advances E with a masked Cartesian Yee curl, so this tensor-grid
+        // divergence is useful as a matching diagnostic.  It is not a
+        // conformal cut-cell Gauss operator.  Curl-neutrality for a general
+        // integrated region requires a boundary of regular, full-length edges
+        // that are actively updated by ECT.  A boundary in a covered conductor,
+        // where E is identically zero, additionally needs a symmetry or
+        // zero-curl-flux argument to make the masked curl neutral.
         ComputeDivECartesian <CartesianYeeAlgorithm> ( Efield, divEfield );
 
     } else if (m_fdtd_algo == ElectromagneticSolverAlgo::CKC) {

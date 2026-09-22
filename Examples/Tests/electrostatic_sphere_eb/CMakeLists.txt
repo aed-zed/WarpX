@@ -37,6 +37,35 @@ if(WarpX_EB)
     )
 endif()
 
+# ECT's divergence diagnostic is the Cartesian Yee tensor-grid row rather than
+# a conformal cut-cell Gauss operator.  The enclosing cube in this input has a
+# boundary made only of full, actively updated edges, where its integral must
+# telescope to the independent six-face flux.  Register one and two ranks to
+# exercise both multibox nodal ownership and MPI ownership.
+if(WarpX_EB)
+    add_warpx_test(
+        test_3d_ect_volume_diagnostic_1rank_picmi  # name
+        3  # dims
+        1  # nprocs
+        inputs_test_3d_ect_volume_diagnostic_picmi.py  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_3d_ect_volume_diagnostic_2rank_picmi  # name
+        3  # dims
+        2  # nprocs
+        inputs_test_3d_ect_volume_diagnostic_picmi.py  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
 if(WarpX_EB)
     add_warpx_test(
         test_3d_adjoint_weighting_decomposed_picmi  # name

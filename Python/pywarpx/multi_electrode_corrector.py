@@ -39,9 +39,9 @@ Usage::
 
     from pywarpx.multi_electrode_corrector import MultiElectrodeBiasCorrector
     from pywarpx.callbacks import (
-        installafterEsolve,
         installafterInitatRestart,
         installafterInitEsolve,
+        installafterstep,
     )
 
     corrector = MultiElectrodeBiasCorrector(
@@ -81,7 +81,10 @@ through metal produces.
     # afterInitEsolve does not run on a restart, so register both init hooks
     installafterInitEsolve(corrector.setup_after_init)
     installafterInitatRestart(corrector.setup_after_init)
-    installafterEsolve(corrector.correct_field)
+    # Registration is explicit: the corrector does not install callbacks itself.
+    # afterstep observes charge after particle scraping and already reports the
+    # completed step, so correct_after_step does not offset getistep().
+    installafterstep(corrector.correct_after_step)
 
 Supported envelope: driven (prescribed-potential) electrodes, grounded PEC outer
 boundaries, and in RZ nodal CIC deposition without a charge filter. Floating
@@ -146,8 +149,12 @@ class MultiElectrodeBiasCorrector:
         field. ``"eb_aware"`` (default) uses the shortened fluid length on cut
         edges, which is the locally more accurate field but is not annihilated by
         the Yee Faraday stencil: adding it drives a spurious boundary ``B``.
-        ``"ordinary"`` uses WarpX's full-grid gradient, whose discrete curl
-        vanishes, at the cost of a less accurate field next to the conductor. The
+        ``"ordinary"`` uses WarpX's full-grid gradient, whose Yee curl vanishes,
+        at the cost of a less accurate field next to the conductor. Cartesian
+        ECT instead uses open-length-weighted circulation: the EB-aware gradient
+        is compatible with that circulation on consistently labeled conductor
+        faces, while the ordinary gradient need not be. These curl statements
+        alone do not establish charge balance or physical voltage accuracy. The
         choice applies only to the actuator setup solves. The charge observer, its
         capacitance measurement, the adjoint and the grounded cross-check are
         unchanged; the capacitance is always measured from the unit fields that
@@ -593,13 +600,35 @@ class MultiElectrodeBiasCorrector:
 
     # -- correction ----------------------------------------------------------
     def correct_field(self):
-        """Drive every electrode to its target potential, preserving div and curl."""
-        import numpy as np  # noqa: PLC0415
+        """Apply feedback from ``afterEsolve`` using its next-step convention.
 
+        This legacy entry point retains the historical ``getistep() + 1``
+        interval and metadata convention. The applied harmonic field is not
+        generally guaranteed to preserve native divergence or curl. Use
+        :meth:`correct_after_step` when the measurement must include particle
+        scraping from the completed step.
+        """
         warpx = self._warpx()
         # afterEsolve fires before istep is incremented; use (step + 1)
-        step = warpx.getistep(lev=0)
-        if (step + 1) % self.correction_interval != 0:
+        step = int(warpx.getistep(lev=0)) + 1
+        self._correct_at_step(warpx, step)
+
+    def correct_after_step(self):
+        """Apply feedback from ``afterstep`` using the completed step number.
+
+        Register this method explicitly with ``installafterstep``. It measures
+        the post-step state, including particle scraping performed during that
+        step, and records ``getistep()`` without an offset.
+        """
+        warpx = self._warpx()
+        step = int(warpx.getistep(lev=0))
+        self._correct_at_step(warpx, step)
+
+    def _correct_at_step(self, warpx, step):
+        """Apply one scheduled correction and record the supplied step."""
+        import numpy as np  # noqa: PLC0415
+
+        if step % self.correction_interval != 0:
             return
         if not self._ready:
             return
@@ -614,7 +643,7 @@ class MultiElectrodeBiasCorrector:
         except Exception:  # noqa: BLE001
             time = float("nan")
         self._last_correction_state = {
-            "step": int(step + 1),
+            "step": int(step),
             "time": time,
             "voltage_before": np.array(v_now, copy=True),
             # the unit fields are normalized by the same capacitance matrix used
@@ -633,7 +662,7 @@ class MultiElectrodeBiasCorrector:
         if self.verbose:
             with np.printoptions(precision=2):
                 print(
-                    f"[MultiElectrode] step {step + 1}: V_now={v_now}, "
+                    f"[MultiElectrode] step {step}: V_now={v_now}, "
                     f"target={np.array(self.v_target)}, dV={dv}"
                 )
 
