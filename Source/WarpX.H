@@ -812,7 +812,28 @@ public:
                              ablastr::fields::VectorField const & B,
                              const std::array<amrex::Real,3>& dx, amrex::IntVect ngrow);
 
-    void ComputeDivE(amrex::MultiFab& divE, int lev);
+    /** Nodal divergence of an E field.
+     *
+     * \param[out] divE  nodal divergence
+     * \param[in] lev    refinement level
+     * \param[in] field  which E field to differentiate. The default, ``Efield_aux``,
+     *                   preserves the historical behaviour; ``Efield_fp`` is the field
+     *                   the Maxwell solver advances, the right input for a Gauss-law
+     *                   or charge measurement (``aux`` differs from ``fp`` with mesh
+     *                   refinement, time averaging, external fields or a collocated
+     *                   grid).
+     */
+    void ComputeDivE(amrex::MultiFab& divE, int lev,
+                     warpx::fields::FieldType field = warpx::fields::FieldType::Efield_aux);
+#if defined(WARPX_DIM_RZ)
+    /** Axis-node radial volume factor used by charge deposition (1/3 with the
+     *  Verboncoeur correction, 1/4 without). */
+    [[nodiscard]] amrex::Real RZAxisVolumeFactor () const noexcept
+    {
+        return m_verboncoeur_axis_correction ? amrex::Real(1.0/3.0)
+                                             : amrex::Real(1.0/4.0);
+    }
+#endif
 
     void ProjectionCleanDivB ();
     void CalculateExternalCurlA ();
