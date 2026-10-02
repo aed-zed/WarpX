@@ -99,3 +99,6 @@ Examples and tests
 * a coaxial space-charge diode with and without the clamp (one and two ranks),
   including the grounded-charge cross-check;
 * checkpoint/restart during emission.
+
+The physics example :ref:`examples-coaxial-space-charge-diode` runs the diode to steady
+state and compares it with the Langmuir-Blodgett law.
