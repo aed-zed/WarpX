@@ -12,6 +12,7 @@
 #include <Diagnostics/MultiDiagnostics.H>
 #include <Diagnostics/ReducedDiags/MultiReducedDiags.H>
 #include <EmbeddedBoundary/WarpXFaceInfoBox.H>
+#include <FieldSolver/ElectrostaticSolvers/StaircaseBias.H>
 #include <FieldSolver/FiniteDifferenceSolver/FiniteDifferenceSolver.H>
 #include <FieldSolver/FiniteDifferenceSolver/MacroscopicProperties/MacroscopicProperties.H>
 #include <FieldSolver/FiniteDifferenceSolver/HybridPICModel/HybridPICModel.H>
@@ -296,20 +297,14 @@ void init_WarpX (py::module& m)
             },
             py::arg("lev") = 0, py::arg("field") = "Efield_fp",
             py::return_value_policy::move,
-            "Native discrete divergence of Efield_fp on the nodes, as a new "
-            "MultiFab. Uses WarpX::ComputeDivE, so the cylindrical form is "
-            "applied in RZ. The caller supplies the control-volume measure; in "
-            "RZ that is the cylindrical nodal volume, not dr*dz. Optional "
-            "field='Efield_aux' reproduces the full diagnostic's operator input; "
-            "it is not a Maxwell-grid Gauss-law check when aux is nodal."
+            "Nodal divergence of Efield_fp (or Efield_aux) as a new MultiFab, "
+            "using WarpX::ComputeDivE (cylindrical form in RZ)."
         )
 #if defined(WARPX_DIM_RZ)
         .def("rz_axis_volume_factor",
             [] (WarpX const & wx) { return wx.RZAxisVolumeFactor(); },
-            "The axis-node radial volume factor charge deposition uses: 1/3 with "
-            "the Verboncoeur correction, 1/4 without. Exposed so a diagnostic "
-            "integrating rho or divE over nodal control volumes can use the same "
-            "axis measure as the deposition instead of guessing it."
+            "Axis-node radial volume factor of charge deposition: 1/3 with the "
+            "Verboncoeur correction, 1/4 without."
         )
 #endif
         .def("eb_update_e_flag",
@@ -325,11 +320,8 @@ void init_WarpX (py::module& m)
             },
             py::arg("lev") = 0, py::arg("dir") = 0,
             py::return_value_policy::reference_internal,
-            "The staircase update mask for one E component: 1 where the FDTD update "
-            "advances the field, 0 where it is frozen because a cell in the component's "
-            "stencil is cut or covered. Read-only view of WarpX's own mask, so a "
-            "corrector can keep its correction out of the frozen cells without "
-            "reconstructing the topology."
+            "Read-only EB update mask of one E component: 1 where the field is "
+            "advanced, 0 where it is frozen (staircase)."
         )
         .def("deposit_scratch_rho",
             [] (WarpX& wx, int const lev) {
@@ -345,9 +337,65 @@ void init_WarpX (py::module& m)
             },
             py::arg("lev") = 0,
             py::return_value_policy::move,
-            "Freshly deposited nodal charge density of all live species, as a new "
-            "MultiFab. Does not touch rho_fp, does not solve and does not move "
-            "particles."
+            "Freshly deposited nodal charge density of all species as a new MultiFab "
+            "(rho_fp is not touched)."
+        )
+        .def("solve_staircase_unit_bias",
+            [] (WarpX&, std::string const& selector, std::string const& out_phi,
+                std::string const& out_weight, std::string const& out_efield,
+                amrex::Real rtol, int max_iter) {
+                return WarpXSolveStaircaseUnitBias(
+                    selector, out_phi, out_weight, out_efield, rtol, max_iter);
+            },
+            py::arg("selector"), py::arg("out_phi"), py::arg("out_weight"),
+            py::arg("out_efield"), py::arg("rtol") = 1.e-12,
+            py::arg("max_iter") = 200,
+            "Staircase unit-potential solve for the conductor selected by `selector` "
+            "(binary, constant on each frozen-edge component). Fills registered "
+            "outputs; live E is unchanged. Returns the solve residual."
+        )
+        .def("solve_staircase_grounded",
+            [] (WarpX& /*wx*/, std::string const& out_phi, std::string const& out_weight,
+                std::string const& out_efield, amrex::Real const rtol, int const max_iter) {
+                return WarpXSolveStaircaseGrounded(out_phi, out_weight, out_efield,
+                                                   rtol, max_iter);
+            },
+            py::arg("out_phi"), py::arg("out_weight"), py::arg("out_efield"),
+            py::arg("rtol") = 1.e-12, py::arg("max_iter") = 200,
+            "Grounded staircase Poisson solve with the live charge as source (all "
+            "conductors at 0 V). Fills registered output fields; returns the residual."
+        )
+        .def("staircase_charge_state",
+            [] (WarpX&, std::vector<std::string> const& psi_fields,
+                std::vector<std::string> const& weight_fields) {
+                auto const q = WarpXStaircaseChargeState(psi_fields, weight_fields);
+                std::vector<std::vector<amrex::Real>> result;
+                for (auto const& row : q) {
+                    result.emplace_back(row.begin(), row.end());
+                }
+                return result;
+            },
+            py::arg("psi_fields"), py::arg("weight_fields"),
+            "Staircase observer per conductor, in coulombs: (Gauss charge, live charge "
+            "on fixed nodes, grounded charge -psi^T q). Collective; no Poisson solve."
+        )
+        .def("validate_staircase_weights",
+            [] (WarpX&, std::vector<std::string> const& weight_fields) {
+                return WarpXValidateStaircaseWeights(weight_fields);
+            },
+            py::arg("weight_fields"),
+            "Setup check: maximum error of the summed unit weights on fixed nodes "
+            "(0 = every conductor selected exactly once)."
+        )
+        .def("refresh_staircase_efield_guards",
+            [] (WarpX& wx) {
+                // A staircase correction is added to the valid E region after
+                // the field push.  Refresh physical guards first, then exchange
+                // inter-box guards, in the same order as an explicit field push.
+                wx.ApplyEfieldBoundary(0, PatchType::fine, wx.gett_new(0));
+                wx.FillBoundaryE(0, wx.getngEB(), true);
+            },
+            "Refresh Efield_fp guard cells (level 0) after a direct field update."
         )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
