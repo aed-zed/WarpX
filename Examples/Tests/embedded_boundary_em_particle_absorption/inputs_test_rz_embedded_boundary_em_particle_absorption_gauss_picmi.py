@@ -133,7 +133,9 @@ def inject():
 def record():
     if warpx.getistep(0) % 50:
         return
-    residual = ((EPS0 * divergence() - deposited_rho()) * ring_volume[:, None]).sum(axis=1)
+    residual = ((EPS0 * divergence() - deposited_rho()) * ring_volume[:, None]).sum(
+        axis=1
+    )
     history.append(float(np.max(np.abs(residual[checked]))))
 
 
@@ -143,7 +145,9 @@ sim.step(STEPS)
 
 injected_charge = Q_E * WEIGHT * NZ * inject_steps
 error = max(history) / injected_charge
-print(f"shape {args.shape}: max |eps0 divE - rho| near the EB / injected charge = {error:.3e}")
+print(
+    f"shape {args.shape}: max |eps0 divE - rho| near the EB / injected charge = {error:.3e}"
+)
 
 callbacks.uninstallcallback("beforestep", inject)
 callbacks.uninstallcallback("afterstep", record)
