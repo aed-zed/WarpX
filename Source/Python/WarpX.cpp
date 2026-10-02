@@ -343,16 +343,35 @@ void init_WarpX (py::module& m)
         .def("solve_staircase_unit_bias",
             [] (WarpX&, std::string const& selector, std::string const& out_phi,
                 std::string const& out_weight, std::string const& out_efield,
-                amrex::Real rtol, int max_iter) {
+                amrex::Real rtol, int max_iter, bool insulating_endcaps,
+                bool grounded_wall_reference) {
                 return WarpXSolveStaircaseUnitBias(
-                    selector, out_phi, out_weight, out_efield, rtol, max_iter);
+                    selector, out_phi, out_weight, out_efield, rtol, max_iter,
+                    insulating_endcaps, grounded_wall_reference);
             },
             py::arg("selector"), py::arg("out_phi"), py::arg("out_weight"),
             py::arg("out_efield"), py::arg("rtol") = 1.e-12,
             py::arg("max_iter") = 200,
+            py::arg("insulating_endcaps") = false,
+            py::arg("grounded_wall_reference") = false,
             "Staircase unit-potential solve for the conductor selected by `selector` "
             "(binary, constant on each frozen-edge component). Fills registered "
             "outputs; live E is unchanged. Returns the solve residual."
+        )
+        .def("solve_staircase_insulator_bias",
+            [] (WarpX&, std::string const& selector, std::string const& out_psi,
+                std::string const& out_weight, std::string const& out_efield,
+                amrex::Real rtol, int max_iter, bool grounded_wall_reference) {
+                return WarpXSolveStaircaseInsulatorBias(
+                    selector, out_psi, out_weight, out_efield, rtol, max_iter,
+                    grounded_wall_reference);
+            },
+            py::arg("selector"), py::arg("out_psi"), py::arg("out_weight"),
+            py::arg("out_efield"), py::arg("rtol") = 1.e-12,
+            py::arg("max_iter") = 200,
+            py::arg("grounded_wall_reference") = false,
+            "Staircase unit solve with insulating z faces: Neumann observer potential "
+            "(out_psi) and a fringing actuator field (out_efield). Returns the residual."
         )
         .def("solve_staircase_grounded",
             [] (WarpX& /*wx*/, std::string const& out_phi, std::string const& out_weight,
@@ -367,8 +386,9 @@ void init_WarpX (py::module& m)
         )
         .def("staircase_charge_state",
             [] (WarpX&, std::vector<std::string> const& psi_fields,
-                std::vector<std::string> const& weight_fields) {
-                auto const q = WarpXStaircaseChargeState(psi_fields, weight_fields);
+                std::vector<std::string> const& weight_fields, bool insulating_endcaps) {
+                auto const q = WarpXStaircaseChargeState(
+                    psi_fields, weight_fields, insulating_endcaps);
                 std::vector<std::vector<amrex::Real>> result;
                 for (auto const& row : q) {
                     result.emplace_back(row.begin(), row.end());
@@ -376,14 +396,18 @@ void init_WarpX (py::module& m)
                 return result;
             },
             py::arg("psi_fields"), py::arg("weight_fields"),
+            py::arg("insulating_endcaps") = false,
             "Staircase observer per conductor, in coulombs: (Gauss charge, live charge "
-            "on fixed nodes, grounded charge -psi^T q). Collective; no Poisson solve."
+            "on fixed nodes, grounded charge -psi^T q); with insulating_endcaps a fourth "
+            "row holds the axial face flux. Collective; no Poisson solve."
         )
         .def("validate_staircase_weights",
-            [] (WarpX&, std::vector<std::string> const& weight_fields) {
-                return WarpXValidateStaircaseWeights(weight_fields);
+            [] (WarpX&, std::vector<std::string> const& weight_fields,
+                bool grounded_wall_reference) {
+                return WarpXValidateStaircaseWeights(weight_fields, grounded_wall_reference);
             },
             py::arg("weight_fields"),
+            py::arg("grounded_wall_reference") = false,
             "Setup check: maximum error of the summed unit weights on fixed nodes "
             "(0 = every conductor selected exactly once)."
         )

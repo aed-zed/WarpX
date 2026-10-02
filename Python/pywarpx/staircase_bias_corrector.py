@@ -31,6 +31,13 @@ class StaircaseBiasCorrector:
         on frozen-edge endpoint nodes); regions must not overlap.
     relaxation : float, optional
         Fraction of the voltage error removed per correction, in (0, 1].
+    insulating_endcaps : bool, optional
+        Use whole-face ``pec_insulator`` z boundaries. ``insulating_endcap_model``
+        selects ``"z_uniform"`` (default) or the experimental fringing
+        ``"harmonic_trace"``.
+    grounded_wall_reference : bool, optional
+        Treat staircase components connected to the outer PEC radius as part of the
+        ground reference (omit them from ``electrodes``). Requires ``harmonic_trace``.
 
     Call order
     ----------
@@ -54,6 +61,9 @@ class StaircaseBiasCorrector:
         *,
         tolerance=1.0e-12,
         max_iterations=200,
+        insulating_endcaps=False,
+        insulating_endcap_model="z_uniform",
+        grounded_wall_reference=False,
         prefix="staircase",
         verbose=False,
     ):
@@ -65,6 +75,22 @@ class StaircaseBiasCorrector:
             raise ValueError("tolerance must be finite and in (0, 1)")
         if not isinstance(max_iterations, int) or max_iterations < 1:
             raise ValueError("max_iterations must be a positive integer")
+        if not isinstance(insulating_endcaps, bool):
+            raise ValueError("insulating_endcaps must be a boolean")
+        if insulating_endcap_model not in ("z_uniform", "harmonic_trace"):
+            raise ValueError(
+                "insulating_endcap_model must be 'z_uniform' or 'harmonic_trace'"
+            )
+        if insulating_endcap_model != "z_uniform" and not insulating_endcaps:
+            raise ValueError("harmonic_trace requires insulating_endcaps=True")
+        if not isinstance(grounded_wall_reference, bool):
+            raise ValueError("grounded_wall_reference must be a boolean")
+        if grounded_wall_reference and (
+            not insulating_endcaps or insulating_endcap_model != "harmonic_trace"
+        ):
+            raise ValueError(
+                "grounded_wall_reference requires insulating harmonic_trace"
+            )
         if not prefix.isidentifier():
             raise ValueError("prefix must be a Python-style identifier")
         if not 0.0 < relaxation <= 1.0:
@@ -81,6 +107,9 @@ class StaircaseBiasCorrector:
         self.verbose = verbose
         self.observer = "staircase"
         self.actuator_gradient = "staircase"
+        self.insulating_endcaps = insulating_endcaps
+        self.insulating_endcap_model = insulating_endcap_model
+        self.grounded_wall_reference = grounded_wall_reference
 
         self.n = len(electrodes)
         self.regions = [entry["region"] for entry in electrodes]
@@ -95,6 +124,8 @@ class StaircaseBiasCorrector:
         self._capacitance = None
         self._capacitance_condition = None
         self._capacitance_asymmetry = None
+        self._raw_gauss_actuator_matrix = None
+        self._boundary_flux_actuator_matrix = None
         self._adjoint_residuals = None
         self._last_correction_state = None
         self._prefix = prefix
@@ -105,6 +136,9 @@ class StaircaseBiasCorrector:
         self._initialization_confirmed = False
         self._last_corrected_step = None
         self._source_charge = np.zeros(self.n)
+        self._raw_gauss_actuation_charge = np.zeros(self.n)
+        self._boundary_flux_actuation_charge = np.zeros(self.n)
+        self._axial_boundary_flux_charge = np.zeros(self.n)
 
     # -- native field plumbing ----------------------------------------------
     def _warpx(self):
@@ -234,37 +268,64 @@ class StaircaseBiasCorrector:
             )
 
         residuals = []
+        boundary_options = (
+            {"insulating_endcaps": True} if self.insulating_endcaps else {}
+        )
+        unit_solver = wx.solve_staircase_unit_bias
+        if self.insulating_endcap_model == "harmonic_trace":
+            # This setup solves separately for the Neumann observer and the
+            # fringing actuator. No extra solve occurs during correction.
+            unit_solver = wx.solve_staircase_insulator_bias
+            boundary_options = {}
+        reference_options = (
+            {"grounded_wall_reference": True} if self.grounded_wall_reference else {}
+        )
+        boundary_options.update(reference_options)
         for k, region in enumerate(self.regions):
             residuals.append(
                 float(
-                    wx.solve_staircase_unit_bias(
+                    unit_solver(
                         region,
                         self._psi_names[k],
                         self._weight_names[k],
                         self._unit_names[k],
                         self.adjoint_tolerance,
                         self.adjoint_max_iterations,
+                        **boundary_options,
                     )
                 )
             )
-        if wx.validate_staircase_weights(self._weight_names) != 0.0:
+        if (
+            wx.validate_staircase_weights(self._weight_names, **reference_options)
+            != 0.0
+        ):
             raise ValueError(
-                "Every staircase component must belong to exactly one electrode; "
-                "list zero-volt electrodes too."
+                "Every non-reference staircase component must belong to exactly one "
+                "electrode; list disconnected zero-volt electrodes too. Components "
+                "connected to the enabled grounded-wall reference must be unselected."
             )
 
         saved = self._save_efield(0)
         try:
             columns = []
+            raw_columns = []
+            flux_columns = []
             for name in self._unit_names:
                 for k in range(3):
                     d = self._Direction(k)
                     mfr.get("Efield_fp", dir=d, level=0).copymf(
                         mfr.get(name, dir=d, level=0), 0, 0, 1, 0
                     )
-                # Gauss charge of a vacuum UNIT FIELD. Live particles are not part
-                # of the calibration even when setup runs on restart.
-                columns.append(self._native_charge_state()[0])
+                # Raw Gauss charge of a vacuum UNIT FIELD. Live particles are
+                # not part of the calibration even when setup runs on restart.
+                raw = self._native_charge_state()[0]
+                raw_columns.append(raw.copy())
+                flux_columns.append(self._axial_boundary_flux_charge.copy())
+                # Calibrate the actual observer, including its measured end flux;
+                # never include the unrelated live-particle terms on restart.
+                if self.insulating_endcaps:
+                    raw = raw - self._axial_boundary_flux_charge
+                columns.append(raw)
         finally:
             self._restore_efield(saved, 0)
         cap = np.column_stack(columns)
@@ -281,6 +342,8 @@ class StaircaseBiasCorrector:
                 "Staircase unit fields failed charge reciprocity/sign checks"
             )
         self._capacitance = cap
+        self._raw_gauss_actuator_matrix = np.column_stack(raw_columns)
+        self._boundary_flux_actuator_matrix = np.column_stack(flux_columns)
         self._capacitance_condition = condition
         self._capacitance_asymmetry = asymmetry
         self._setup_absolute_residuals = residuals
@@ -291,10 +354,17 @@ class StaircaseBiasCorrector:
     def _native_charge_state(self):
         import numpy as np  # noqa: PLC0415
 
-        return np.asarray(
-            self._warpx().staircase_charge_state(self._psi_names, self._weight_names),
+        state = np.asarray(
+            self._warpx().staircase_charge_state(
+                self._psi_names,
+                self._weight_names,
+                **({"insulating_endcaps": True} if self.insulating_endcaps else {}),
+            ),
             dtype=float,
         )
+        if self.insulating_endcaps:
+            self._axial_boundary_flux_charge = state[3].copy()
+        return state[:3]
 
     def initialize_vacuum_bias(self, *, rho_tolerance=0.0):
         """Initialize a fresh zero-E run; never replace an existing field.
@@ -366,8 +436,12 @@ class StaircaseBiasCorrector:
         target = np.asarray(self.v_target)
         dv = self.relaxation * (target - voltage)
         self._apply_bias(dv)
-        # Charge the ideal source supplied, in the observer coordinate (C dV).
+        # Legacy telemetry name: this is the OBSERVER coordinate increment.
+        # With fringing end flux it is not the raw electrode Gauss increment,
+        # and neither quantity alone proves a physical wire-current budget.
         self._source_charge += self._capacitance @ dv
+        self._raw_gauss_actuation_charge += self._raw_gauss_actuator_matrix @ dv
+        self._boundary_flux_actuation_charge += self._boundary_flux_actuator_matrix @ dv
         self._last_corrected_step = step
         self._last_correction_state = {
             "step": step,
@@ -383,6 +457,9 @@ class StaircaseBiasCorrector:
             "raw_gauss_charge": raw,
             "live_fixed_charge": live_fixed,
             "source_charge_since_initialization": self._source_charge.copy(),
+            "raw_gauss_actuation_charge": self._raw_gauss_actuation_charge.copy(),
+            "boundary_flux_actuation_charge": self._boundary_flux_actuation_charge.copy(),
+            "axial_boundary_flux_charge": self._axial_boundary_flux_charge.copy(),
         }
 
     def measure_voltage_state(self):
@@ -397,6 +474,7 @@ class StaircaseBiasCorrector:
             "voltage": np.linalg.solve(self._capacitance, field - grounded),
             "field_charge": field,
             "grounded_charge": grounded,
+            "axial_boundary_flux_charge": self._axial_boundary_flux_charge.copy(),
         }
 
     def _charge_from_live_field(self):
@@ -417,6 +495,10 @@ class StaircaseBiasCorrector:
         """
         if lev != 0:
             raise ValueError("The staircase observer supports level zero only")
+        if self.insulating_endcaps:
+            raise NotImplementedError(
+                "The grounded staircase cross-check is not implemented for insulating endcaps"
+            )
         mfr = self._mfr()
         phi_name = f"{self._prefix}_grounded_phi"
         weight_name = f"{self._prefix}_grounded_weight"
@@ -484,6 +566,8 @@ class StaircaseBiasCorrector:
             "electrode_regions": list(self.regions),
             "target_voltages": list(self.v_target),
             "capacitance_matrix": self._capacitance.copy(),
+            "raw_gauss_actuator_matrix": self._raw_gauss_actuator_matrix.copy(),
+            "boundary_flux_actuator_matrix": self._boundary_flux_actuator_matrix.copy(),
             "source_charge_definition": (
                 "observer-coordinate actuation charge C*dV; not a measured wire current"
             ),
@@ -502,6 +586,9 @@ class StaircaseBiasCorrector:
             "fixed_node_weight_fields": list(self._weight_names),
             "observer_weight_potential_fields": list(self._psi_names),
             "actuator_field_names": list(self._unit_names),
+            "insulating_endcaps": self.insulating_endcaps,
+            "insulating_endcap_model": self.insulating_endcap_model,
+            "grounded_wall_reference": self.grounded_wall_reference,
         }
 
     def last_correction_state(self):

@@ -43,7 +43,8 @@ Supported configurations
 * RZ, azimuthal mode 0, one mesh level, explicit Yee solver, laboratory frame.
 * Particle shapes 1 to 4 with Esirkepov deposition. No current/charge filter.
 * Radial boundary: the axis and a PEC outer wall (the potential reference). Axial
-  boundaries: periodic or PEC.
+  boundaries: periodic or PEC, or ``pec_insulator`` faces with
+  ``insulating_endcaps=True``.
 * EB conductors must be separate bodies and must not coincide with a domain boundary.
 * If particles are absorbed at a PEC domain wall, set
   ``particles.crop_on_PEC_boundary = 1`` so that their current stops at the wall;
@@ -80,7 +81,9 @@ Usage
    sim.step(n_steps)
 
 A ``region`` is a parser expression in ``(x, z)`` (``x`` is the radius) that selects one
-whole staircase component. ``measure_voltage_state()`` returns the observer voltages and charges.
+whole staircase component. Conductors connected to the grounded outer wall can be
+handled with ``grounded_wall_reference=True`` (insulating endcaps only).
+``measure_voltage_state()`` returns the observer voltages and charges.
 
 What it does not do
 -------------------
@@ -97,7 +100,8 @@ Examples and tests
 
 ``Examples/Tests/staircase_voltage_clamp`` contains the regression tests:
 
-* unit-bias capacitance and voltage hold;
+* unit-bias capacitance and voltage hold, with periodic and insulating axial faces;
+* a rod with a separately driven ring, and the wall-connected ground reference;
 * the grounded-charge cross-check (one and two ranks);
 * a coaxial space-charge diode with and without the clamp;
 * checkpoint/restart during emission.
