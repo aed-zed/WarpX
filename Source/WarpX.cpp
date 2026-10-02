@@ -3391,19 +3391,22 @@ WarpX::ComputeDivB (amrex::MultiFab& divB, int const dcomp,
 }
 
 void
-WarpX::ComputeDivE(amrex::MultiFab& divE, const int lev)
+WarpX::ComputeDivE(amrex::MultiFab& divE, const int lev, FieldType const field)
 {
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        field == FieldType::Efield_aux || field == FieldType::Efield_fp,
+        "ComputeDivE: field must be Efield_aux or Efield_fp");
+    const ablastr::fields::VectorField Efield_lev = m_fields.get_alldirs(field, lev);
+
     if ( WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::PSATD ) {
 #ifdef WARPX_USE_FFT
-        const ablastr::fields::VectorField Efield_aux_lev = m_fields.get_alldirs(FieldType::Efield_aux, lev);
-        spectral_solver_fp[lev]->ComputeSpectralDivE(lev, Efield_aux_lev, divE);
+        spectral_solver_fp[lev]->ComputeSpectralDivE(lev, Efield_lev, divE);
 #else
         WARPX_ABORT_WITH_MESSAGE(
             "ComputeDivE: PSATD requested but not compiled");
 #endif
     } else {
-        const ablastr::fields::VectorField Efield_aux_lev = m_fields.get_alldirs(FieldType::Efield_aux, lev);
-        m_fdtd_solver_fp[lev]->ComputeDivE(Efield_aux_lev, divE);
+        m_fdtd_solver_fp[lev]->ComputeDivE(Efield_lev, divE);
     }
 }
 

@@ -274,6 +274,63 @@ void init_WarpX (py::module& m)
             py::arg("potential"),
             "Sets the EB potential string and updates the function parser."
         )
+        .def("compute_div_e",
+            [] (WarpX& wx, int const lev, std::string const& field) {
+                if (field != "Efield_fp" && field != "Efield_aux") {
+                    throw py::value_error("compute_div_e field must be Efield_fp or Efield_aux");
+                }
+                // WarpX computes divE on the nodes, matching nodal rho and the
+                // operator the nodal Poisson solver inverts. ComputeDivE
+                // dispatches per geometry, so the cylindrical
+                // (1/r) d(r E_r)/dr form is used in RZ without a second kernel
+                // here. Additive binding to an existing native operator: no new
+                // discretisation is introduced.
+                amrex::BoxArray nodal_ba = wx.boxArray(lev);
+                nodal_ba.surroundingNodes();
+                amrex::MultiFab div_e(
+                    nodal_ba, wx.DistributionMap(lev), WarpX::ncomps, 0);
+                wx.ComputeDivE(div_e, lev,
+                    field == "Efield_fp" ? warpx::fields::FieldType::Efield_fp
+                                         : warpx::fields::FieldType::Efield_aux);
+                return div_e;
+            },
+            py::arg("lev") = 0, py::arg("field") = "Efield_fp",
+            py::return_value_policy::move,
+            "Native discrete divergence of Efield_fp on the nodes, as a new "
+            "MultiFab. Uses WarpX::ComputeDivE, so the cylindrical form is "
+            "applied in RZ. The caller supplies the control-volume measure; in "
+            "RZ that is the cylindrical nodal volume, not dr*dz. Optional "
+            "field='Efield_aux' reproduces the full diagnostic's operator input; "
+            "it is not a Maxwell-grid Gauss-law check when aux is nodal."
+        )
+#if defined(WARPX_DIM_RZ)
+        .def("rz_axis_volume_factor",
+            [] (WarpX const & wx) { return wx.RZAxisVolumeFactor(); },
+            "The axis-node radial volume factor charge deposition uses: 1/3 with "
+            "the Verboncoeur correction, 1/4 without. Exposed so a diagnostic "
+            "integrating rho or divE over nodal control volumes can use the same "
+            "axis measure as the deposition instead of guessing it."
+        )
+#endif
+        .def("eb_update_e_flag",
+            [] (WarpX& wx, int const lev, int const dir) {
+                auto& flags = wx.GetEBUpdateEFlag();
+                if (lev < 0 || lev >= static_cast<int>(flags.size())
+                    || dir < 0 || dir > 2 || !flags[lev][dir]) {
+                    throw py::value_error(
+                        "eb_update_e_flag: no EB update mask for this level/direction "
+                        "(is an embedded boundary defined?)");
+                }
+                return flags[lev][dir].get();
+            },
+            py::arg("lev") = 0, py::arg("dir") = 0,
+            py::return_value_policy::reference_internal,
+            "The staircase update mask for one E component: 1 where the FDTD update "
+            "advances the field, 0 where it is frozen because a cell in the component's "
+            "stencil is cut or covered. Read-only view of WarpX's own mask, so a "
+            "corrector can keep its correction out of the frozen cells without "
+            "reconstructing the topology."
+        )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
             "Executes projection based divergence cleaner on loaded Bfield_fp_external."
