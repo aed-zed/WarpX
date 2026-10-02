@@ -331,6 +331,24 @@ void init_WarpX (py::module& m)
             "corrector can keep its correction out of the frozen cells without "
             "reconstructing the topology."
         )
+        .def("deposit_scratch_rho",
+            [] (WarpX& wx, int const lev) {
+                // Fresh nodal charge density from all live species, filtered and
+                // guard-cell summed exactly as the electrostatic solvers consume
+                // it, on a scratch allocation that leaves the registered rho_fp
+                // untouched. A volume charge observer needs this to subtract the
+                // plasma charge inside its region with the SAME measure the
+                // field was built from; reading rho_fp is not an option because
+                // it is not allocated in a plain electromagnetic run.
+                auto rho = wx.DepositScratchRho(lev);
+                return amrex::MultiFab(std::move(*rho));
+            },
+            py::arg("lev") = 0,
+            py::return_value_policy::move,
+            "Freshly deposited nodal charge density of all live species, as a new "
+            "MultiFab. Does not touch rho_fp, does not solve and does not move "
+            "particles."
+        )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
             "Executes projection based divergence cleaner on loaded Bfield_fp_external."

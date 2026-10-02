@@ -825,6 +825,14 @@ public:
      */
     void ComputeDivE(amrex::MultiFab& divE, int lev,
                      warpx::fields::FieldType field = warpx::fields::FieldType::Efield_aux);
+
+    /** \brief Deposit all species onto a fresh nodal charge density.
+     *
+     * Same deposition, filtering, guard-cell summation and PEC reflection as the
+     * lab-frame electrostatic solver, without touching the registered rho_fp.
+     * Single level, single RZ azimuthal mode.
+     */
+    [[nodiscard]] std::unique_ptr<amrex::MultiFab> DepositScratchRho (int lev);
 #if defined(WARPX_DIM_RZ)
     /** Axis-node radial volume factor used by charge deposition (1/3 with the
      *  Verboncoeur correction, 1/4 without). */
