@@ -150,11 +150,25 @@ There is no runtime Poisson solve or SciPy dependency.
 
 The research envelope is CPU, one level, fixed geometry, lab-frame explicit
 vacuum-medium Yee, RZ mode zero, particle-only CIC and no charge filtering.
-Use a grounded outer radius and grounded or periodic axial boundaries. Moving
+Use a grounded outer radius and grounded, periodic or PMC (``neumann``) axial
+boundaries (or the insulating endcaps described below). Moving
 windows, fluid species and internal field-zeroing mirrors are rejected. Free-axis
 live charge is conservatively rejected with the default RZ deposition correction,
 whose axis volume differs from the Gauss measure. ECT is a separate Cartesian
 path using its EB-aware gradient, not this staircase construction.
+
+A PMC face is a mirror plane: normal :math:`E` and tangential :math:`B` are odd
+across it, so the unit potentials satisfy homogeneous Neumann conditions there,
+conductors may end on the face, and face nodes carry half a Gauss control volume.
+A particle absorbed at a PMC face leaves its charge behind: the mirrored current
+stops its charge flux at the face, so the field still holds it as surface charge
+on the face nodes while the deposited :math:`\rho` no longer contains it. That
+charge induces conductor charge like any other, so with a PMC face the observer
+pairs :math:`\psi_k` with the Gauss charge :math:`\epsilon_0 V_G D E` on free nodes
+instead of :math:`q` (``grounded_pairing="field"``, the default there). Where
+Gauss's law holds the two pairings agree. The clamp holds the conductors despite
+the face charge; it does not remove it. ``grounded_pairing="rho"`` is kept for
+regression tests. ``grounded_wall_reference=True`` also works with two PMC faces.
 
 Fresh initialization and correction order are different from the old class:
 
