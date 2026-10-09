@@ -43,9 +43,10 @@ Supported configurations
 * RZ, azimuthal mode 0, one mesh level, explicit Yee solver, laboratory frame.
 * Particle shapes 1 to 4 with Esirkepov deposition. No current/charge filter.
 * Radial boundary: the axis and a PEC outer wall (the potential reference). Axial
-  boundaries: periodic or PEC, or ``pec_insulator`` faces with
-  ``insulating_endcaps=True``.
-* EB conductors must be separate bodies and must not coincide with a domain boundary.
+  boundaries: periodic, PEC or PMC (``neumann``) faces in any PEC/PMC combination, or
+  ``pec_insulator`` faces with ``insulating_endcaps=True``.
+* EB conductors must be separate bodies and must not touch the outer wall or a PEC face
+  (see ``grounded_wall_reference`` below). They may end on a PMC face.
 * If particles are absorbed at a PEC domain wall, set
   ``particles.crop_on_PEC_boundary = 1`` so that their current stops at the wall;
   otherwise the discrete Gauss law is violated next to the wall.
@@ -82,8 +83,33 @@ Usage
 
 A ``region`` is a parser expression in ``(x, z)`` (``x`` is the radius) that selects one
 whole staircase component. Conductors connected to the grounded outer wall can be
-handled with ``grounded_wall_reference=True`` (insulating endcaps only).
+handled with ``grounded_wall_reference=True`` (two PMC faces, or insulating endcaps).
 ``measure_voltage_state()`` returns the observer voltages and charges.
+
+PMC end faces
+-------------
+
+A PMC (``neumann``) face is a mirror plane: the normal :math:`E` and the tangential
+:math:`B` are odd across it. The unit potentials therefore satisfy homogeneous Neumann
+conditions there, conductors may end on the face, and the face nodes carry half a
+control volume in the Gauss integrals.
+
+A particle absorbed at a PMC face leaves its charge behind. The mirrored current stops
+its charge flux at the face, so when the particle is deleted the field still holds the
+charge as a surface charge on the face nodes, while the deposited :math:`\rho` no longer
+contains it. This is what an insulating end plate collects. The surface charge induces
+charge on the conductors like any other charge, so with a PMC face the observer pairs
+the unit potentials with the Gauss charge on the free nodes instead of :math:`\rho`
+(``grounded_pairing="field"``, the default when a face is PMC):
+
+.. math::
+
+   Q_{g,k} = -\Big[\varepsilon_0 \sum_{\text{free}} \psi_k V\, \nabla_h\!\cdot E
+   + \sum_{\text{fixed}} \psi_k V q\Big].
+
+Where Gauss's law holds, this equals :math:`-\psi_k^T q`. The clamp holds the
+conductors at their targets despite the face charge; it does not remove that charge.
+``grounded_pairing="rho"`` restores the deposited-charge pairing for regression tests.
 
 What it does not do
 -------------------
@@ -100,7 +126,9 @@ Examples and tests
 
 ``Examples/Tests/staircase_voltage_clamp`` contains the regression tests:
 
-* unit-bias capacitance and voltage hold, with periodic and insulating axial faces;
+* unit-bias capacitance and voltage hold, with periodic, insulating and PMC axial faces;
+* PMC faces: end rings against an independent dense solve (one and two ranks, mixed
+  PEC/PMC, ground reference), charge exiting through a PMC face, and restart;
 * a rod with a separately driven ring, and the wall-connected ground reference;
 * the grounded-charge cross-check (one and two ranks);
 * a coaxial space-charge diode with and without the clamp;
