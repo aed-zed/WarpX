@@ -39,7 +39,7 @@ amrex::Real WarpXSolveStaircaseUnitBias (
  *
  * All conductors and the PEC outer radius at 0 V. Reading the resulting E with the
  * staircase observer gives the plasma-induced conductor charge, an independent
- * check of the reciprocity value -psi^T q. PEC or periodic z boundaries only.
+ * check of the reciprocity value -psi^T q. PEC, PMC or periodic z boundaries.
  * \return final MLMG residual
  */
 amrex::Real WarpXSolveStaircaseGrounded (
@@ -71,15 +71,25 @@ amrex::Real WarpXValidateStaircaseWeights (
     std::vector<std::string> const& weight_fields,
     bool grounded_wall_reference = false);
 
+/** \brief Effective grounded-charge pairing of the staircase observer.
+ *
+ * `requested` is "auto", "field" or "rho". "auto" selects "field" when a z face is
+ * PMC (neumann) and "rho" otherwise; "field" is available with PMC z faces only.
+ */
+std::string WarpXStaircaseGroundedPairing (std::string const& requested,
+                                           bool insulating_endcaps = false);
+
 /** \brief Staircase observer, one entry per conductor.
  *
  * Returns {total Gauss charge eps0 s^T V div(E), live charge s^T q on the fixed
  * nodes, grounded charge -psi^T q} (plus the axial face flux with insulating
- * endcaps). Deposits charge once; no Poisson solve.
+ * endcaps). With the "field" pairing, the grounded charge pairs psi with the Gauss
+ * charge eps0 div(E) on free nodes instead of q. Deposits charge once; no Poisson solve.
  */
 amrex::Vector<amrex::Vector<amrex::Real>>
 WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
                           std::vector<std::string> const& weight_fields,
-                          bool insulating_endcaps = false);
+                          bool insulating_endcaps = false,
+                          std::string const& grounded_pairing = "auto");
 
 #endif // WARPX_STAIRCASE_BIAS_H_
