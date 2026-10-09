@@ -180,3 +180,123 @@ if(WarpX_EB)
         test_rz_staircase_clamp_restart_base_picmi  # dependency (reads its checkpoint)
     )
 endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_coax_picmi  # name
+        RZ  # dims
+        1  # nprocs (vacuum coax, exact discrete solution)
+        "inputs_test_rz_staircase_pmc_picmi.py --case coax"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_exit_picmi  # name
+        RZ  # dims
+        1  # nprocs (charge exits through a PMC face)
+        "inputs_test_rz_staircase_pmc_picmi.py --case exit"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_exit_decomposed_picmi  # name
+        RZ  # dims
+        2  # nprocs (box boundaries at and away from the faces)
+        "inputs_test_rz_staircase_pmc_picmi.py --case exit --max-grid-size 16 --compare-with ../test_rz_staircase_pmc_exit_picmi"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        test_rz_staircase_pmc_exit_picmi  # dependency (reads its output)
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_exit_rho_pairing_picmi  # name
+        RZ  # dims
+        1  # nprocs (asserts the rho-pairing drift)
+        "inputs_test_rz_staircase_pmc_picmi.py --case exit --pairing rho"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_restart_base_picmi  # name
+        RZ  # dims
+        2  # nprocs (writes the checkpoint and trace used by the restart test)
+        "inputs_test_rz_staircase_pmc_picmi.py --case restart --mode base --max-grid-size 16"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_restart_picmi  # name
+        RZ  # dims
+        2  # nprocs (compares with the base run)
+        "inputs_test_rz_staircase_pmc_picmi.py --case restart --mode restart --max-grid-size 16"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        test_rz_staircase_pmc_restart_base_picmi  # dependency (reads its output)
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_rings_picmi  # name
+        RZ  # dims
+        1  # nprocs (end rings against a dense reference solve)
+        "inputs_test_rz_staircase_pmc_picmi.py --case rings"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_rings_decomposed_picmi  # name
+        RZ  # dims
+        2  # nprocs (box boundaries at and away from the faces)
+        "inputs_test_rz_staircase_pmc_picmi.py --case rings --max-grid-size 8 --compare-with ../test_rz_staircase_pmc_rings_picmi"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        test_rz_staircase_pmc_rings_picmi  # dependency (reads its output)
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_rings_ground_reference_picmi  # name
+        RZ  # dims
+        1  # nprocs (outer ring connected to the grounded wall)
+        "inputs_test_rz_staircase_pmc_picmi.py --case rings --ground-reference"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
+
+if(WarpX_EB)
+    add_warpx_test(
+        test_rz_staircase_pmc_rings_pec_pmc_picmi  # name
+        RZ  # dims
+        1  # nprocs (PEC lower face, PMC upper face)
+        "inputs_test_rz_staircase_pmc_picmi.py --case rings --z-faces pec_pmc"  # inputs
+        OFF  # analysis (the input contains numerical assertions)
+        OFF  # checksum
+        OFF  # dependency
+    )
+endif()
