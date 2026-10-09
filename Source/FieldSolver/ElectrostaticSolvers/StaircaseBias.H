@@ -56,8 +56,17 @@ amrex::Real WarpXValidateStaircaseWeights (
     std::vector<std::string> const& weight_fields,
     bool grounded_wall_reference = false);
 
+/** Effective grounded-charge pairing of the staircase observer.
+ * `requested` is "auto", "field" or "rho". "auto" selects "field" when a z face is
+ * PMC (neumann) and "rho" otherwise; "field" is available with PMC z faces only.
+ */
+std::string WarpXStaircaseGroundedPairing (std::string const& requested,
+                                           bool insulating_endcaps = false);
+
 /** Research staircase observer: total Gauss charge, deposited live charge on
  * fixed electrode nodes, and the all-node grounded pairing, respectively.
+ * With the "field" pairing, the grounded pairing uses the Gauss charge
+ * eps0 div(E) on free nodes instead of the deposited charge.
  * Requires matching registered nodal unit potentials and fixed-node weights.
  * Rejects deposited charge on an unselected RZ axis node when deposition and
  * geometric axis measures differ. Collective; no Poisson solve.
@@ -65,6 +74,7 @@ amrex::Real WarpXValidateStaircaseWeights (
 amrex::Vector<amrex::Vector<amrex::Real>>
 WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
                           std::vector<std::string> const& weight_fields,
-                          bool insulating_endcaps = false);
+                          bool insulating_endcaps = false,
+                          std::string const& grounded_pairing = "auto");
 
 #endif // WARPX_STAIRCASE_BIAS_H_

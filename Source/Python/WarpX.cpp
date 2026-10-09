@@ -327,11 +327,21 @@ void init_WarpX (py::module& m)
             "one-dimensional RZ endpoint traces between fixed metal nodes. Returns "
             "the larger absolute residual of the two solves. Does not change live E."
         )
+        .def("staircase_grounded_pairing",
+            [] (WarpX&, std::string const& requested, bool insulating_endcaps) {
+                return WarpXStaircaseGroundedPairing(requested, insulating_endcaps);
+            },
+            py::arg("requested") = "auto",
+            py::arg("insulating_endcaps") = false,
+            "Effective staircase grounded-charge pairing ('field' or 'rho') for the "
+            "requested mode ('auto', 'field' or 'rho') and the z boundaries."
+        )
         .def("staircase_charge_state",
             [] (WarpX&, std::vector<std::string> const& psi_fields,
-                std::vector<std::string> const& weight_fields, bool insulating_endcaps) {
+                std::vector<std::string> const& weight_fields, bool insulating_endcaps,
+                std::string const& grounded_pairing) {
                 auto const q = WarpXStaircaseChargeState(
-                    psi_fields, weight_fields, insulating_endcaps);
+                    psi_fields, weight_fields, insulating_endcaps, grounded_pairing);
                 std::vector<std::vector<amrex::Real>> result;
                 for (auto const& row : q) {
                     result.emplace_back(row.begin(), row.end());
@@ -340,6 +350,7 @@ void init_WarpX (py::module& m)
             },
             py::arg("psi_fields"), py::arg("weight_fields"),
             py::arg("insulating_endcaps") = false,
+            py::arg("grounded_pairing") = "auto",
             "Research staircase charge observer: returns (total Gauss charge, live "
             "charge on fixed nodes, grounded all-node pairing), in coulombs. "
             "Collective, with unique nodal ownership and separate Gauss/deposition "

@@ -69,7 +69,16 @@ class StaircaseBiasCorrector:
     they share the domain reference and have no independent actuator or voltage
     row. Disconnected zero-volt electrodes still need their own entries. Setup
     checks connectivity on a replicated host RZ graph; time stepping stays native.
-    This option currently requires the insulating ``harmonic_trace`` model.
+    This option requires two PMC (``neumann``) z faces, or the insulating
+    ``harmonic_trace`` model.
+
+    PMC (``neumann``) z faces, alone or mixed with PEC, are supported; electrodes
+    may end on a PMC face. ``grounded_pairing`` selects how non-electrode charge
+    is weighted: ``"auto"`` (default) uses ``"field"`` when a z face is PMC and
+    ``"rho"`` otherwise. ``"field"`` pairs the unit potentials with the Gauss
+    charge eps0 div(E) on free nodes, so it also counts the surface charge that
+    particles absorbed at a PMC face leave behind; where Gauss's law holds it
+    equals ``"rho"``. Select ``"rho"`` with PMC faces only for regression tests.
     """
 
     def __init__(
@@ -84,6 +93,7 @@ class StaircaseBiasCorrector:
         insulating_endcaps=False,
         insulating_endcap_model="z_uniform",
         grounded_wall_reference=False,
+        grounded_pairing="auto",
         prefix="staircase",
         verbose=False,
     ):
@@ -105,10 +115,17 @@ class StaircaseBiasCorrector:
             raise ValueError("harmonic_trace requires insulating_endcaps=True")
         if not isinstance(grounded_wall_reference, bool):
             raise ValueError("grounded_wall_reference must be a boolean")
-        if grounded_wall_reference and (
-            not insulating_endcaps or insulating_endcap_model != "harmonic_trace"
+        if (
+            grounded_wall_reference
+            and insulating_endcaps
+            and insulating_endcap_model != "harmonic_trace"
         ):
-            raise ValueError("grounded_wall_reference requires insulating harmonic_trace")
+            # Without insulating endcaps the native setup requires two PMC z faces.
+            raise ValueError(
+                "grounded_wall_reference requires PMC z faces or insulating harmonic_trace"
+            )
+        if grounded_pairing not in ("auto", "field", "rho"):
+            raise ValueError("grounded_pairing must be 'auto', 'field' or 'rho'")
         if not prefix.isidentifier():
             raise ValueError("prefix must be a Python-style identifier")
         if not 0.0 < relaxation <= 1.0:
@@ -128,6 +145,8 @@ class StaircaseBiasCorrector:
         self.insulating_endcaps = insulating_endcaps
         self.insulating_endcap_model = insulating_endcap_model
         self.grounded_wall_reference = grounded_wall_reference
+        self._requested_grounded_pairing = grounded_pairing
+        self.grounded_pairing = None
 
         self.n = len(electrodes)
         self.regions = [entry["region"] for entry in electrodes]
@@ -285,6 +304,9 @@ class StaircaseBiasCorrector:
                 True,
             )
 
+        self.grounded_pairing = wx.staircase_grounded_pairing(
+            self._requested_grounded_pairing, self.insulating_endcaps
+        )
         residuals = []
         boundary_options = {"insulating_endcaps": True} if self.insulating_endcaps else {}
         unit_solver = wx.solve_staircase_unit_bias
@@ -331,13 +353,18 @@ class StaircaseBiasCorrector:
                     )
                 # Raw Gauss charge of a vacuum UNIT FIELD. Live particles are
                 # not part of the calibration even when setup runs on restart.
-                raw = self._native_charge_state()[0]
+                raw, live_fixed, grounded = self._native_charge_state()
                 raw_columns.append(raw.copy())
                 flux_columns.append(self._axial_boundary_flux_charge.copy())
                 # Calibrate the actual observer, including its measured end flux;
                 # never include the unrelated live-particle terms on restart.
                 if self.insulating_endcaps:
                     raw = raw - self._axial_boundary_flux_charge
+                if self.grounded_pairing == "field":
+                    # The field pairing also reads the unit field's free-node
+                    # divergence (solve residual). The live terms cancel exactly
+                    # because psi equals the fixed-node weight on electrode nodes.
+                    raw = raw - live_fixed - grounded
                 columns.append(raw)
         finally:
             self._restore_efield(saved, 0)
@@ -367,10 +394,14 @@ class StaircaseBiasCorrector:
     def _native_charge_state(self):
         import numpy as np  # noqa: PLC0415
 
+        options = {"insulating_endcaps": True} if self.insulating_endcaps else {}
+        if self.grounded_pairing == "field":
+            options["grounded_pairing"] = "field"
+        elif self._requested_grounded_pairing == "rho":
+            options["grounded_pairing"] = "rho"
         state = np.asarray(
             self._warpx().staircase_charge_state(
-                self._psi_names, self._weight_names,
-                **({"insulating_endcaps": True} if self.insulating_endcaps else {}),
+                self._psi_names, self._weight_names, **options
             ),
             dtype=float,
         )
@@ -547,6 +578,7 @@ class StaircaseBiasCorrector:
             "insulating_endcaps": self.insulating_endcaps,
             "insulating_endcap_model": self.insulating_endcap_model,
             "grounded_wall_reference": self.grounded_wall_reference,
+            "grounded_pairing": self.grounded_pairing,
         }
 
     def last_correction_state(self):
