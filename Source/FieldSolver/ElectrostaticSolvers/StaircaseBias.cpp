@@ -56,6 +56,27 @@
 
 namespace
 {
+    // Native z-face types; PMC (`neumann`) faces are homogeneous-Neumann unit-solve faces.
+    struct StaircaseZFaces
+    {
+        bool periodic = false;
+        bool pec_lo = false, pec_hi = false;
+        bool pmc_lo = false, pmc_hi = false;
+        [[nodiscard]] bool any_pmc () const { return pmc_lo || pmc_hi; }
+    };
+
+    StaircaseZFaces GetStaircaseZFaces ()
+    {
+        StaircaseZFaces faces;
+        faces.periodic = WarpX::field_boundary_lo[1] == FieldBoundaryType::Periodic &&
+            WarpX::field_boundary_hi[1] == FieldBoundaryType::Periodic;
+        faces.pec_lo = WarpX::field_boundary_lo[1] == FieldBoundaryType::PEC;
+        faces.pec_hi = WarpX::field_boundary_hi[1] == FieldBoundaryType::PEC;
+        faces.pmc_lo = WarpX::field_boundary_lo[1] == FieldBoundaryType::PMC;
+        faces.pmc_hi = WarpX::field_boundary_hi[1] == FieldBoundaryType::PMC;
+        return faces;
+    }
+
 #ifdef WARPX_STAIRCASE_SUPPORTED
     // True if `name` is a native WarpX field; staircase outputs must not alias those.
     bool IsReservedFieldName (std::string const& name)
@@ -120,6 +141,20 @@ namespace
                     "The insulating-endcap clamp cannot prescribe tangential boundary fields");
             }
         }
+    }
+
+    // A node is an endpoint of a frozen Er or Ez edge (an electrode staircase node).
+    AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE
+    bool FrozenEdgeEndpoint (amrex::Array4<int const> const& ur,
+                             amrex::Array4<int const> const& uz,
+                             int i, int j, int k,
+                             amrex::IntVect const& dlo, amrex::IntVect const& dhi,
+                             bool z_periodic) noexcept
+    {
+        return (i > dlo[0] && ur(i-1,j,k) == 0) ||
+            (i < dhi[0] && ur(i,j,k) == 0) ||
+            ((z_periodic || j > dlo[1]) && uz(i,j-1,k) == 0) ||
+            ((z_periodic || j < dhi[1]) && uz(i,j,k) == 0);
     }
 
     // Setup only: flag the fixed nodes connected to the outer PEC radius through
@@ -229,22 +264,22 @@ amrex::Real SolveStaircaseBias (
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!harmonic_trace || insulating_endcaps,
         "A harmonic endpoint trace requires native insulating endcaps");
     if (insulating_endcaps) { ValidateInsulatingEndcaps(); }
-    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!grounded_wall_reference || insulating_endcaps,
-        "Grounded-wall reference currently requires insulating RZ endcaps");
+    auto const faces = GetStaircaseZFaces();
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        !grounded_wall_reference || insulating_endcaps || (faces.pmc_lo && faces.pmc_hi),
+        "Grounded-wall reference requires insulating RZ endcaps or two PMC z faces");
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(rtol > 0._rt && rtol < 1._rt && max_iter > 0,
         "The staircase unit-bias solve needs 0 < rtol < 1 and max_iter > 0");
 
-    const bool z_periodic =
-        WarpX::field_boundary_lo[1] == FieldBoundaryType::Periodic &&
-        WarpX::field_boundary_hi[1] == FieldBoundaryType::Periodic;
+    const bool z_periodic = faces.periodic;
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
         WarpX::field_boundary_lo[0] == FieldBoundaryType::None &&
         WarpX::field_boundary_hi[0] == FieldBoundaryType::PEC &&
         (z_periodic || insulating_endcaps ||
-         (WarpX::field_boundary_lo[1] == FieldBoundaryType::PEC &&
-          WarpX::field_boundary_hi[1] == FieldBoundaryType::PEC)),
+         ((faces.pec_lo || faces.pmc_lo) && (faces.pec_hi || faces.pmc_hi))),
         "Supported staircase boundaries are the RZ axis, a PEC outer radius, and "
-        "either two PEC, two periodic, or explicitly enabled insulating z boundaries");
+        "either periodic, PEC or PMC (neumann) z boundaries, or explicitly enabled "
+        "insulating z boundaries");
 
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
         out_phi != out_weight && out_phi != out_efield && out_weight != out_efield,
@@ -326,6 +361,9 @@ amrex::Real SolveStaircaseBias (
     amrex::Box const ndomain = amrex::surroundingNodes(warpx.Geom(lev).Domain());
     auto const dlo = ndomain.smallEnd();
     auto const dhi = ndomain.bigEnd();
+    // Only PEC z faces are grounded walls; PMC face nodes are unknowns or electrode nodes.
+    bool const wall_lo = faces.pec_lo;
+    bool const wall_hi = faces.pec_hi;
 
     for (amrex::MFIter mfi(*phi); mfi.isValid(); ++mfi) {
         auto const& pa = phi->array(mfi);
@@ -338,16 +376,13 @@ amrex::Real SolveStaircaseBias (
             [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
                 const bool incident =
-                    (i > dlo[0] && ur(i-1,j,k) == 0) ||
-                    (i < dhi[0] && ur(i,j,k) == 0) ||
-                    ((z_periodic || j > dlo[1]) && uz(i,j-1,k) == 0) ||
-                    ((z_periodic || j < dhi[1]) && uz(i,j,k) == 0);
+                    FrozenEdgeEndpoint(ur, uz, i, j, k, dlo, dhi, z_periodic);
                 const amrex::Real r = lo[0] + amrex::Real(i)*dx[0];
                 const amrex::Real z = lo[1] + amrex::Real(j)*dx[1];
                 const amrex::Real s = select(r, 0._rt, z);
                 const bool binary = s == 0._rt || s == 1._rt;
                 const bool wall = i == dhi[0] ||
-                    (!z_periodic && !insulating_endcaps && (j == dlo[1] || j == dhi[1]));
+                    (wall_lo && j == dlo[1]) || (wall_hi && j == dhi[1]);
                 pa(i,j,k) = incident && s == 1._rt ? 1._rt : 0._rt;
                 wa(i,j,k) = pa(i,j,k);
                 ma(i,j,k) = incident || wall ? 0 : 1; // overset: 1 unknown, 0 fixed
@@ -390,6 +425,10 @@ amrex::Real SolveStaircaseBias (
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(source_rho->boxArray() == nodal_ba &&
             source_rho->DistributionMap() == warpx.DistributionMap(lev),
             "The staircase grounded solve needs a nodal rho with the native layout");
+        // The RZ scratch rho is not folded at PMC faces, whereas the Neumann face
+        // equation needs the mirrored (doubled) face density.
+        bool const fold_lo = faces.pmc_lo;
+        bool const fold_hi = faces.pmc_hi;
         for (amrex::MFIter mfi(rhs); mfi.isValid(); ++mfi) {
             auto const& ra = rhs.array(mfi);
             auto const& qa = source_rho->const_array(mfi);
@@ -398,7 +437,10 @@ amrex::Real SolveStaircaseBias (
             amrex::ParallelFor(mfi.validbox(),
                 [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
                 {
-                    ra(i,j,k) = ma(i,j,k) == 1 ? -qa(i,j,k) / PhysConst::epsilon_0 : 0._rt;
+                    amrex::Real const fold =
+                        (fold_lo && j == dlo[1]) || (fold_hi && j == dhi[1]) ? 2._rt : 1._rt;
+                    ra(i,j,k) = ma(i,j,k) == 1
+                        ? -fold * qa(i,j,k) / PhysConst::epsilon_0 : 0._rt;
                 });
         }
     }
@@ -676,7 +718,8 @@ amrex::Real WarpXValidateStaircaseWeights (
     bool const z_periodic = warpx.Geom(lev).isPeriodic(1);
     amrex::Gpu::DeviceVector<int> reference;
     if (grounded_wall_reference) {
-        ValidateInsulatingEndcaps();
+        auto const faces = GetStaircaseZFaces();
+        if (!(faces.pmc_lo && faces.pmc_hi)) { ValidateInsulatingEndcaps(); }
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
             WarpX::field_boundary_hi[0] == FieldBoundaryType::PEC,
             "The connected reference requires a grounded outer PEC radius");
@@ -691,11 +734,7 @@ amrex::Real WarpXValidateStaircaseWeights (
         amrex::ParallelFor(mfi.validbox(),
             [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
             {
-                const bool fixed =
-                    (i > dlo[0] && ur(i-1,j,k) == 0) ||
-                    (i < dhi[0] && ur(i,j,k) == 0) ||
-                    ((z_periodic || j > dlo[1]) && uz(i,j-1,k) == 0) ||
-                    ((z_periodic || j < dhi[1]) && uz(i,j,k) == 0);
+                const bool fixed = FrozenEdgeEndpoint(ur, uz, i, j, k, dlo, dhi, z_periodic);
                 bool const is_reference = grounded_wall_reference &&
                     grounded[i-dlo[0]+nr*(j-dlo[1])] != 0;
                 amrex::Real const expected = is_reference ? 0._rt : 1._rt;
@@ -706,15 +745,32 @@ amrex::Real WarpXValidateStaircaseWeights (
 #endif
 }
 
+std::string WarpXStaircaseGroundedPairing (std::string const& requested,
+                                           bool const insulating_endcaps)
+{
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+        requested == "auto" || requested == "field" || requested == "rho",
+        "The staircase grounded pairing must be 'auto', 'field' or 'rho'");
+    bool const any_pmc = GetStaircaseZFaces().any_pmc();
+    WARPX_ALWAYS_ASSERT_WITH_MESSAGE(requested != "field" || (any_pmc && !insulating_endcaps),
+        "The field-charge grounded pairing is implemented for PMC (neumann) z faces only");
+    if (requested == "auto") {
+        return any_pmc && !insulating_endcaps ? "field" : "rho";
+    }
+    return requested;
+}
+
 // Observer: per conductor k, Q_gauss = eps0 sum_{s_k} V div(E), Q_live = sum_{s_k} V rho
 // and Q_g = -sum psi_k V rho, from one scratch deposition and one divergence.
+// With the field pairing, free nodes use the Gauss charge eps0 div(E) instead of rho.
 amrex::Vector<amrex::Vector<amrex::Real>>
 WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
                           std::vector<std::string> const& weight_fields,
-                          bool const insulating_endcaps)
+                          bool const insulating_endcaps,
+                          std::string const& grounded_pairing)
 {
 #ifndef WARPX_STAIRCASE_SUPPORTED
-    amrex::ignore_unused(insulating_endcaps);
+    amrex::ignore_unused(insulating_endcaps, grounded_pairing);
     WARPX_ABORT_WITH_MESSAGE("The staircase observer is implemented only in RZ");
 #endif
     using namespace amrex::literals;
@@ -734,6 +790,10 @@ WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
             "Native insulator faces require the insulating_endcaps charge convention");
     }
 #endif
+    auto const faces = GetStaircaseZFaces();
+    bool const pmc_faces = faces.any_pmc();
+    bool const field_pairing =
+        WarpXStaircaseGroundedPairing(grounded_pairing, insulating_endcaps) == "field";
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(EB::enabled() && warpx.maxLevel() == 0
         && WarpX::ncomps == 1 && warpx.evolve_scheme == EvolveScheme::Explicit
         && WarpX::electromagnetic_solver_id == ElectromagneticSolverAlgo::Yee
@@ -808,9 +868,54 @@ WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
                 });
         }
     }
+    if (pmc_faces) {
+        // Refresh the odd-normal/even-tangential PMC guards that the face divergence
+        // reads; for a boundary-compatible field this leaves valid E unchanged.
+        warpx.ApplyEfieldBoundary(0, PatchType::fine, warpx.gett_new(0));
+    }
 #endif
     auto const div_e = NodalDivEFromFp(0);
     amrex::Vector<amrex::Vector<amrex::Real>> result(insulating_endcaps ? 4 : 3);
+
+    // Field pairing: split into the Gauss charge density on free nodes and the
+    // deposited density on fixed nodes (frozen-edge endpoints and grounded walls).
+    std::unique_ptr<amrex::MultiFab> free_div_e;
+    std::unique_ptr<amrex::MultiFab> fixed_rho;
+#ifdef WARPX_STAIRCASE_SUPPORTED
+    if (field_pairing) {
+        auto& update = warpx.GetEBUpdateEFlag()[0];
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(update[0] && update[2] &&
+            update[0]->nGrowVect().allGE(1) && update[2]->nGrowVect().allGE(1),
+            "Native staircase Er/Ez update masks need one guard cell");
+        update[0]->FillBoundary(warpx.Geom(0).periodicity());
+        update[2]->FillBoundary(warpx.Geom(0).periodicity());
+        free_div_e = std::make_unique<amrex::MultiFab>(
+            rho->boxArray(), rho->DistributionMap(), 1, 0);
+        fixed_rho = std::make_unique<amrex::MultiFab>(
+            rho->boxArray(), rho->DistributionMap(), 1, 0);
+        auto const ndomain = amrex::surroundingNodes(warpx.Geom(0).Domain());
+        auto const dlo = ndomain.smallEnd();
+        auto const dhi = ndomain.bigEnd();
+        bool const wall_lo = faces.pec_lo;
+        bool const wall_hi = faces.pec_hi;
+        for (amrex::MFIter mfi(*free_div_e); mfi.isValid(); ++mfi) {
+            auto const fd = free_div_e->array(mfi);
+            auto const fq = fixed_rho->array(mfi);
+            auto const de = div_e->const_array(mfi);
+            auto const q = rho->const_array(mfi);
+            auto const ur = update[0]->const_array(mfi);
+            auto const uz = update[2]->const_array(mfi);
+            amrex::ParallelFor(mfi.validbox(),
+                [=] AMREX_GPU_DEVICE (int i, int j, int k) noexcept
+                {
+                    bool const fixed = FrozenEdgeEndpoint(ur, uz, i, j, k, dlo, dhi, false)
+                        || i == dhi[0] || (wall_lo && j == dlo[1]) || (wall_hi && j == dhi[1]);
+                    fd(i,j,k) = fixed ? 0._rt : de(i,j,k,0);
+                    fq(i,j,k) = fixed ? q(i,j,k,0) : 0._rt;
+                });
+        }
+    }
+#endif
 
 #ifdef WARPX_STAIRCASE_SUPPORTED
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(warpx.Geom(0).ProbLo(0) == 0._rt,
@@ -839,12 +944,23 @@ WarpXStaircaseChargeState (std::vector<std::string> const& psi_fields,
     for (std::size_t k = 0; k < psi_fields.size(); ++k) {
         auto const* psi = warpx.m_fields.get(psi_fields[k], 0);
         auto const* weight = warpx.m_fields.get(weight_fields[k], 0);
+        // Gauss control volumes are halved on insulator and PMC faces. The RZ scratch
+        // rho is not folded there, so it keeps the full deposition volume.
         result[0].push_back(PhysConst::epsilon_0
-            * IntegrateRhoPsi(*div_e, *weight, 0, GaussAxisFactor(), insulating_endcaps));
+            * IntegrateRhoPsi(*div_e, *weight, 0, GaussAxisFactor(),
+                              insulating_endcaps || pmc_faces));
         result[1].push_back(IntegrateRhoPsi(*rho, *weight, 0, DepositionAxisFactor()));
         // Include fixed-node source support: the caller subtracts result[1]
         // from result[0], so Q_g must include the corresponding -q_fixed term.
-        result[2].push_back(-IntegrateRhoPsi(*rho, *psi, 0, DepositionAxisFactor()));
+        if (field_pairing) {
+            // Charge that the field holds but no particle carries (e.g. left on a
+            // PMC face by absorbed particles) induces conductor charge too.
+            result[2].push_back(-PhysConst::epsilon_0
+                * IntegrateRhoPsi(*free_div_e, *psi, 0, GaussAxisFactor(), true)
+                - IntegrateRhoPsi(*fixed_rho, *psi, 0, DepositionAxisFactor()));
+        } else {
+            result[2].push_back(-IntegrateRhoPsi(*rho, *psi, 0, DepositionAxisFactor()));
+        }
         if (insulating_endcaps) {
             auto const boundary_charge = PhysConst::epsilon_0
                 * IntegrateRhoPsi(*axial_flux_density, *psi, 0, GaussAxisFactor());

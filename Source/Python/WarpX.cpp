@@ -384,11 +384,21 @@ void init_WarpX (py::module& m)
             "Grounded staircase Poisson solve with the live charge as source (all "
             "conductors at 0 V). Fills registered output fields; returns the residual."
         )
+        .def("staircase_grounded_pairing",
+            [] (WarpX&, std::string const& requested, bool insulating_endcaps) {
+                return WarpXStaircaseGroundedPairing(requested, insulating_endcaps);
+            },
+            py::arg("requested") = "auto",
+            py::arg("insulating_endcaps") = false,
+            "Effective staircase grounded-charge pairing ('field' or 'rho') for the "
+            "requested mode ('auto', 'field' or 'rho') and the z boundaries."
+        )
         .def("staircase_charge_state",
             [] (WarpX&, std::vector<std::string> const& psi_fields,
-                std::vector<std::string> const& weight_fields, bool insulating_endcaps) {
+                std::vector<std::string> const& weight_fields, bool insulating_endcaps,
+                std::string const& grounded_pairing) {
                 auto const q = WarpXStaircaseChargeState(
-                    psi_fields, weight_fields, insulating_endcaps);
+                    psi_fields, weight_fields, insulating_endcaps, grounded_pairing);
                 std::vector<std::vector<amrex::Real>> result;
                 for (auto const& row : q) {
                     result.emplace_back(row.begin(), row.end());
@@ -397,8 +407,9 @@ void init_WarpX (py::module& m)
             },
             py::arg("psi_fields"), py::arg("weight_fields"),
             py::arg("insulating_endcaps") = false,
+            py::arg("grounded_pairing") = "auto",
             "Staircase observer per conductor, in coulombs: (Gauss charge, live charge "
-            "on fixed nodes, grounded charge -psi^T q); with insulating_endcaps a fourth "
+            "on fixed nodes, grounded charge); with insulating_endcaps a fourth "
             "row holds the axial face flux. Collective; no Poisson solve."
         )
         .def("validate_staircase_weights",
