@@ -12,6 +12,7 @@
 #include <Diagnostics/MultiDiagnostics.H>
 #include <Diagnostics/ReducedDiags/MultiReducedDiags.H>
 #include <EmbeddedBoundary/WarpXFaceInfoBox.H>
+#include <EmbeddedBoundary/VoltageClamp.H>
 #include <FieldSolver/FiniteDifferenceSolver/FiniteDifferenceSolver.H>
 #include <FieldSolver/FiniteDifferenceSolver/MacroscopicProperties/MacroscopicProperties.H>
 #include <FieldSolver/FiniteDifferenceSolver/HybridPICModel/HybridPICModel.H>
@@ -96,6 +97,7 @@ namespace detail
 void init_WarpX (py::module& m)
 {
     using ablastr::fields::Direction;
+    namespace voltage_clamp = warpx::embedded_boundary::voltage_clamp;
 
     // Expose the WarpX instance
     m.def("get_instance",
@@ -273,6 +275,60 @@ void init_WarpX (py::module& m)
             },
             py::arg("potential"),
             "Sets the EB potential string and updates the function parser."
+        )
+        .def("deposit_scratch_rho",
+            [] (WarpX& wx, int const lev) {
+                auto rho = wx.DepositScratchRho(lev);
+                return amrex::MultiFab(std::move(*rho));
+            },
+            py::arg("lev") = 0,
+            py::return_value_policy::move,
+            "Freshly deposited nodal charge density of all species as a new MultiFab "
+            "(rho_fp is not touched)."
+        )
+        // Embedded-boundary voltage clamp, driven by pywarpx.staircase_bias_corrector
+        .def("voltage_clamp_solve_unit",
+            [] (WarpX&, int k, std::string const& selector, amrex::Real rtol, int max_iter) {
+                return voltage_clamp::SolveUnitPotential(k, selector, rtol, max_iter);
+            },
+            py::arg("k"), py::arg("selector"), py::arg("rtol"), py::arg("max_iter"),
+            "Unit potential and field of conductor k; returns the solve residual."
+        )
+        .def("voltage_clamp_solve_grounded",
+            [] (WarpX&, amrex::Real rtol, int max_iter) {
+                return voltage_clamp::SolveGrounded(rtol, max_iter);
+            },
+            py::arg("rtol"), py::arg("max_iter"),
+            "Solve with all conductors grounded and the live charge as source."
+        )
+        .def("voltage_clamp_check_selection",
+            [] (WarpX&, int n) { voltage_clamp::CheckSelection(n); },
+            py::arg("n"),
+            "Abort unless every fixed node belongs to exactly one of n conductors."
+        )
+        .def("voltage_clamp_gauss_charge",
+            [] (WarpX&, int n, std::string const& efield) {
+                return voltage_clamp::GaussCharge(n, efield);
+            },
+            py::arg("n"), py::arg("efield") = "Efield_fp",
+            "Gauss charge of each conductor for the named E field, in coulombs."
+        )
+        .def("voltage_clamp_capacitance",
+            [] (WarpX&, int n) { return voltage_clamp::CapacitanceMatrix(n); },
+            py::arg("n"),
+            "Capacitance matrix C[j][k] read by the observer, in farads."
+        )
+        .def("voltage_clamp_charge_state",
+            [] (WarpX&, int n) { return voltage_clamp::ChargeState(n); },
+            py::arg("n"),
+            "(field charge, grounded charge -psi^T q) of each conductor, in coulombs."
+        )
+        .def("voltage_clamp_add_unit_fields",
+            [] (WarpX&, std::vector<amrex::Real> const& dv) {
+                voltage_clamp::AddUnitFields(dv);
+            },
+            py::arg("dv"),
+            "Add sum_k dv[k] E_k to Efield_fp and refresh its guard cells."
         )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
