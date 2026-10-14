@@ -42,8 +42,9 @@ Supported configurations
 * RZ, azimuthal mode 0, one mesh level, explicit Yee solver, laboratory frame.
 * Linear particles (``particle_shape = 1``) with Esirkepov deposition. No current/charge filter.
 * Radial boundary: the axis and a PEC outer wall (the potential reference). Axial
-  boundaries: periodic or PEC.
-* EB conductors must be separate bodies and must not coincide with a domain boundary.
+  boundaries: periodic, or PEC or PMC (``neumann``) faces in any combination.
+* EB conductors must be separate bodies and must not touch a PEC boundary, except the
+  ground reference below. They may end on a PMC face.
 * Emitted particles must be created inside the conductor's fixed node shell (between
   the geometric surface and the represented surface). Particles created in free
   vacuum carry charge without a current, which the field cannot see.
@@ -80,6 +81,29 @@ that is 1 on one whole conductor and 0 on the others. Every conductor must be li
 grounded ones with potential 0. ``measure_voltage_state()`` returns the observer voltages
 and charges.
 
+With two PMC faces, ``grounded_wall_reference=True`` treats conductors that the
+staircase joins to the outer PEC wall as part of the ground; they are not listed.
+
+PMC end faces
+-------------
+
+A PMC (``neumann``) face is a mirror plane. The unit potentials satisfy homogeneous
+Neumann conditions there, conductors may end on the face, and the face nodes carry half a
+control volume in the Gauss integrals.
+
+A particle absorbed at a PMC face leaves its charge in the field as a surface charge on
+the face, while the deposited :math:`\rho` no longer contains it. This charge induces
+charge on the conductors like any other, so with a PMC face the observer pairs the unit
+potentials with the Gauss charge on the free nodes instead of :math:`\rho`:
+
+.. math::
+
+   Q_{g,k} = -\Big[\varepsilon_0 \sum_{\text{free}} \psi_k V\, \nabla_h\!\cdot E
+   + \sum_{\text{fixed}} \psi_k V q\Big].
+
+Where Gauss's law holds this equals :math:`-\psi_k^T q`. The clamp holds the conductors
+at their targets despite the face charge; it does not remove that charge.
+
 What it does not do
 -------------------
 
@@ -98,4 +122,6 @@ Examples and tests
 * vacuum: capacitance matrix against the discrete coaxial formula, static clamped field;
 * a coaxial space-charge diode with and without the clamp (one and two ranks),
   including the grounded-charge cross-check;
-* checkpoint/restart during emission.
+* checkpoint/restart during emission;
+* PMC faces: the vacuum case with and without the wall-connected ground reference, and
+  charge leaving through a PMC face next to a clamped rod (one and two ranks).

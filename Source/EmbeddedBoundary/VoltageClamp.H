@@ -14,7 +14,7 @@
 #include <vector>
 
 /* Voltage clamp for embedded-boundary conductors in electromagnetic runs
- * (RZ m=0, explicit staggered Yee, one level).
+ * (RZ m=0, explicit staggered Yee, one level; periodic, PEC or PMC z faces).
  *
  * The conductors are the components of WarpX's frozen-edge staircase. The fixed
  * nodes are the endpoints of frozen E edges. Conductor k has a unit potential
@@ -35,10 +35,13 @@ namespace warpx::embedded_boundary::voltage_clamp
      *
      * \param[in] selector parser expression in (x, y, z), 1 on the fixed nodes of
      *                     conductor k and 0 on all other fixed nodes
+     * \param[in] wall_reference allow unselected conductors to touch the PEC wall:
+     *                     they belong to the ground reference
      * \return final MLMG residual
      */
     amrex::Real SolveUnitPotential (int k, std::string const& selector,
-                                    amrex::Real rtol, int max_iter);
+                                    amrex::Real rtol, int max_iter,
+                                    bool wall_reference = false);
 
     /** Solve with every conductor grounded and the live charge as source.
      *
@@ -46,11 +49,12 @@ namespace warpx::embedded_boundary::voltage_clamp
      * the conductors, an independent check of the reciprocity value -psi_k^T q.
      * \return final MLMG residual
      */
-    amrex::Real SolveGrounded (amrex::Real rtol, int max_iter);
+    amrex::Real SolveGrounded (amrex::Real rtol, int max_iter, bool wall_reference = false);
 
-    /** Abort unless every fixed node belongs to exactly one of the n conductors.
-     *  Call once after the unit solves. */
-    void CheckSelection (int n);
+    /** Abort unless every fixed node belongs to exactly one of the n conductors, or,
+     *  with wall_reference, is frozen-edge connected to the outer PEC radius (the
+     *  ground reference, two PMC z faces required). Call once after the unit solves. */
+    void CheckSelection (int n, bool wall_reference = false);
 
     /** Gauss charge eps0 sum_{fixed nodes of k} V div E of field `efield_name`. */
     std::vector<amrex::Real> GaussCharge (int n, std::string const& efield_name);

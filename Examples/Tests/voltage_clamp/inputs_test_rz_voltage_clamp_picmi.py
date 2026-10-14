@@ -4,12 +4,14 @@
 #
 # License: BSD-3-Clause-LBNL
 
-"""Voltage clamp for embedded-boundary conductors (RZ, Yee, Esirkepov, periodic z).
+"""Voltage clamp for embedded-boundary conductors (RZ, Yee, Esirkepov).
 
-A rod (cathode) and a sleeve (anode) inside a grounded PEC wall.
+A rod (cathode) and a sleeve (anode) inside a grounded PEC wall, periodic z unless
+--z-faces pmc is given.
 
 --case vacuum:  capacitance against the discrete coaxial formula, and the clamped
-                vacuum field stays static.
+                vacuum field stays static. --wall-reference joins the sleeve to the
+                wall, so it is part of the ground and only the rod is clamped.
 --case diode:   electrons emitted from the rod at the Langmuir-Blodgett current.
                 The clamp observer must equal the line integral of E_r at every step,
                 the free-node Gauss law must hold, and B stays zero. With --arm on
@@ -17,6 +19,9 @@ A rod (cathode) and a sleeve (anode) inside a grounded PEC wall.
                 grounded Poisson solve; with --arm off the gap discharges.
 --case restart: --mode base writes a checkpoint at step N; --mode restart resumes
                 from it and must reproduce the base run.
+--case exit:    (PMC z faces) neutral electron/ion pairs next to a clamped rod; the
+                electrons leave through a PMC face and leave their charge on it. The
+                midplane line integral from the rod to the wall must stay at the target.
 """
 
 import argparse
@@ -31,38 +36,54 @@ from pywarpx import callbacks, picmi
 from pywarpx.staircase_bias_corrector import StaircaseBiasCorrector
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--case", choices=["vacuum", "diode", "restart"], required=True)
+parser.add_argument(
+    "--case", choices=["vacuum", "diode", "restart", "exit"], required=True
+)
 parser.add_argument("--arm", choices=["on", "off"], default="on")
 parser.add_argument("--mode", choices=["base", "restart"], default="base")
+parser.add_argument("--z-faces", choices=["periodic", "pmc"], default="periodic")
+parser.add_argument("--wall-reference", action="store_true")
 parser.add_argument("--max-grid-size", type=int, default=1024)
 args = parser.parse_args()
+if args.case == "exit":
+    args.z_faces = "pmc"
 
 COMM = MPI.COMM_WORLD
 EPS0, Q_E, M_E = picmi.constants.ep0, picmi.constants.q_e, picmi.constants.m_e
 N_RESTART = 30
 BASE_DIR = Path("../test_rz_voltage_clamp_restart_base_picmi")
 r2 = "(x*x+y*y)"
-NR, NZ, R_WALL, LENGTH = 48, 8, 6.0e-2, 4.0e-2
-R_ROD, R_SLEEVE_IN, R_SLEEVE_OUT = 6.2e-3, 5.03e-2, 5.53e-2
-V_CATHODE = -1000.0
-rod = f"({R_ROD}*{R_ROD}-{r2})"
-sleeve = f"(({r2}-{R_SLEEVE_IN}*{R_SLEEVE_IN})*({R_SLEEVE_OUT}*{R_SLEEVE_OUT}-{r2}))"
-implicit = f"-({rod})*({sleeve})"
-electrodes = [
-    {"name": "cathode", "region": "(x<0.03)", "potential": V_CATHODE},
-    {"name": "anode", "region": "(x>0.03)", "potential": 0.0},
-]
+if args.case == "exit":
+    NR, NZ, R_WALL, LENGTH = 40, 80, 1.2e-2, 2.4e-2
+    R_ROD, V_CATHODE = 2.0e-3, -10.0
+    implicit = f"{R_ROD}*{R_ROD}-{r2}"
+    electrodes = [{"name": "rod", "region": "(x<0.0035)", "potential": V_CATHODE}]
+else:
+    NR, NZ, R_WALL, LENGTH = 48, 8, 6.0e-2, 4.0e-2
+    R_ROD, R_SLEEVE_IN, V_CATHODE = 6.2e-3, 5.03e-2, -1000.0
+    # With the wall reference the sleeve extends into the outer PEC wall
+    R_SLEEVE_OUT = R_WALL + 0.01 if args.wall_reference else 5.53e-2
+    rod = f"({R_ROD}*{R_ROD}-{r2})"
+    sleeve = (
+        f"(({r2}-{R_SLEEVE_IN}*{R_SLEEVE_IN})*({R_SLEEVE_OUT}*{R_SLEEVE_OUT}-{r2}))"
+    )
+    implicit = f"-({rod})*({sleeve})"
+    electrodes = [{"name": "cathode", "region": "(x<0.03)", "potential": V_CATHODE}]
+    if not args.wall_reference:
+        electrodes.append({"name": "anode", "region": "(x>0.03)", "potential": 0.0})
 dr, dz = R_WALL / NR, LENGTH / NZ
+z_field = "neumann" if args.z_faces == "pmc" else "periodic"
+z_particles = "absorbing" if args.z_faces == "pmc" else "periodic"
 
 grid = picmi.CylindricalGrid(
     number_of_cells=[NR, NZ],
     n_azimuthal_modes=1,
     lower_bound=[0.0, 0.0],
     upper_bound=[R_WALL, LENGTH],
-    lower_boundary_conditions=["none", "periodic"],
-    upper_boundary_conditions=["dirichlet", "periodic"],
-    lower_boundary_conditions_particles=["none", "periodic"],
-    upper_boundary_conditions_particles=["absorbing", "periodic"],
+    lower_boundary_conditions=["none", z_field],
+    upper_boundary_conditions=["dirichlet", z_field],
+    lower_boundary_conditions_particles=["none", z_particles],
+    upper_boundary_conditions_particles=["absorbing", z_particles],
     warpx_blocking_factor=8,
     warpx_max_grid_size=args.max_grid_size,
 )
@@ -88,6 +109,10 @@ sim.add_species(
     ),
     layout=None,
 )
+if args.case == "exit":
+    sim.add_species(
+        picmi.Species(name="ions", charge=Q_E, mass=1.0e6 * M_E), layout=None
+    )
 if args.case == "restart" and args.mode == "base":
     sim.add_diagnostic(picmi.Checkpoint(period=N_RESTART, name="chk"))
 sim.initialize_inputs()
@@ -104,6 +129,7 @@ clamp = StaircaseBiasCorrector(
     sim,
     correction_interval=5 if args.case == "vacuum" else 1,
     electrodes=electrodes,
+    grounded_wall_reference=args.wall_reference,
 )
 clamp.setup_after_init()
 n = clamp.n
@@ -164,7 +190,7 @@ def gauss_residual():
 
 def grounded_check():
     """Plasma-induced charge: reciprocity -psi^T q against a grounded solve."""
-    warpx.voltage_clamp_solve_grounded(1.0e-13, 200)
+    warpx.voltage_clamp_solve_grounded(1.0e-13, 200, args.wall_reference)
     field_charge, grounded = (
         np.asarray(q) for q in warpx.voltage_clamp_charge_state(n)
     )
@@ -193,6 +219,55 @@ def finish(checks, summary):
     assert not failures, failures
     sys.exit(0)
 
+
+if args.case == "exit":
+    # Neutral pairs at rest; the electrons move toward the lower PMC face
+    m = 24
+    r = np.linspace(3.0e-3, 9.0e-3, m)
+    weight = 1.0e-12 / Q_E / m
+    for name, uz in (("electrons", -2.0e7), ("ions", 0.0)):
+        sim.particles.get(name).add_particles(
+            x=r, y=np.zeros(m), z=np.full(m, 1.5 * dz),
+            ux=np.zeros(m), uy=np.zeros(m), uz=np.full(m, uz),
+            w=np.full(m, weight), unique_particles=False,
+        )  # fmt: skip
+    # The two deposits cancel exactly on CPU but only to roundoff on GPU
+    rho_species = Q_E * weight / (2.0 * np.pi * r[0] * dr * dz)
+    clamp.initialize_vacuum_bias(rho_tolerance=1.0e-12 * rho_species)
+    psi = gather(register.get("voltage_clamp_phi_0", level=0))
+    volume = 2.0 * np.pi * r_node[:, None] * dr * dz
+    trace = {"count": [], "observer": [], "line": []}
+    grounded_errors = []
+
+    def record():
+        step = warpx.getistep(0)
+        count = particles.number_of_particles(False)
+        trace["count"].append(count)
+        trace["observer"].append(clamp.measure_voltage_state()["voltage"][0])
+        # From the rod to the grounded wall
+        trace["line"].append(float(np.sum(efield(0)[k_cathode:, z_mid]) * dr))
+        if count == m and step in (5, 30):
+            # The induced charge of neutral pairs nearly cancels: use its gross scale
+            gross = np.sum(np.abs(psi * gather(warpx.deposit_scratch_rho(0))) * volume)
+            grounded_errors.append(float(np.max(np.abs(grounded_check()))) / gross)
+
+    install("afterstep", clamp.correct_after_step)
+    install("afterstep", record)
+    steps = 1200
+    sim.step(steps)
+    t = {key: np.asarray(value) for key, value in trace.items()}
+    after = (t["count"] == 0) & (np.arange(1, steps + 1) >= steps // 2)
+    line_offset = float(np.mean(t["line"][after]) - V_CATHODE)
+    checks = {
+        "grounded solve = reciprocity": len(grounded_errors) == 2
+        and max(grounded_errors) < 1.0e-9,
+        "electrons left": t["count"][-1] == 0 and after.any(),
+        "observer held target": np.max(np.abs(t["observer"] - V_CATHODE))
+        < 1.0e-9 * abs(V_CATHODE),
+        # Without the face charge in the grounded charge this is 0.1 V or more
+        "line integral at target": abs(line_offset) < 0.01,
+    }
+    finish(checks, f"exit: line integral - target = {line_offset:.3e} V")
 
 if restart:
     assert warpx.getistep(0) == N_RESTART

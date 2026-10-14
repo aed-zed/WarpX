@@ -26,6 +26,9 @@ class StaircaseBiasCorrector:
         Every conductor must be listed, grounded ones with potential 0.
     relaxation : float, optional
         Fraction of the voltage error removed per correction, in (0, 1].
+    grounded_wall_reference : bool, optional
+        Conductors joined to the outer PEC radius by the staircase are part of the
+        ground and are not listed. Requires two PMC (``neumann``) z faces.
 
     Call ``setup_after_init()`` after ``sim.initialize_warpx()``, then
     ``initialize_vacuum_bias()`` for a new run or ``resume_from_checkpoint()`` on a
@@ -38,6 +41,7 @@ class StaircaseBiasCorrector:
         correction_interval,
         electrodes,
         relaxation=1.0,
+        grounded_wall_reference=False,
         *,
         tolerance=1.0e-12,
         max_iterations=200,
@@ -51,6 +55,7 @@ class StaircaseBiasCorrector:
         self.sim = sim
         self.correction_interval = correction_interval
         self.relaxation = relaxation
+        self.wall_reference = grounded_wall_reference
         self.tolerance = tolerance
         self.max_iterations = max_iterations
         self.names = [e.get("name", f"electrode_{k}") for k, e in enumerate(electrodes)]
@@ -71,8 +76,10 @@ class StaircaseBiasCorrector:
         """Solve the unit potentials and measure the capacitance matrix."""
         wx = self._warpx()
         for k, region in enumerate(self.regions):
-            wx.voltage_clamp_solve_unit(k, region, self.tolerance, self.max_iterations)
-        wx.voltage_clamp_check_selection(self.n)
+            wx.voltage_clamp_solve_unit(
+                k, region, self.tolerance, self.max_iterations, self.wall_reference
+            )
+        wx.voltage_clamp_check_selection(self.n, self.wall_reference)
         self.capacitance = np.asarray(wx.voltage_clamp_capacitance(self.n))
         if np.linalg.cond(self.capacitance) > 1.0e10:
             raise RuntimeError("The capacitance matrix is singular")
