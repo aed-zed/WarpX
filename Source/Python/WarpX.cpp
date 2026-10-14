@@ -274,24 +274,29 @@ void init_WarpX (py::module& m)
         )
         // Embedded-boundary voltage clamp, driven by pywarpx.staircase_bias_corrector
         .def("voltage_clamp_solve_unit",
-            [] (WarpX&, int k, std::string const& selector, amrex::Real rtol, int max_iter) {
-                return voltage_clamp::SolveUnitPotential(k, selector, rtol, max_iter);
+            [] (WarpX&, int k, std::string const& selector, amrex::Real rtol, int max_iter,
+                bool wall_reference) {
+                return voltage_clamp::SolveUnitPotential(
+                    k, selector, rtol, max_iter, wall_reference);
             },
             py::arg("k"), py::arg("selector"), py::arg("rtol"), py::arg("max_iter"),
+            py::arg("wall_reference") = false,
             "Unit potential and field of conductor k; returns the solve residual."
         )
         .def("voltage_clamp_solve_grounded",
-            [] (WarpX&, amrex::Real rtol, int max_iter) {
-                return voltage_clamp::SolveGrounded(rtol, max_iter);
+            [] (WarpX&, amrex::Real rtol, int max_iter, bool wall_reference) {
+                return voltage_clamp::SolveGrounded(rtol, max_iter, wall_reference);
             },
-            py::arg("rtol"), py::arg("max_iter"),
+            py::arg("rtol"), py::arg("max_iter"), py::arg("wall_reference") = false,
             "Diagnostic: solve with every conductor at 0 V and the live charge as source. "
             "voltage_clamp_gauss_charge(n, \"voltage_clamp_E_grounded\") then gives the "
             "induced charge independently of the reciprocity value in voltage_clamp_charge_state."
         )
         .def("voltage_clamp_check_selection",
-            [] (WarpX&, int n) { voltage_clamp::CheckSelection(n); },
-            py::arg("n"),
+            [] (WarpX&, int n, bool wall_reference) {
+                voltage_clamp::CheckSelection(n, wall_reference);
+            },
+            py::arg("n"), py::arg("wall_reference") = false,
             "Abort unless every fixed node belongs to exactly one of n conductors."
         )
         .def("voltage_clamp_gauss_charge",

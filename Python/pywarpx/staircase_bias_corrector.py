@@ -31,6 +31,9 @@ class StaircaseBiasCorrector:
     tolerance, max_iterations : optional
         Relative tolerance and iteration cap of the unit-potential solves (MLMG). They
         set how exactly the capacitance matrix and the voltage readback agree.
+    grounded_wall_reference : bool, optional
+        Conductors joined to the outer PEC radius by the staircase are part of the
+        ground and are not listed. Requires two PMC (``neumann``) z faces.
 
     Call ``setup_after_init()`` after ``sim.initialize_warpx()``, then
     ``initialize_vacuum_bias()`` for a new run or ``resume_from_checkpoint()`` on a
@@ -45,6 +48,7 @@ class StaircaseBiasCorrector:
         *,
         tolerance=1.0e-12,
         max_iterations=200,
+        grounded_wall_reference=False,
     ):
         if not isinstance(correction_interval, int) or correction_interval < 1:
             raise ValueError("correction_interval must be a positive integer")
@@ -54,6 +58,7 @@ class StaircaseBiasCorrector:
         self.correction_interval = correction_interval
         self.tolerance = tolerance
         self.max_iterations = max_iterations
+        self.wall_reference = grounded_wall_reference
         self.names = [e.get("name", f"electrode_{k}") for k, e in enumerate(electrodes)]
         self.regions = [e["region"] for e in electrodes]
         self.v_target = np.array([float(e["potential"]) for e in electrodes])
@@ -70,8 +75,10 @@ class StaircaseBiasCorrector:
         """Solve the unit potentials and measure the capacitance matrix."""
         wx = self._warpx()
         for k, region in enumerate(self.regions):
-            wx.voltage_clamp_solve_unit(k, region, self.tolerance, self.max_iterations)
-        wx.voltage_clamp_check_selection(self.n)
+            wx.voltage_clamp_solve_unit(
+                k, region, self.tolerance, self.max_iterations, self.wall_reference
+            )
+        wx.voltage_clamp_check_selection(self.n, self.wall_reference)
         self.capacitance = np.asarray(wx.voltage_clamp_capacitance(self.n))
         # A near-singular C means a conductor without a grounded reference, or one
         # listed twice: V = C^-1 Q would then be meaningless.

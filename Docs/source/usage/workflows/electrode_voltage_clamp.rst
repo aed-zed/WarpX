@@ -47,8 +47,10 @@ Supported configurations
   No current/charge filter.
   Energy-conserving field gathering, and no particle E field read from file.
 * Radial boundary: the axis and a PEC outer wall, which is the grounded potential reference.
-  Axial boundaries: both periodic or both PEC.
+  Axial boundaries: periodic, or PEC or PMC (``neumann``) faces in any combination.
 * EB conductors must be separate bodies and must not touch a PEC domain boundary: a conductor touching the grounded wall is shorted to ground, so it cannot hold another voltage.
+  The exception is the wall-connected ground below.
+  Conductors may end on a PMC face.
 * List every connected body as its own conductor, even if two bodies should share a voltage.
   The staircase keeps each connected body an equipotential, so the clamp holds each listed conductor exactly; for disconnected pieces listed as one conductor it holds only their combined charge, and the pieces can drift apart.
 * With the Verboncoeur axis correction (``boundary.verboncoeur_axis_correction``, on by default), charge on axis nodes that do not belong to a conductor aborts the run: that case is not verified yet.
@@ -102,6 +104,25 @@ Every conductor must be listed, grounded ones with potential 0.
 A misassigned or missing node aborts at setup with a message.
 ``measure_voltage_state()`` returns the observer voltages and charges.
 
+With two PMC faces, ``grounded_wall_reference=True`` treats conductors that the staircase joins to the outer PEC wall as part of the ground; they are not listed.
+
+PMC end faces
+-------------
+
+A PMC (``neumann``) face is a mirror plane.
+The unit potentials satisfy homogeneous Neumann conditions there, conductors may end on the face, and the face nodes carry half a control volume.
+
+A particle absorbed at a PMC face leaves its charge in the field as a surface charge on the face, while the deposited :math:`\boldsymbol{\rho}` no longer contains it.
+This charge induces charge on the conductors like any other, so with a PMC face the observer pairs the unit potentials with the Gauss charge on the free nodes instead of the deposited charge:
+
+.. math::
+
+   Q_{g,k} = -\Big[\varepsilon_0 \sum_{\text{free}} \psi_k V \nabla_h\!\cdot \boldsymbol{E} + \sum_{\text{fixed}} \psi_k\, q\Big],
+
+with the sums over nodes, :math:`\psi_k`, :math:`V` and :math:`q` the node values of :math:`\boldsymbol{\psi}_k`, :math:`\mathbf{V}` and :math:`\boldsymbol{q}`, and the capacitance matrix calibrated with the same pairing.
+Where Gauss's law holds, this equals :math:`-\boldsymbol{\psi}_k^T \boldsymbol{q}`.
+The clamp holds the conductors at their targets despite the face charge; it does not remove that charge.
+
 What it does not do
 -------------------
 
@@ -111,7 +132,7 @@ What it does not do
   That check holds only where the line integral is path-independent: a changing magnetic flux through the area between two paths (:math:`\oint \boldsymbol{E} \cdot d\boldsymbol{l} = -d\Phi_B/dt`) makes them differ, so compare along a path where this flux is negligible.
 * There is no circuit model (no floating electrodes, no series impedance) and no dielectric charging.
 * It is available from Python only; there is no inputs-file interface yet.
-* Cartesian geometries (XZ, 3D), PMC and open (absorbing) field boundaries are not supported yet.
+* Cartesian geometries (XZ, 3D) and open (absorbing) field boundaries are not supported yet.
 * Each correction costs one charge deposition, one nodal divergence and a few reductions; the unit potentials are solved once, at setup.
 
 Examples and tests
@@ -121,7 +142,8 @@ Examples and tests
 
 * vacuum: capacitance matrix against the discrete coaxial formula, static clamped field;
 * a coaxial space-charge diode with and without the clamp (one and two ranks), including the grounded-charge cross-check;
-* checkpoint/restart during emission.
+* checkpoint/restart during emission;
+* PMC faces: the vacuum case with and without the wall-connected ground, and charge leaving through a PMC face next to a clamped rod (one and two ranks).
 
 .. bibliography::
     :keyprefix: vc-
