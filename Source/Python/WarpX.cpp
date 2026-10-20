@@ -12,6 +12,7 @@
 #include <Diagnostics/MultiDiagnostics.H>
 #include <Diagnostics/ReducedDiags/MultiReducedDiags.H>
 #include <EmbeddedBoundary/WarpXFaceInfoBox.H>
+#include <EmbeddedBoundary/VoltageClamp.H>
 #include <FieldSolver/FiniteDifferenceSolver/FiniteDifferenceSolver.H>
 #include <FieldSolver/FiniteDifferenceSolver/MacroscopicProperties/MacroscopicProperties.H>
 #include <FieldSolver/FiniteDifferenceSolver/HybridPICModel/HybridPICModel.H>
@@ -96,6 +97,7 @@ namespace detail
 void init_WarpX (py::module& m)
 {
     using ablastr::fields::Direction;
+    namespace voltage_clamp = warpx::embedded_boundary::voltage_clamp;
 
     // Expose the WarpX instance
     m.def("get_instance",
@@ -269,6 +271,19 @@ void init_WarpX (py::module& m)
             },
             py::arg("potential"),
             "Sets the EB potential string and updates the function parser."
+        )
+        // Embedded-boundary voltage clamp, driven by pywarpx.staircase_bias_corrector
+        .def("voltage_clamp_solve_unit",
+            [] (WarpX&, int k, std::string const& selector, amrex::Real rtol, int max_iter) {
+                return voltage_clamp::SolveUnitPotential(k, selector, rtol, max_iter);
+            },
+            py::arg("k"), py::arg("selector"), py::arg("rtol"), py::arg("max_iter"),
+            "Unit potential and field of conductor k; returns the solve residual."
+        )
+        .def("voltage_clamp_check_selection",
+            [] (WarpX&, int n) { voltage_clamp::CheckSelection(n); },
+            py::arg("n"),
+            "Abort unless every fixed node belongs to exactly one of n conductors."
         )
         .def("run_div_cleaner",
             [] (WarpX& wx) { wx.ProjectionCleanDivB(); },
