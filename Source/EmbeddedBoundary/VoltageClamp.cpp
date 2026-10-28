@@ -448,8 +448,9 @@ namespace
         for (amrex::MFIter mfi(*update[0]); mfi.isValid(); ++mfi) {
             auto const ur = update[0]->const_array(mfi);
             auto const uz = update[2]->const_array(mfi);
-            // Several boxes may flag the same edge, so not ParallelFor
-            amrex::For(amrex::surroundingNodes(amrex::enclosedCells(mfi.validbox())),
+            // Each node writes only its own two edges; neighbouring boxes share the
+            // edges on their common face, hence the atomic max
+            amrex::ParallelFor(amrex::surroundingNodes(amrex::enclosedCells(mfi.validbox())),
                 [=] AMREX_GPU_DEVICE (int i, int j, int k)
             {
                 int const node = i - lo[0] + nr*(j - lo[1]);
@@ -502,7 +503,9 @@ namespace
         // keeps the result independent of the domain decomposition.
         ablastr::fields::VectorField efield = warpx.m_fields.get_alldirs(name, lev);
         if (AnyPMC()) {
-            // Mirror images in the guard cells of PMC faces, as WarpX applies to E
+            // Mirror images of E in the guard cells of PMC faces. At a PMC face E has the
+            // symmetry that B has at a PEC wall, so WarpX fills them with its PEC routine
+            // for B, as WarpX::ApplyEfieldBoundary does.
             PEC::ApplyPECtoBfield(efield, WarpX::field_boundary_lo, WarpX::field_boundary_hi,
                 FieldBoundaryType::PMC, warpx.get_ng_fieldgather(), warpx.Geom(lev), lev,
                 PatchType::fine, warpx.refRatio());

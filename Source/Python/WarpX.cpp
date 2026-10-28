@@ -297,7 +297,8 @@ void init_WarpX (py::module& m)
                 voltage_clamp::CheckSelection(n, wall_reference);
             },
             py::arg("n"), py::arg("wall_reference") = false,
-            "Abort unless every fixed node belongs to exactly one of n conductors."
+            "Abort unless every fixed node belongs to exactly one of n conductors (or, "
+            "with wall_reference, to the wall-connected ground)."
         )
         .def("voltage_clamp_gauss_charge",
             [] (WarpX&, int n, std::string const& efield) {
