@@ -46,7 +46,11 @@ private:
     /** Time step to start averaging */
     int m_average_start_step = -1;
     /** Flush m_mf_output or m_sum_mf_output and particles to file for the i^th buffer */
-    void Flush (int i_buffer, bool /* force_flush */) override;
+    void Flush (int i_buffer, bool force_flush) override;
+    /** Write the sum and the number of summed steps of time averages to a checkpoint */
+    void WriteCheckpointData (std::string const & dir) const override;
+    /** Read the sum and the number of summed steps of time averages from a checkpoint */
+    void ReadCheckpointData (std::string const & dir) override;
     /** Flush raw data */
     void FlushRaw ();
     /** Initialize Data required to compute TimeAveraged diagnostics */

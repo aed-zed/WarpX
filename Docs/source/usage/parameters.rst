@@ -5123,7 +5123,8 @@ In addition, ``TimeAveraged`` diagnostic options include:
     .. note::
 
         In the ``dynamic_start`` mode, output is only written for complete averaging periods.
-        An averaging period that is incomplete because the simulation ended (see :pp:param:`<diag_name>.dump_last_timestep`) or was restarted within it is not written (with a warning).
+        An averaging period that is incomplete because the simulation ended (see :pp:param:`<diag_name>.dump_last_timestep`) is not written (with a warning).
+        Checkpoints contain the time averages summed so far, so that a simulation restarted from a checkpoint within an averaging period continues the average.
 
 .. pp:param:: <diag_name>.average_period_steps
     :type: ``int``

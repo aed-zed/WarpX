@@ -446,6 +446,9 @@ WarpX::InitFromCheckpoint ()
     if (EB::enabled()) { InitializeEBGridData(maxLevel()); }
 
     reduced_diags->ReadCheckpointData(restart_chkfile);
+    for (int idiag = 0; idiag < multi_diags->GetTotalDiags(); ++idiag) {
+        multi_diags->GetDiag(idiag).ReadCheckpointData(restart_chkfile);
+    }
 
     // Initialize particles
     mypc->Restart(restart_chkfile);

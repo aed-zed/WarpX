@@ -39,15 +39,20 @@
 #include <AMReX_IntVect.H>
 #include <AMReX_MakeType.H>
 #include <AMReX_MultiFab.H>
+#include <AMReX_ParallelDescriptor.H>
 #include <AMReX_ParmParse.H>
+#include <AMReX_PlotFileUtil.H>
 #include <AMReX_Print.H>
 #include <AMReX_REAL.H>
 #include <AMReX_RealBox.H>
 #include <AMReX_Vector.H>
+#include <AMReX_VisMF.H>
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <memory>
+#include <string>
 #include <vector>
 
 using namespace amrex::literals;
@@ -241,7 +246,7 @@ FullDiagnostics::BackwardCompatibility ()
 }
 
 void
-FullDiagnostics::Flush ( int i_buffer, bool /* force_flush */ )
+FullDiagnostics::Flush ( int i_buffer, bool force_flush )
 {
     // This function should be moved to Diagnostics when plotfiles/openpmd format
     // is supported for BackTransformed Diagnostics, in BTDiagnostics class.
@@ -267,7 +272,7 @@ FullDiagnostics::Flush ( int i_buffer, bool /* force_flush */ )
                     m_output_species.at(i_buffer), nlev_output, m_file_prefix,
                     m_file_min_digits, m_plot_raw_fields, m_plot_raw_fields_guards,
                     m_verbose);
-        } else {
+        } else if (num_summed_steps > 0) {
             ablastr::warn_manager::WMRecordWarning(
                     "Diagnostics",
                     "Time-averaged diagnostic " + m_diag_name + " was not written at step "
@@ -279,8 +284,10 @@ FullDiagnostics::Flush ( int i_buffer, bool /* force_flush */ )
             );
         }
 
-        // Reset the values in the dynamic start time-averaged diagnostics after flush
-        if (is_dynamic) {
+        // Reset the values in the dynamic start time-averaged diagnostics after flush.
+        // An incomplete averaging period at the end of the simulation is kept, so that it
+        // can be continued from a checkpoint written at the last step.
+        if (is_dynamic && (write_average || !force_flush)) {
             for (int lev = 0; lev < nlev_output; ++lev) {
                 m_sum_mf_output.at(i_buffer).at(lev).setVal(0.);
             }
@@ -300,6 +307,77 @@ FullDiagnostics::Flush ( int i_buffer, bool /* force_flush */ )
 
 void
 FullDiagnostics::FlushRaw () {}
+
+void
+FullDiagnostics::WriteCheckpointData (std::string const & dir) const
+{
+    if (m_diag_type != DiagTypes::TimeAveraged || m_time_average_mode == TimeAverageType::None) {
+        return;
+    }
+
+    // Full diagnostics have a single buffer
+    const std::string prefix = dir + "/" + m_diag_name + "_time_average";
+    amrex::PreBuildDirectorHierarchy(prefix, "Level_", nlev_output, true);
+    for (int lev = 0; lev < nlev_output; ++lev) {
+        amrex::VisMF::Write(m_sum_mf_output[0][lev],
+                            amrex::MultiFabFileFullPrefix(lev, prefix, "Level_", "sum"));
+    }
+
+    if (amrex::ParallelDescriptor::IOProcessor()) {
+        std::ofstream chkfile{prefix + "/num_summed_steps.txt", std::ofstream::out};
+        if (!chkfile.good()) {
+            WARPX_ABORT_WITH_MESSAGE("FullDiagnostics::WriteCheckpointData: could not open file for writing checkpoint data");
+        }
+        chkfile << nlev_output << "\n" << m_num_summed_steps[0] << "\n" << m_last_summed_step[0] << "\n";
+    }
+}
+
+void
+FullDiagnostics::ReadCheckpointData (std::string const & dir)
+{
+    if (m_diag_type != DiagTypes::TimeAveraged || m_time_average_mode == TimeAverageType::None) {
+        return;
+    }
+
+    // Checkpoints written without this diagnostic (or by older versions of WarpX) do not
+    // contain its sum: the time average then starts anew, and an incomplete averaging
+    // period is not written (with a warning)
+    const std::string prefix = dir + "/" + m_diag_name + "_time_average";
+    std::ifstream chkfile{prefix + "/num_summed_steps.txt", std::ifstream::in};
+    if (!chkfile.good()) { return; }
+    int nlev_chk = 0, num_summed_steps = 0, last_summed_step = -1;
+    if (!(chkfile >> nlev_chk >> num_summed_steps >> last_summed_step)) {
+        WARPX_ABORT_WITH_MESSAGE("FullDiagnostics::ReadCheckpointData: could not read the number of summed steps");
+    }
+
+    // The sum can only be continued if the output data cover the same cells with the
+    // same components (the boxes and their distribution may differ)
+    bool compatible = (nlev_chk == nlev_output);
+    amrex::Vector<amrex::MultiFab> sum_chk(nlev_output);
+    for (int lev = 0; lev < nlev_output && compatible; ++lev) {
+        amrex::VisMF::Read(sum_chk[lev], amrex::MultiFabFileFullPrefix(lev, prefix, "Level_", "sum"));
+        amrex::MultiFab const & sum = m_sum_mf_output[0][lev];
+        compatible = amrex::match(sum_chk[lev].boxArray(), sum.boxArray())
+                  && (sum_chk[lev].nComp() == sum.nComp())
+                  && (sum_chk[lev].nGrowVect() == sum.nGrowVect());
+    }
+    if (!compatible) {
+        ablastr::warn_manager::WMRecordWarning(
+                "Diagnostics",
+                "The time average of diagnostic " + m_diag_name + " in the checkpoint " + dir
+                + " does not match the output of this diagnostic and is not continued.",
+                ablastr::warn_manager::WarnPriority::medium
+        );
+        return;
+    }
+
+    for (int lev = 0; lev < nlev_output; ++lev) {
+        amrex::MultiFab & sum = m_sum_mf_output[0][lev];
+        sum.ParallelCopy(sum_chk[lev], 0, 0, sum.nComp(), sum.nGrowVect(), sum.nGrowVect());
+    }
+    m_num_summed_steps[0] = num_summed_steps;
+    m_last_summed_step[0] = last_summed_step;
+}
 
 
 bool

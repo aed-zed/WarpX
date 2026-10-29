@@ -88,28 +88,28 @@ MultiDiagnostics::DoComputeAndPack (int step, bool force_flush)
 void
 MultiDiagnostics::FilterComputePackFlush (int step, bool force_flush, bool BackTransform)
 {
-    int i = 0;
-    for (auto& diag : alldiags){
-        if (BackTransform) {
-            if (diags_types[i] == DiagTypes::BackTransformed) {
-                diag->FilterComputePackFlush (step, force_flush);
-            }
-        } else {
-            if (diags_types[i] != DiagTypes::BackTransformed) {
-                diag->FilterComputePackFlush (step, force_flush);
+    // Checkpoints are written last, so that they contain the data of this step
+    // that other diagnostics need to continue after a restart (e.g., time averages)
+    for (const bool checkpoints : {false, true}) {
+        for (int i = 0; i < ndiags; ++i) {
+            const bool is_btd = (diags_types[i] == DiagTypes::BackTransformed);
+            if (alldiags[i]->IsCheckpoint() == checkpoints && is_btd == BackTransform) {
+                alldiags[i]->FilterComputePackFlush (step, force_flush);
             }
         }
-        ++i;
     }
 }
 
 void
 MultiDiagnostics::FilterComputePackFlushLastTimestep (int step)
 {
-    for (auto& diag : alldiags){
-        if (diag->DoDumpLastTimestep()){
-            constexpr bool force_flush = true;
-            diag->FilterComputePackFlush (step, force_flush);
+    // Checkpoints are written last (see FilterComputePackFlush)
+    for (const bool checkpoints : {false, true}) {
+        for (auto& diag : alldiags){
+            if (diag->IsCheckpoint() == checkpoints && diag->DoDumpLastTimestep()){
+                constexpr bool force_flush = true;
+                diag->FilterComputePackFlush (step, force_flush);
+            }
         }
     }
 }

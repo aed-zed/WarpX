@@ -600,6 +600,7 @@ Diagnostics::InitBaseData ()
     if (m_diag_type == DiagTypes::TimeAveraged) {
         m_sum_mf_output.resize(m_num_buffers);
         m_num_summed_steps.resize(m_num_buffers, 0);
+        m_last_summed_step.resize(m_num_buffers, -1);
         for (int i = 0; i < m_num_buffers; ++i) {
             m_sum_mf_output[i].resize( nmax_lev );
         }
@@ -630,6 +631,10 @@ Diagnostics::ComputeAndPack ()
 
     // compute the necessary fields and store result in m_mf_output.
     for (int i_buffer = 0; i_buffer < m_num_buffers; ++i_buffer) {
+        // Time averages sum each step once (e.g., the step of a restart is already summed
+        // in the sum read from the checkpoint)
+        const bool sum_step = (m_diag_type == DiagTypes::TimeAveraged)
+            && (warpx.getistep(0) > m_last_summed_step[i_buffer]);
         for(int lev=0; lev<nlev_output; lev++){
             int icomp_dst = 0;
             const auto n = static_cast<int>(m_all_field_functors[lev].size());
@@ -644,7 +649,7 @@ Diagnostics::ComputeAndPack ()
             // Check that the proper number of components of mf_avg were updated.
             AMREX_ALWAYS_ASSERT( icomp_dst == m_varnames.size() );
 
-            if (m_diag_type == DiagTypes::TimeAveraged) {
+            if (sum_step) {
 
                 const amrex::Real real_a = 1.0;
                 // Compute m_sum_mf_output += real_a*m_mf_output
@@ -659,8 +664,9 @@ Diagnostics::ComputeAndPack ()
                                                             warpx.Geom(lev).periodicity());
             }
         }
-        if (m_diag_type == DiagTypes::TimeAveraged) {
+        if (sum_step) {
             ++m_num_summed_steps[i_buffer];
+            m_last_summed_step[i_buffer] = warpx.getistep(0);
         }
         // Call Particle functor
         for (int isp = 0; isp < m_all_particle_functors.size(); ++isp) {

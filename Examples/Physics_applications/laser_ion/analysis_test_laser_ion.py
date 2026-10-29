@@ -63,10 +63,36 @@ def compare_time_avg_with_instantaneous_diags(dir_inst: str, dir_avg: str):
         sys.exit(1)
 
 
+def compare_time_avg_with_original_run(dir_avg: str, dir_orig: str):
+    """Compare in-situ averaged data of a restarted run with those of the original run."""
+
+    field = "E"
+    coord = "z"
+    avg_output_step = 100
+
+    sr = io.Series(f"{dir_avg}/openpmd_%T.h5", io.Access.read_only)
+    so = io.Series(f"{dir_orig}/{dir_avg}/openpmd_%T.h5", io.Access.read_only)
+
+    data_restart = load_field_from_iteration(sr, avg_output_step, field, coord)
+    data_orig = load_field_from_iteration(so, avg_output_step, field, coord)
+
+    if np.allclose(data_restart, data_orig, rtol=1e-12):
+        print("Test passed: restarted data is close to original data.")
+    else:
+        print("Test failed: restarted data is not close to original data.")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     # TODO: implement intervals parser for PICMI that allows more complex output periods
     test_name = os.path.split(os.getcwd())[1]
-    if "picmi" not in test_name:
+    if test_name.endswith("_restart"):
+        # The restart is within the averaging period of the time-averaged diagnostic
+        compare_time_avg_with_original_run(
+            dir_avg="diags/diagTimeAvg",
+            dir_orig=os.getcwd().replace("_restart", ""),
+        )
+    elif "picmi" not in test_name:
         # Functionality test for TimeAveragedDiagnostics
         compare_time_avg_with_instantaneous_diags(
             dir_inst=sys.argv[1],

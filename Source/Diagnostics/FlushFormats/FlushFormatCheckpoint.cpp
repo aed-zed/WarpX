@@ -4,6 +4,8 @@
 #if (defined WARPX_DIM_RZ) && (defined WARPX_USE_FFT)
 #   include "BoundaryConditions/PML_RZ.H"
 #endif
+#include "Diagnostics/Diagnostics.H"
+#include "Diagnostics/MultiDiagnostics.H"
 #include "Diagnostics/ParticleDiag/ParticleDiag.H"
 #include "Diagnostics/ReducedDiags/MultiReducedDiags.H"
 #include "Fields.H"
@@ -195,6 +197,12 @@ FlushFormatCheckpoint::WriteToFile (
     WriteDMaps(checkpointname, nlev);
 
     WriteReducedDiagsData(checkpointname);
+
+    // Data needed to continue other diagnostics, e.g., the sums of time averages
+    auto & multi_diags = warpx.GetMultiDiags();
+    for (int idiag = 0; idiag < multi_diags.GetTotalDiags(); ++idiag) {
+        multi_diags.GetDiag(idiag).WriteCheckpointData(checkpointname);
+    }
 
     VisMF::SetHeaderVersion(current_version);
 

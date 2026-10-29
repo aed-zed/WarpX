@@ -121,6 +121,16 @@ public:
     [[nodiscard]] bool DoDumpLastTimestep () const {return  m_dump_last_timestep;}
     /** Returns the number of snapshots used in BTD. For Full-Diagnostics, the value is 1*/
     [[nodiscard]] int getnumbuffers() const {return m_num_buffers;}
+    /** Whether this diagnostic writes checkpoints */
+    [[nodiscard]] bool IsCheckpoint () const {return m_format == "checkpoint";}
+    /** Write the data needed to continue this diagnostic after a restart to a checkpoint
+     * \param[in] dir checkpoint directory
+     */
+    virtual void WriteCheckpointData ([[maybe_unused]] std::string const & dir) const {}
+    /** Read the data written by WriteCheckpointData when restarting from a checkpoint
+     * \param[in] dir checkpoint directory
+     */
+    virtual void ReadCheckpointData ([[maybe_unused]] std::string const & dir) {}
     /** Time in lab-frame associated with the ith snapshot
      * \param[in] i_buffer index of the buffer
      */
@@ -287,6 +297,8 @@ protected:
     amrex::Vector< amrex::Vector <amrex::MultiFab > > m_sum_mf_output;
     /** Number of steps summed in m_sum_mf_output, for each snapshot */
     amrex::Vector<int> m_num_summed_steps;
+    /** Last step summed in m_sum_mf_output, for each snapshot */
+    amrex::Vector<int> m_last_summed_step;
 
     /** Geometry that defines the domain attributes corresponding to output multifab.
      *  Specifically, the user-defined physical co-ordinates for the diagnostics

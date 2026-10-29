@@ -200,7 +200,7 @@ laser1.profile_focal_distance = 4.0e-6  # focal distance from the antenna [m]
 #################################
 # Diagnostics
 #
-diagnostics.diags_names = diagInst diagTimeAvg openPMDfw openPMDbw
+diagnostics.diags_names = diagInst diagTimeAvg openPMDfw openPMDbw chk
 
 # instantaneous field and particle diagnostic
 diagInst.intervals = 100,96:100  # second interval only for CI testing the time-averaged diags
@@ -226,6 +226,12 @@ diagTimeAvg.fields_to_plot = Ex Ey Ez Bx By Bz jx jy jz rho rho_electrons rho_hy
 diagTimeAvg.coarsening_ratio = 4 4
 diagTimeAvg.format = openpmd
 diagTimeAvg.openpmd_backend = h5
+
+# checkpoint within the averaging period of diagTimeAvg, only for CI testing restarts
+chk.intervals = 98:98
+chk.diag_type = Full
+chk.dump_last_timestep = 0
+chk.format = checkpoint
 
 openPMDfw.intervals = 100
 openPMDfw.diag_type = Full
