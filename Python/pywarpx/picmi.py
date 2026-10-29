@@ -4495,7 +4495,7 @@ class TimeAveragedFieldDiagnostic(FieldDiagnostic):
             'Supported values include ``"none"``, ``"fixed_start"``, and ``"dynamic_start"``\n'
             "\n"
             '* ``"none"`` for no averaging (instantaneous fields)\n'
-            '* ``"fixed_start"`` for a diagnostic that averages all fields between the current output step and a fixed point in time\n'
+            '* ``"fixed_start"`` for a diagnostic that averages all fields from a fixed step (``average_start_step``) up to and including the current output step\n'
             '* ``"dynamic_start"`` for a constant averaging period and output at different points in time (non-overlapping)'
         ),
     )
@@ -4509,7 +4509,7 @@ class TimeAveragedFieldDiagnostic(FieldDiagnostic):
     )
     average_start_step: int | None = Field(
         default=None,
-        description='Configures the time step at which time-averaging begins. Set this only in the ``"fixed_start"`` mode. Will be ignored in the ``"dynamic_start"`` mode (with warning).',
+        description='Configures the first time step (at least 1) whose fields are included in the time average. Set this only in the ``"fixed_start"`` mode. Will be ignored in the ``"dynamic_start"`` mode (with warning).',
     )
 
     def diagnostic_initialize_inputs(self):

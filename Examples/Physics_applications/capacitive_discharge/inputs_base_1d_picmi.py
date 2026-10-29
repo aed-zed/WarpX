@@ -428,6 +428,17 @@ class CapacitiveDischargeExample(object):
         self.sim.add_diagnostic(particle_diag)
         self.sim.add_diagnostic(field_diag)
 
+        # Time-averaged ion charge density over the same steps as in _get_rho_ions
+        avg_diag = picmi.TimeAveragedFieldDiagnostic(
+            name="diag_avg",
+            grid=self.grid,
+            period=self.max_steps,
+            data_list=["rho_he_ions"],
+            time_average_mode="fixed_start",
+            average_start_step=self.max_steps - self.diag_steps + 1,
+        )
+        self.sim.add_diagnostic(avg_diag)
+
     def rethermalize_neutrals(self):
         # When using DSMC the neutral temperature will change due to collisions
         # with the ions. This is not captured in the original MCC test.

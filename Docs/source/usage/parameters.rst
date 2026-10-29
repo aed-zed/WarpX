@@ -5111,7 +5111,7 @@ In addition, ``TimeAveraged`` diagnostic options include:
 
     * ``none`` for no averaging (instantaneous fields)
 
-    * ``fixed_start`` for a diagnostic that averages all fields between the current output step and a fixed point in time
+    * ``fixed_start`` for a diagnostic that averages all fields from a fixed step (:pp:param:`<diag_name>.average_start_step`) up to and including the current output step
 
     * ``dynamic_start`` for a constant averaging period and output at different points in time (non-overlapping)
 
@@ -5124,6 +5124,7 @@ In addition, ``TimeAveraged`` diagnostic options include:
 
         In the ``dynamic_start`` mode, output is only written for complete averaging periods.
         An averaging period that is incomplete because the simulation ended (see :pp:param:`<diag_name>.dump_last_timestep`) or was restarted within it is not written (with a warning).
+        In the ``fixed_start`` mode, no output is written before :pp:param:`<diag_name>.average_start_step` or after a restart within the averaging (with a warning).
 
 .. pp:param:: <diag_name>.average_period_steps
     :type: ``int``
@@ -5143,7 +5144,7 @@ In addition, ``TimeAveraged`` diagnostic options include:
 .. pp:param:: <diag_name>.average_start_step
     :type: ``int``
 
-    Configures the time step at which time-averaging begins.
+    Configures the first time step (at least 1) whose fields are included in the time average.
     Set this only in the ``fixed_start`` mode.
     Will be ignored in the ``dynamic_start`` mode (with warning).
 

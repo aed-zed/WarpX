@@ -6,11 +6,15 @@
 # capacitive discharge (case 1) against the benchmark data published in
 # Turner et al. (2013) - https://doi.org/10.1063/1.4775084
 
+import glob
+
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import yt
+from scipy.constants import e as q_e
 
 # Turner et al. (2013) benchmark, case 1: ion density (m^-3), averaged over
 # time, on the 129-point grid spanning the 6.7 cm gap
@@ -53,6 +57,17 @@ ref_density = np.array([
 
 density_data = np.load("ion_density_case_1.npy")
 print(repr(density_data))
+
+# The time-averaged diagnostic must match the density averaged in the input
+# script, interpolated from the nodes to the cell centers as in the output.
+# The two cells at each wall are excluded: unlike the raw deposition in the
+# input script, the diagnostic applies the PEC boundary treatment of rho there
+# (the Dirichlet boundaries of the Poisson solver are PEC boundaries in WarpX).
+ds = yt.load(glob.glob("diags/diag_avg*")[0])
+grid = ds.covering_grid(0, ds.domain_left_edge, ds.domain_dimensions)
+density_avg_diag = np.array(grid["boxlib", "rho_he_ions"]).squeeze() / q_e
+density_cc = 0.5 * (density_data[1:] + density_data[:-1])
+assert np.allclose(density_avg_diag[2:-2], density_cc[2:-2], rtol=1e-12, atol=0.0)
 
 # The Turner benchmark above is tabulated on a 129-node grid (128 cells over
 # the 6.7 cm gap). The test may run on a coarser grid, so interpolate the
