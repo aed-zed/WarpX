@@ -68,7 +68,7 @@ Supported configurations
   No current/charge filter.
   Energy-conserving field gathering, and no particle E field read from file.
 * Radial boundary: the axis and a PEC outer wall, which is the grounded potential reference.
-  Axial boundaries: both periodic or both PEC.
+  Axial boundaries: both periodic, or PEC or ``pec_insulator`` faces in any combination (see :ref:`below <usage-electrode-voltage-clamp-insulator>`).
 * Listed conductors must be separate bodies.
 * A conductor that touches a PEC domain boundary is part of the ground: the staircase ties it to the wall, so it cannot hold another voltage.
   Such conductors (for example a curved outer wall) are found at setup; they may be listed with potential 0 or left out, and they get no unit solve.
@@ -146,6 +146,32 @@ This is harmless as long as the multigrid solve itself converges, since every mu
 If the multigrid solve needs many more iterations or does not converge, raise :pp:param:`warpx.self_fields_bottom_max_iters`, or allow one more coarsening level.
 A deeper cap or another bottom solver (:pp:param:`warpx.self_fields_bottom_solver`) can also be faster on large grids; check that the solve still converges for the thinnest conductor, since the depth at which it fails depends on the geometry.
 
+.. _usage-electrode-voltage-clamp-insulator:
+
+Insulating end faces
+--------------------
+
+A ``pec_insulator`` z face (see :pp:param:`boundary.field_lo/hi`) is PEC except on its insulator area, where it prescribes either the tangential electric field (voltage mode, ``insulator.Ex_z_*``) or the tangential magnetic field (current mode, ``insulator.Bx_z_*``, ``insulator.By_z_*``).
+The clamp accepts either mode on each face, but not both and not neither on one face.
+Its PEC part is grounded only where it is joined to the outer wall along the face.
+
+**Current mode.**
+On the insulator, :math:`E_r` evolves and the field update conserves the charge of each face node, :math:`\varepsilon_0 [V_i\, (D_r E_r)_i + A_i E_z(\Delta z/2)]`, with the full node volume :math:`V_i`, face area :math:`A_i` and no flux through :math:`z = -\Delta z/2`, where the magnetic field is prescribed.
+Charge that particles leave on the insulator stays there.
+The unit potentials are free on the insulator and satisfy this face equation, so a correction adds no charge to the insulator.
+The multigrid Neumann condition differs (it mirrors the potential about the face node), so the setup iterates on it, about 30 solves per conductor for a tolerance of :math:`10^{-12}`; a plain Neumann potential would put a few percent of each correction's charge on the insulator.
+As with charge on any free node, the observer pairs the unit potentials with :math:`\varepsilon_0 V_i (\nabla_h \cdot \boldsymbol{E})_i` on the free nodes, which includes the face charge that no particle carries, and with :math:`q_i` on the fixed nodes; the capacitance matrix is calibrated with the same pairing.
+A PEC plate inside the insulator area (not joined to the outer wall along the face) would float, and aborts.
+
+**Voltage mode.**
+:math:`E_r` on the whole face is prescribed (zero on its PEC part), so the unit potentials are zero on the face, as on a PEC face.
+The prescribed field gives the face a potential :math:`\phi_b = \int_{r_b}^{r_\mathrm{wall}} E_r\, dr`, which induces charge on the conductors.
+By reciprocity this charge is :math:`\sum_b \phi_b\, \varepsilon_0 A_b E_{z,k}(b)` over the face nodes :math:`b`, with :math:`E_{z,k}` the unit field in the first cell; the observer adds it to the plasma-induced charge :math:`Q_{g,k}` at every step, from the live :math:`E_r` on the face, so a time-dependent drive is followed.
+A conductor that touches the face inward of the outermost gap is at the potential the gap sets (the gap acts as an ideal voltage source), so it cannot be clamped, and the setup aborts.
+
+A changing drive also excites electromagnetic modes, which in a closed, lossless domain do not decay; the clamp holds the conductors' charge coordinate through them, while a line integral of :math:`E_r` oscillates about the target.
+``voltage_clamp_solve_grounded`` does not include the face charge or the drive.
+
 What it does not do
 -------------------
 
@@ -166,7 +192,8 @@ Examples and tests
 * vacuum: capacitance matrix against the discrete coaxial formula, static clamped field;
 * a coaxial space-charge diode with and without the clamp, including the grounded-charge cross-check;
 * the diode on two ranks with the anode joined to the outer wall, listed with potential 0 (and rejected at 100 V);
-* checkpoint/restart during emission.
+* checkpoint/restart during emission;
+* ``pec_insulator`` faces (two ranks): electrons leaving the clamped ring and landing on current-mode faces, and a ramped voltage gap next to the ring.
 
 .. bibliography::
     :keyprefix: vc-

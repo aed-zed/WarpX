@@ -192,6 +192,16 @@ public:
      */
     [[nodiscard]] int IsBSet(int idim, int iside, int ifield) const;
 
+    /* \brief Returns the expression of the insulator area on a boundary (insulator where > 0)
+     * \param[in] idim dimension of the boundary
+     * \param[in] iside side, 0 is lower, 1 is upper
+     * \return the compiled area expression, in the two transverse coordinates
+     */
+    [[nodiscard]] amrex::ParserExecutor<2> const& GetAreaParser (int idim, int iside) const
+    {
+        return ( iside == 1 ? m_area_parsers_hi[idim] : m_area_parsers_lo[idim] );
+    }
+
 private:
 
 

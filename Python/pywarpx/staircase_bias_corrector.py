@@ -155,7 +155,8 @@ class StaircaseBiasCorrector:
         self._active = True
 
     def measure_voltage_state(self):
-        """Conductor voltages, from the field charge and the plasma-induced charge.
+        """Conductor voltages, from the field charge and the charge induced with all
+        conductors grounded (by the plasma, and by voltage-mode pec_insulator faces).
 
         One entry per listed electrode. Electrodes joined to the grounded PEC wall
         read 0 V; their charges are not measured (NaN).

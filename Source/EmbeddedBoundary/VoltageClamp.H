@@ -14,8 +14,8 @@
 #include <vector>
 
 /* Voltage clamp for embedded-boundary conductors in electromagnetic runs
- * (RZ m=0, explicit staggered Yee, one level). Defined in RZ builds with embedded
- * boundaries only.
+ * (RZ m=0, explicit staggered Yee, one level; periodic, PEC or pec_insulator z faces).
+ * Defined in RZ builds with embedded boundaries only.
  *
  * The conductors are the components of WarpX's frozen-edge staircase. The fixed
  * nodes are the endpoints of frozen E edges. Conductor k has a unit potential
@@ -104,7 +104,8 @@ namespace warpx::embedded_boundary::voltage_clamp
 
     /** Charge state of the live fields, from one deposition and one divergence:
      *  the field charge eps0 s_k^T V div E - s_k^T V q of each conductor, and the
-     *  grounded (plasma-induced) charge -psi_k^T V q. The voltages are
+     *  grounded charge: the charge induced with all conductors at 0 V, by the plasma
+     *  (-psi_k^T V q) and by voltage-mode pec_insulator faces. The voltages are
      *  C^-1 (field charge - grounded charge).
      *
      * \param[in] n number of conductors
