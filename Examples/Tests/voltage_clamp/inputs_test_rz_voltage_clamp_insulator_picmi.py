@@ -79,13 +79,13 @@ G_IN, G_OUT, K_GAP = 4.5e-3, 9.5e-3, 300.0
 
 # --- Run control
 CFL = 0.99
-N_STEPS = {"current": 700, "voltage": 1300}[args.face]
+N_STEPS = {"current": 700, "voltage": 2560}[args.face]
 N_INJECT = 40  # current: steps with injection
 N_PER_STEP = 8  # current: macroparticles injected per step and population
 WEIGHT = 2.0e3  # current: macroparticle weight
 V_ELECTRON = 1.0e7  # exit: drift speed toward the lower face [m/s]
 V_TO_FACE = 3.0e7  # rod: initial speed of the electrons sent to the face [m/s]
-N_RAMP = 300  # voltage: ramp length in steps
+N_RAMP = 600  # voltage: ramp length in steps
 N_TWO = 200  # current, two rings: steps in vacuum
 
 # --- Tolerances
@@ -96,8 +96,10 @@ CAP_RTOL = 1.0e-12  # C symmetry, relative to the largest entry (seen: 2e-14)
 # Line integral of E_r against the target. The clamp holds its charge coordinate
 # exactly; the line integral also sees the induction field (dPhi_B/dt), which does not
 # decay in this lossless box. Current mode: the electrons leave about 1e-4 V of it.
-# Voltage mode: the ramp of the drive rings a cavity mode (+-0.2 V, with or without the
-# clamp); its mean over the plateau (about 12 periods) is within 2e-3 V of the target.
+# Voltage mode: the ramp of the drive rings cavity modes (with or without the clamp).
+# With this ramp and plateau (about 24 periods) the plateau mean is within 1e-4 V of the
+# target for both rings; it changes sign with the plateau length and falls with a
+# slower ramp, so it is ringing, not a bias.
 LINE_ATOL = 1.0e-3
 LINE_MEAN_ATOL = 1.0e-2
 
