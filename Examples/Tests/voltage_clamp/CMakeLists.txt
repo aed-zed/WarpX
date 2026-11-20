@@ -49,46 +49,28 @@ if(WarpX_EB)
         OFF  # dependency
     )
     add_warpx_test(
-        test_rz_voltage_clamp_insulator_current_exit_picmi  # name
-        RZ  # dims
-        2  # nprocs
-        "inputs_test_rz_voltage_clamp_insulator_picmi.py --face current --case exit --max-grid-size 16"  # inputs
-        OFF  # analysis
-        OFF  # checksum
-        OFF  # dependency
-    )
-    add_warpx_test(
-        test_rz_voltage_clamp_insulator_current_land_picmi  # name
-        RZ  # dims
-        2  # nprocs
-        "inputs_test_rz_voltage_clamp_insulator_picmi.py --face current --case land --max-grid-size 16"  # inputs
-        OFF  # analysis
-        OFF  # checksum
-        OFF  # dependency
-    )
-    add_warpx_test(
-        test_rz_voltage_clamp_insulator_current_rod_picmi  # name
-        RZ  # dims
-        2  # nprocs
-        "inputs_test_rz_voltage_clamp_insulator_picmi.py --face current --case rod --max-grid-size 16"  # inputs
-        OFF  # analysis
-        OFF  # checksum
-        OFF  # dependency
-    )
-    add_warpx_test(
-        test_rz_voltage_clamp_insulator_current_two_picmi  # name
-        RZ  # dims
-        2  # nprocs
-        "inputs_test_rz_voltage_clamp_insulator_picmi.py --face current --case two --max-grid-size 16"  # inputs
-        OFF  # analysis
-        OFF  # checksum
-        OFF  # dependency
-    )
-    add_warpx_test(
-        test_rz_voltage_clamp_insulator_reject_picmi  # name
+        test_rz_voltage_clamp_insulator_diode_picmi  # name
         RZ  # dims
         1  # nprocs
-        "inputs_test_rz_voltage_clamp_insulator_picmi.py --face current --case reject"  # inputs
+        "inputs_test_rz_voltage_clamp_picmi.py --case diode --z-faces current"  # inputs
+        OFF  # analysis
+        OFF  # checksum
+        OFF  # dependency
+    )
+    add_warpx_test(
+        test_rz_voltage_clamp_insulator_exit_picmi  # name
+        RZ  # dims
+        2  # nprocs
+        "inputs_test_rz_voltage_clamp_picmi.py --case exit --max-grid-size 16"  # inputs
+        OFF  # analysis
+        OFF  # checksum
+        OFF  # dependency
+    )
+    add_warpx_test(
+        test_rz_voltage_clamp_insulator_vacuum_picmi  # name
+        RZ  # dims
+        1  # nprocs
+        "inputs_test_rz_voltage_clamp_picmi.py --case vacuum --z-faces current"  # inputs
         OFF  # analysis
         OFF  # checksum
         OFF  # dependency
@@ -97,16 +79,7 @@ if(WarpX_EB)
         test_rz_voltage_clamp_insulator_voltage_picmi  # name
         RZ  # dims
         2  # nprocs
-        "inputs_test_rz_voltage_clamp_insulator_picmi.py --face voltage --max-grid-size 16"  # inputs
-        OFF  # analysis
-        OFF  # checksum
-        OFF  # dependency
-    )
-    add_warpx_test(
-        test_rz_voltage_clamp_insulator_voltage_two_picmi  # name
-        RZ  # dims
-        2  # nprocs
-        "inputs_test_rz_voltage_clamp_insulator_picmi.py --face voltage --case two --gap hi --max-grid-size 16"  # inputs
+        "inputs_test_rz_voltage_clamp_picmi.py --case vacuum --z-faces voltage --max-grid-size 16"  # inputs
         OFF  # analysis
         OFF  # checksum
         OFF  # dependency

@@ -196,7 +196,9 @@ Examples and tests
 * a coaxial space-charge diode with and without the clamp, including the grounded-charge cross-check;
 * the diode on two ranks with the anode joined to the outer wall, listed with potential 0 (and rejected at 100 V);
 * checkpoint/restart during emission;
-* ``pec_insulator`` faces (two ranks), current mode: electrons leaving a clamped ring and landing on the face, electrons landing on the ring, and a clamped rod standing on the face with electrons landing on the rod and on the face; voltage mode: a ramped voltage gap next to a clamped ring; two clamped rings in both modes (symmetric capacitance matrix).
+* current-mode ``pec_insulator`` faces, with rod and sleeve standing on both insulators: the vacuum case (the coaxial formula holds with the length extended by one cell, since the insulator conserves its charge with the full node volume) and the diode;
+* electrons landing on a current-mode face next to a clamped rod standing on it (two ranks): their charge stays on the face;
+* a voltage gap on a ``pec_insulator`` face next to a shortened rod and sleeve (two ranks).
 
 .. bibliography::
     :keyprefix: vc-
