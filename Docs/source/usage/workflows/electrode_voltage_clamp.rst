@@ -158,9 +158,11 @@ Its PEC part is grounded only where it is joined to the outer wall along the fac
 **Current mode.**
 On the insulator, :math:`E_r` evolves and the field update conserves the charge of each face node, :math:`\varepsilon_0 [V_i\, (D_r E_r)_i + A_i E_z(\Delta z/2)]`, with the full node volume :math:`V_i`, face area :math:`A_i` and no flux through :math:`z = -\Delta z/2`, where the magnetic field is prescribed.
 Charge that particles leave on the insulator stays there.
+Without trajectory cropping in the Esirkepov deposition (`#7435 <https://github.com/BLAST-WarpX/warpx/pull/7435>`__), the absorption step splits the landed charge between the face row and the next row of nodes; this is the field solver's behaviour and does not depend on the clamp.
 The unit potentials are free on the insulator and satisfy this face equation, so a correction adds no charge to the insulator.
 The multigrid Neumann condition differs (it mirrors the potential about the face node), so the setup iterates on it, about 30 solves per conductor for a tolerance of :math:`10^{-12}`; a plain Neumann potential would put a few percent of each correction's charge on the insulator.
 As with charge on any free node, the observer pairs the unit potentials with :math:`\varepsilon_0 V_i (\nabla_h \cdot \boldsymbol{E})_i` on the free nodes, which includes the face charge that no particle carries, and with :math:`q_i` on the fixed nodes; the capacitance matrix is calibrated with the same pairing.
+A conductor may end on the insulator, for example a rod standing on an insulating end face; it is clamped like any other.
 A PEC plate inside the insulator area (not joined to the outer wall along the face) would float, and aborts.
 
 **Voltage mode.**
@@ -193,7 +195,7 @@ Examples and tests
 * a coaxial space-charge diode with and without the clamp, including the grounded-charge cross-check;
 * the diode on two ranks with the anode joined to the outer wall, listed with potential 0 (and rejected at 100 V);
 * checkpoint/restart during emission;
-* ``pec_insulator`` faces (two ranks): electrons leaving the clamped ring and landing on current-mode faces, and a ramped voltage gap next to the ring.
+* ``pec_insulator`` faces (two ranks), current mode: electrons leaving a clamped ring and landing on the face, electrons landing on the ring, and a clamped rod standing on the face with electrons landing on the rod and on the face; voltage mode: a ramped voltage gap next to a clamped ring.
 
 .. bibliography::
     :keyprefix: vc-

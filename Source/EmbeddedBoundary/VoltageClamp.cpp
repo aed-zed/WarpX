@@ -191,6 +191,11 @@ namespace
                GetFaceInfo(warpx, 1).type == ZFace::Current;
     }
 
+    /* Whether free face nodes can hold charge that no particle carries (charge that
+     * particles left there). The observer then pairs psi with the field charge on free
+     * nodes instead of the deposited rho (see ChargeState). */
+    bool FieldPairing (WarpX& warpx) { return AnyCurrentFace(warpx); }
+
     // --- Geometry: everything specific to RZ is in the helpers below ---------
 
     /* Node classes on the staircase. A node is fixed if it ends a frozen E edge (an
@@ -911,7 +916,7 @@ std::vector<std::vector<amrex::Real>> CapacitanceMatrix (int n)
     // free nodes, which for a unit field is its (tiny) solve residual. Calibrating with
     // the same observer keeps the readback exact for any sum of unit fields.
     auto& warpx = WarpX::GetInstance();
-    bool const field_pairing = AnyCurrentFace(warpx);
+    bool const field_pairing = FieldPairing(warpx);
     auto const& fixed = *warpx.m_fields.get(fixed_nodes, lev);
     auto const& gauss = *warpx.m_fields.get(gauss_measure, lev);
     std::vector<std::vector<amrex::Real>> cap(n, std::vector<amrex::Real>(n));
@@ -970,7 +975,7 @@ ChargeState (int n)
     // particle carries. The grounded charge then pairs psi with the field's charge
     // eps0 V div E on free nodes, and with the deposited rho on fixed nodes.
     // Voltage-mode faces add the charge their potential induces (DriveCharge).
-    bool const field_pairing = AnyCurrentFace(warpx);
+    bool const field_pairing = FieldPairing(warpx);
     auto const& fixed = *warpx.m_fields.get(fixed_nodes, lev);
     auto const& gauss = *warpx.m_fields.get(gauss_measure, lev);
     auto grounded = DriveCharge(warpx, n);

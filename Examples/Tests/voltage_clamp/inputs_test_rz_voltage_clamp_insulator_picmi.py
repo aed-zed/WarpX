@@ -6,15 +6,21 @@
 
 """Voltage clamp with pec_insulator z faces (RZ, Yee, Esirkepov).
 
-An isolated ring electrode, clamped at -1 kV, inside a grounded PEC outer wall.
+A clamped electrode inside a grounded PEC outer wall. The line integral of E_r from
+the electrode to the wall must hold the target.
 
 --face current: both z faces are insulators from the axis to R_INSULATOR and PEC
-                beyond, in current mode (B_r = B_theta = 0 prescribed). Electrons
-                leave the electrode's lower surface and land on the lower face.
-                The landed charge must stay on the face (the clamp adds none),
-                and the line integral of E_r from the electrode to the wall must
-                hold the target after the electrons have landed.
---face voltage: the lower face has a voltage gap (E_r = K/r, ramped up) between an
+                beyond, in current mode (B_r = B_theta = 0 prescribed). The clamp must
+                not change the charge on the insulator.
+  --case exit:  an isolated ring at -1 kV. Electrons leave its lower surface and land
+                on the lower face, where their charge must stay.
+  --case land:  the ring at +1 kV. Electron-proton pairs are created below it (no net
+                charge); the electrons land on the ring.
+  --case rod:   a rod at +1 kV that stands on the lower face (it ends on the
+                insulator). Pairs are created beside it, whose electrons land on the
+                rod, and near the face, whose electrons land on the face.
+--face voltage: an isolated ring at -1 kV. The lower face has a voltage gap
+                (E_r = K/r, ramped up) between an
                 inner PEC disc and the grounded PEC beyond; the upper face is PEC.
                 The electrode does not touch the gap. The gap's potential induces
                 charge on the electrode, which the clamp must account for: the line
@@ -32,22 +38,28 @@ from pywarpx.staircase_bias_corrector import StaircaseBiasCorrector
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--face", choices=["current", "voltage"], required=True)
+parser.add_argument("--case", choices=["exit", "land", "rod"], default="exit")
 parser.add_argument("--max-grid-size", type=int, default=1024)
 args = parser.parse_args()
 
 EPS0, Q_E, C_LIGHT = picmi.constants.ep0, picmi.constants.q_e, picmi.constants.c
 
-# --- Geometry: a ring electrode (a < r < b, z1 < z < z2), away from all boundaries.
-# Its geometric surfaces lie halfway between nodes.
+# --- Geometry: a ring electrode (a < r < b, z1 < z < z2) away from all boundaries, or
+# a rod (r < R_ROD, z < Z_ROD) standing on the lower face. The geometric surfaces lie
+# halfway between nodes. Implicit functions are > 0 inside the conductor.
 NR, NZ, R_WALL, LENGTH = 32, 32, 32.0e-3, 32.0e-3
 dr, dz = R_WALL / NR, LENGTH / NZ
 A_RING, B_RING, Z1_RING, Z2_RING = 10.5e-3, 16.5e-3, 12.5e-3, 20.5e-3
-V_TARGET = -1000.0
+R_ROD, Z_ROD = 4.5e-3, 10.5e-3
 rr = "sqrt(x*x+y*y)"
-ring = (
-    f"min(min({rr}-{A_RING},{B_RING}-{rr}),min(z-{Z1_RING},{Z2_RING}-z))"  # > 0 inside
-)
-electrodes = [{"name": "ring", "region": "1", "potential": V_TARGET}]
+if args.case == "rod":
+    conductor = f"min({R_ROD}-{rr},{Z_ROD}-z)"
+    Z_LINE = 5  # node row of the line integral, through the rod's side
+else:
+    conductor = f"min(min({rr}-{A_RING},{B_RING}-{rr}),min(z-{Z1_RING},{Z2_RING}-z))"
+    Z_LINE = NZ // 2
+V_TARGET = 1000.0 if args.case in ("land", "rod") else -1000.0
+electrodes = [{"name": "electrode", "region": "1", "potential": V_TARGET}]
 # Current mode: insulator from the axis to R_INSULATOR on both faces, PEC beyond
 R_INSULATOR = 24.5e-3
 # Voltage mode: gap G_IN < r < G_OUT on the lower face, E_r = K/r ramped over T_RAMP
@@ -57,9 +69,10 @@ G_IN, G_OUT, K_GAP = 4.5e-3, 9.5e-3, 300.0
 CFL = 0.99
 N_STEPS = {"current": 700, "voltage": 1300}[args.face]
 N_INJECT = 40  # current: steps with injection
-N_PER_STEP = 8  # current: macroparticles injected per step, spread in radius
+N_PER_STEP = 8  # current: macroparticles injected per step and population
 WEIGHT = 2.0e3  # current: macroparticle weight
-V_ELECTRON = 1.0e7  # current: drift speed toward the lower face [m/s]
+V_ELECTRON = 1.0e7  # exit: drift speed toward the lower face [m/s]
+V_TO_FACE = 3.0e7  # rod: initial speed of the electrons sent to the face [m/s]
 N_RAMP = 300  # voltage: ramp length in steps
 
 # --- Tolerances
@@ -92,7 +105,7 @@ sim = picmi.Simulation(
     solver=picmi.ElectromagneticSolver(grid=grid, method="Yee", cfl=CFL),
     max_steps=10**8,
     particle_shape="linear",
-    warpx_embedded_boundary=picmi.EmbeddedBoundary(implicit_function=ring),
+    warpx_embedded_boundary=picmi.EmbeddedBoundary(implicit_function=conductor),
     warpx_use_filter=False,
     warpx_current_deposition_algo="esirkepov",
     verbose=0,
@@ -103,6 +116,14 @@ sim.add_species(
     ),
     layout=None,
 )
+pairs = args.face == "current" and args.case in ("land", "rod")
+if pairs:
+    sim.add_species(
+        picmi.Species(
+            name="protons", particle_type="proton", initial_distribution=None
+        ),
+        layout=None,
+    )
 insulator_inputs = {}
 if args.face == "current":
     for side in ("lo", "hi"):
@@ -131,6 +152,7 @@ sim.initialize_warpx()
 
 warpx = sim.extension.warpx
 electrons = sim.particles.get("electrons")
+protons = sim.particles.get("protons") if pairs else None
 is_io_rank = sim.extension.amr.ParallelDescriptor.MyProc() == 0
 
 clamp = StaircaseBiasCorrector(sim, correction_interval=1, electrodes=electrodes)
@@ -149,40 +171,40 @@ r_half = (np.arange(NR) + 0.5) * dr
 # Node volumes of the divergence (axis: r <= dr/2)
 volume = 2.0 * np.pi * r_node * dr * dz
 volume[0] = np.pi * dr * dr / 4.0 * dz
-# Current-mode face nodes: both neighbouring E_r edges in the insulator
-junction = int(np.count_nonzero(r_half < R_INSULATOR))
-on_face = np.arange(NR + 1) < junction
+# Free (not fixed, not wall) nodes; on the lower face these are the insulator nodes
+# that no conductor covers
+free = field("voltage_clamp_fixed") == 0.0
 
 
-def lower_face_charge(name):
-    """eps0 V [D_r(E_r) + E_z(dz/2)/dz] on the current-mode nodes of the lower face:
-    the face charge that the field update conserves (no flux below the face)."""
-    er, ez = field(name, "r")[:, 0], field(name, "z")[:, 0]
+def radial_divergence(er):
     div = np.zeros(NR + 1)
     div[0] = 4.0 * er[0] / dr
     div[1:NR] = (r_half[1:] * er[1:] - r_half[:-1] * er[:-1]) / (r_node[1:NR] * dr)
-    div += ez / dz
-    return float(np.sum((EPS0 * volume * div)[on_face]))
+    return div
+
+
+def lower_face_charge(name):
+    """eps0 V [D_r(E_r) + E_z(dz/2)/dz] on the free nodes of the lower face: the face
+    charge that the field update conserves (no flux below the face)."""
+    er, ez = field(name, "r")[:, 0], field(name, "z")[:, 0]
+    div = radial_divergence(er) + ez / dz
+    return float(np.sum((EPS0 * volume * div)[free[:, 0]]))
 
 
 def first_row_charge():
     """eps0 V div E on the free nodes of the first row above the lower face."""
     er, ez = field("Efield_fp", "r")[:, 1], field("Efield_fp", "z")
-    div = np.zeros(NR + 1)
-    div[0] = 4.0 * er[0] / dr
-    div[1:NR] = (r_half[1:] * er[1:] - r_half[:-1] * er[:-1]) / (r_node[1:NR] * dr)
-    div += (ez[:, 1] - ez[:, 0]) / dz
-    return float(np.sum((EPS0 * volume * div)[:NR]))  # the wall node is not free
+    div = radial_divergence(er) + (ez[:, 1] - ez[:, 0]) / dz
+    return float(np.sum((EPS0 * volume * div)[free[:, 1]]))
 
 
-# Electrode's outermost fixed node at mid height, for the line integral to the wall
-z_mid = NZ // 2
-k_out = int(np.nonzero(field("voltage_clamp_weight_0")[:, z_mid])[0].max())
+# Electrode's outermost fixed node on row Z_LINE, for the line integral to the wall
+k_out = int(np.nonzero(field("voltage_clamp_weight_0")[:, Z_LINE])[0].max())
 
 
 def line_voltage():
-    """phi(electrode) - phi(wall) as the line integral of E_r at mid height."""
-    return float(np.sum(field("Efield_fp", "r")[k_out:, z_mid]) * dr)
+    """phi(electrode) - phi(wall) as the line integral of E_r along row Z_LINE."""
+    return float(np.sum(field("Efield_fp", "r")[k_out:, Z_LINE]) * dr)
 
 
 installed = []
@@ -212,23 +234,50 @@ if args.face == "current":
     unit_face = abs(lower_face_charge("voltage_clamp_E_0"))
     checks["unit field: no face charge"] = unit_face < UNIT_FACE_RTOL * cap
 
-    # Electrons born between the represented and the geometric lower surface of the
-    # ring: their charge starts on the electrode's fixed nodes (see the clamp docs)
-    weights = field("voltage_clamp_weight_0")
-    rows = np.nonzero(weights[(NR // 2) - 2])[0]  # fixed rows at r = 14 mm
-    z_birth = 0.5 * (rows.min() * dz + Z1_RING)
-    r_birth = np.linspace(11.5e-3, 15.5e-3, N_PER_STEP)
-    injected = [0.0]
+    injected = {"all": 0.0, "face": 0.0}
 
-    def inject():
-        if warpx.getistep(0) < N_INJECT:
-            electrons.add_particles(
-                x=r_birth, y=np.zeros(N_PER_STEP), z=np.full(N_PER_STEP, z_birth),
-                ux=np.zeros(N_PER_STEP), uy=np.zeros(N_PER_STEP),
-                uz=np.full(N_PER_STEP, -V_ELECTRON),
-                w=np.full(N_PER_STEP, WEIGHT), unique_particles=False,
-            )  # fmt: skip
-            injected[0] -= Q_E * WEIGHT * N_PER_STEP
+    def add(species, r, z, uz, charge):
+        n = len(r)
+        species.add_particles(
+            x=r, y=np.zeros(n), z=np.full(n, z), ux=np.zeros(n), uy=np.zeros(n),
+            uz=np.full(n, uz), w=np.full(n, WEIGHT), unique_particles=False,
+        )  # fmt: skip
+        return charge * WEIGHT * n
+
+    if args.case == "exit":
+        # Electrons born between the represented and the geometric lower surface of the
+        # ring: their charge starts on the ring's fixed nodes (see the clamp docs)
+        rows = np.nonzero(field("voltage_clamp_weight_0")[(NR // 2) - 2])[0]
+        z_birth = 0.5 * (rows.min() * dz + Z1_RING)
+        r_birth = np.linspace(11.5e-3, 15.5e-3, N_PER_STEP)
+
+        def inject():
+            if warpx.getistep(0) < N_INJECT:
+                q = add(electrons, r_birth, z_birth, -V_ELECTRON, -Q_E)
+                injected["all"] += q
+                injected["face"] += q
+
+    else:
+        # Electron-proton pairs at rest create no net charge. The protons hardly move.
+        # land: below the ring; rod: beside the rod, and near the face, where the
+        # electrons are sent to the face fast enough that the rod does not catch them.
+        sources = (
+            [(np.linspace(11.5e-3, 15.5e-3, N_PER_STEP), 9.5e-3, 0.0, False)]
+            if args.case == "land"
+            else [
+                (np.linspace(7.5e-3, 9.5e-3, N_PER_STEP), 6.5e-3, 0.0, False),
+                (np.linspace(18.5e-3, 20.5e-3, N_PER_STEP), 2.5e-3, -V_TO_FACE, True),
+            ]
+        )
+
+        def inject():
+            if warpx.getistep(0) < N_INJECT:
+                for r_birth, z_birth, uz, to_face in sources:
+                    q = add(electrons, r_birth, z_birth, uz, -Q_E)
+                    add(protons, r_birth, z_birth, 0.0, Q_E)
+                    injected["all"] += q
+                    if to_face:
+                        injected["face"] += q
 
     trace = {"jump": 0.0, "landed at": None, "row initial": first_row_charge()}
 
@@ -246,30 +295,30 @@ if args.face == "current":
     install("afterstep", record)
     face_initial = lower_face_charge("Efield_fp")
     sim.step(N_STEPS)
-    landed = injected[0]
+    landed = injected["face"]  # charge landed on the face
+    scale = abs(injected["all"])
     face_final = lower_face_charge("Efield_fp")
     checks["all electrons landed"] = trace["landed at"] is not None
     # The clamp adds no charge to the insulator ...
-    checks["corrections leave the face charge"] = trace["jump"] < FACE_RTOL * abs(
-        landed
-    )
+    checks["corrections leave the face charge"] = trace["jump"] < FACE_RTOL * scale
     # ... and the landed charge stays there while the clamp keeps acting
-    checks["landed charge stays on the face"] = trace["landed at"] is not None and abs(
-        face_final - trace["landed at"]
-    ) < FACE_RTOL * abs(landed)
+    checks["landed charge stays on the face"] = (
+        trace["landed at"] is not None
+        and abs(face_final - trace["landed at"]) < FACE_RTOL * scale
+    )
     # Without trajectory cropping in Esirkepov deposition (#7435), the absorption step
-    # leaves a charge dipole between the face and the first row above it (here about
-    # 2 % of the landed charge, with or without the clamp). Together they hold exactly
-    # the landed charge: everything landed on the insulator.
-    row_initial = trace["row initial"]
-    face_and_row = face_final - face_initial + first_row_charge() - row_initial
-    checks["face + first row = landed charge"] = abs(
-        face_and_row - landed
-    ) < FACE_RTOL * abs(landed)
+    # leaves a charge dipole between the face and the first row above it (in the exit
+    # case about 2 % of the landed charge, with or without the clamp). Together they
+    # hold exactly the charge that landed on the face.
+    face_and_row = face_final - face_initial + first_row_charge() - trace["row initial"]
+    checks["face + first row = charge landed on the face"] = (
+        abs(face_and_row - landed) < FACE_RTOL * scale
+    )
     summary = (
-        f"current: C = {cap:.6e} F, unit face charge {unit_face:.2e} C, max face change "
-        f"per correction {trace['jump']:.2e} C, landed {landed:.6e} C, face "
-        f"{face_final - face_initial:.6e} C"
+        f"current {args.case}: C = {cap:.6e} F, unit face charge {unit_face:.2e} C, max "
+        f"face change per correction {trace['jump']:.2e} C, injected "
+        f"{injected['all']:.6e} C, to the face {landed:.6e} C, face "
+        f"{face_final - face_initial:.6e} C, face + first row {face_and_row:.6e} C"
     )
 else:
     plateau = []
