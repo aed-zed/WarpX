@@ -22,7 +22,11 @@ the electrode to the wall must hold the target.
   --case two:   the ring at -1 kV and a second ring at +300 V, in vacuum: the
                 capacitance matrix must be symmetric with a positive diagonal and
                 negative off-diagonal terms, and both rings must hold their targets.
---face voltage: an isolated ring at -1 kV (with --case two, also the second ring). The lower face has a voltage gap
+  --case reject: runs this script with setups the clamp must reject (a conductor on a
+                driven gap, a PEC plate inside a current-mode area, E and B both
+                prescribed) and checks that each aborts with its message.
+--face voltage: an isolated ring at -1 kV (with --case two, also the second ring;
+                with --gap hi, the gap is on the upper face). The lower face has a voltage gap
                 (E_r = K/r, ramped up) between an
                 inner PEC disc and the grounded PEC beyond; the upper face is PEC.
                 The electrode does not touch the gap. The gap's potential induces
@@ -32,6 +36,9 @@ the electrode to the wall must hold the target.
 
 import argparse
 import gc
+import os
+import re
+import subprocess
 import sys
 
 import numpy as np
@@ -41,9 +48,50 @@ from pywarpx.staircase_bias_corrector import StaircaseBiasCorrector
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--face", choices=["current", "voltage"], required=True)
-parser.add_argument("--case", choices=["exit", "land", "rod", "two"], default="exit")
+parser.add_argument(
+    "--case", choices=["exit", "land", "rod", "two", "reject"], default="exit"
+)
+parser.add_argument("--gap", choices=["lo", "hi"], default="lo")
+parser.add_argument("--reject", choices=["gap", "plate", "both"], default=None)
 parser.add_argument("--max-grid-size", type=int, default=1024)
 args = parser.parse_args()
+
+if args.case == "reject":
+    # Each setup must abort in the clamp setup with its message
+    expected = {
+        ("voltage", "rod", "gap"): "touches a voltage-mode pec_insulator z face",
+        ("current", "exit", "plate"): "a PEC plate inside the insulator area floats",
+        ("current", "exit", "both"): "not both or neither",
+    }
+    # Each run is its own MPI singleton: drop the launcher's variables (mpiexec runs this)
+    launcher = ("PMI", "PMIX", "HYDI", "HYDRA", "MPIR", "OMPI", "I_MPI")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(launcher)}
+    failures = []
+    for (face, case, reject), message in expected.items():
+        run = subprocess.run(
+            [
+                sys.executable,
+                __file__,
+                "--face",
+                face,
+                "--case",
+                case,
+                "--reject",
+                reject,
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=300,
+        )
+        # AMReX wraps error messages over lines that start with "#"
+        output = " ".join(re.sub(r"[#\s]+", " ", run.stdout + run.stderr).split())
+        aborted = run.returncode != 0 and message in output
+        print(f"reject {reject}: return code {run.returncode}, message found {aborted}")
+        if not aborted:
+            failures.append(reject)
+    assert not failures, failures
+    sys.exit(0)
 
 EPS0, Q_E, C_LIGHT = picmi.constants.ep0, picmi.constants.q_e, picmi.constants.c
 
@@ -82,7 +130,9 @@ CFL = 0.99
 N_STEPS = {"current": 700, "voltage": 2560}[args.face]
 N_INJECT = 40  # current: steps with injection
 N_PER_STEP = 8  # current: macroparticles injected per step and population
-WEIGHT = 2.0e3  # current: macroparticle weight
+# current: macroparticle weight; land: more, since the protons left below the ring
+# induce part of the collected charge back
+WEIGHT = 6.0e3 if args.case == "land" else 2.0e3
 V_ELECTRON = 1.0e7  # exit: drift speed toward the lower face [m/s]
 V_TO_FACE = 3.0e7  # rod: initial speed of the electrons sent to the face [m/s]
 N_RAMP = 600  # voltage: ramp length in steps
@@ -149,20 +199,25 @@ else:
     # sin^2 ramp of the gap field over about N_RAMP steps
     t_ramp = N_RAMP * CFL / (C_LIGHT * np.sqrt(1.0 / dr**2 + 1.0 / dz**2))
     ramp = f"if(t<{t_ramp}, sin({np.pi / 2}*t/{t_ramp})^2, 1)"
-    insulator_inputs["area_z_lo(x,y)"] = f"(x>{G_IN})*(x<{G_OUT})"
-    insulator_inputs["Ex_z_lo(x,y,t)"] = f"{K_GAP}/x*{ramp}"
-    insulator_inputs["Ey_z_lo(x,y,t)"] = "0"
+    insulator_inputs[f"area_z_{args.gap}(x,y)"] = f"(x>{G_IN})*(x<{G_OUT})"
+    insulator_inputs[f"Ex_z_{args.gap}(x,y,t)"] = f"{K_GAP}/x*{ramp}"
+    insulator_inputs[f"Ey_z_{args.gap}(x,y,t)"] = "0"
+if args.reject == "plate":  # a PEC plate r < G_IN inside the insulator area
+    for side in ("lo", "hi"):
+        insulator_inputs[f"area_z_{side}(x,y)"] = f"(x>{G_IN})*(x<{R_INSULATOR})"
+if args.reject == "both":
+    insulator_inputs["Ex_z_lo(x,y,t)"] = "0"
 sim.initialize_inputs()
-from pywarpx import boundary, particles  # noqa: E402  (after the PICMI inputs)
+from pywarpx import boundary  # noqa: E402  (after the PICMI inputs)
 from pywarpx import warpx as warpx_inputs  # noqa: E402
 
-boundary.field_lo = ["none", "pec_insulator"]
-boundary.field_hi = ["pec", "pec_insulator" if args.face == "current" else "pec"]
+insulating = {"lo": args.face == "current" or args.gap == "lo"}
+insulating["hi"] = args.face == "current" or args.gap == "hi"
+boundary.field_lo = ["none", "pec_insulator" if insulating["lo"] else "pec"]
+boundary.field_hi = ["pec", "pec_insulator" if insulating["hi"] else "pec"]
 insulator = warpx_inputs.get_bucket("insulator")
 for key, value in insulator_inputs.items():
     setattr(insulator, key, value)
-# Particles absorbed at the face deposit their current up to the face
-particles.crop_on_PEC_boundary = 1
 sim.initialize_warpx()
 
 warpx = sim.extension.warpx
@@ -172,6 +227,9 @@ is_io_rank = sim.extension.amr.ParallelDescriptor.MyProc() == 0
 
 clamp = StaircaseBiasCorrector(sim, correction_interval=1, electrodes=electrodes)
 clamp.setup_after_init()
+if args.reject is not None:  # the setup should have aborted
+    sim.finalize()
+    sys.exit(0)
 cap = clamp.capacitance[0, 0]
 
 
@@ -186,8 +244,8 @@ r_half = (np.arange(NR) + 0.5) * dr
 # Node volumes of the divergence (axis: r <= dr/2)
 volume = 2.0 * np.pi * r_node * dr * dz
 volume[0] = np.pi * dr * dr / 4.0 * dz
-# Free (not fixed, not wall) nodes; on the lower face these are the insulator nodes
-# that no conductor covers
+# Free (not fixed, not wall) nodes; on a face these are the insulator nodes that no
+# conductor covers
 free = field("voltage_clamp_fixed") == 0.0
 
 
@@ -198,12 +256,21 @@ def radial_divergence(er):
     return div
 
 
+def face_charges(name, side):
+    """eps0 V [D_r(E_r) +- E_z(first cell)/dz] on the free nodes of a face, node by node:
+    the face charge that the field update conserves (no flux beyond the face)."""
+    row, cell, sign = (0, 0, 1.0) if side == "lo" else (NZ, NZ - 1, -1.0)
+    er, ez = field(name, "r")[:, row], field(name, "z")[:, cell]
+    div = radial_divergence(er) + sign * ez / dz
+    return (EPS0 * volume * div)[free[:, row]]
+
+
 def lower_face_charge(name):
-    """eps0 V [D_r(E_r) + E_z(dz/2)/dz] on the free nodes of the lower face: the face
-    charge that the field update conserves (no flux below the face)."""
-    er, ez = field(name, "r")[:, 0], field(name, "z")[:, 0]
-    div = radial_divergence(er) + ez / dz
-    return float(np.sum((EPS0 * volume * div)[free[:, 0]]))
+    return float(np.sum(face_charges(name, "lo")))
+
+
+def all_face_charges(name):
+    return np.concatenate([face_charges(name, "lo"), face_charges(name, "hi")])
 
 
 def first_row_charge():
@@ -256,7 +323,8 @@ if args.face == "current" and two:
 elif args.face == "current":
     # The unit potential satisfies the field update's face equation: it puts no charge
     # on the insulator (a multigrid Neumann potential would put a few percent of C there)
-    unit_face = abs(lower_face_charge("voltage_clamp_E_0"))
+    # (largest node, both faces)
+    unit_face = float(np.max(np.abs(all_face_charges("voltage_clamp_E_0"))))
     checks["unit field: no face charge"] = unit_face < UNIT_FACE_RTOL * cap
 
     injected = {"all": 0.0, "face": 0.0}
@@ -305,27 +373,37 @@ elif args.face == "current":
                         injected["face"] += q
 
     trace = {"jump": 0.0, "landed at": None, "row initial": first_row_charge()}
+    trace["correction"] = 0.0  # sum of the clamp's voltage corrections of the electrode
 
     def correct():
-        """Correct, and record how much face charge the correction changes."""
-        before = lower_face_charge("Efield_fp")
+        """Correct, and record the correction and how much face charge it changes."""
+        before = all_face_charges("Efield_fp")
+        trace["correction"] += V_TARGET - clamp.measure_voltage_state()["voltage"][0]
         clamp.correct_after_step()
-        after = lower_face_charge("Efield_fp")
-        trace["jump"] = max(trace["jump"], abs(after - before))
+        after = all_face_charges("Efield_fp")
+        trace["jump"] = max(trace["jump"], float(np.max(np.abs(after - before))))
         if trace["landed at"] is None and electrons.number_of_particles(False) == 0:
-            trace["landed at"] = after
+            trace["landed at"] = float(np.sum(after[: np.count_nonzero(free[:, 0])]))
 
     install("beforestep", inject)
     install("afterstep", correct)
     install("afterstep", record)
     face_initial = lower_face_charge("Efield_fp")
+    upper_initial = float(np.sum(face_charges("Efield_fp", "hi")))
     sim.step(N_STEPS)
     landed = injected["face"]  # charge landed on the face
     scale = abs(injected["all"])
     face_final = lower_face_charge("Efield_fp")
     checks["all electrons landed"] = trace["landed at"] is not None
-    # The clamp adds no charge to the insulator ...
+    # The clamp adds no charge to the insulator (largest node, both faces) ...
     checks["corrections leave the face charge"] = trace["jump"] < FACE_RTOL * scale
+    upper_change = float(np.sum(face_charges("Efield_fp", "hi"))) - upper_initial
+    checks["upper face charge unchanged"] = abs(upper_change) < FACE_RTOL * scale
+    # The line-integral check is meaningful: without the clamp the electrode would have
+    # drifted by the sum of the corrections, many times the tolerance
+    checks["clamp corrected more than 10x the line tolerance"] = (
+        abs(trace["correction"]) > 10.0 * LINE_ATOL
+    )
     # ... and the landed charge stays there while the clamp keeps acting
     checks["landed charge stays on the face"] = (
         trace["landed at"] is not None
@@ -343,7 +421,8 @@ elif args.face == "current":
         f"current {args.case}: C = {cap:.6e} F, unit face charge {unit_face:.2e} C, max "
         f"face change per correction {trace['jump']:.2e} C, injected "
         f"{injected['all']:.6e} C, to the face {landed:.6e} C, face "
-        f"{face_final - face_initial:.6e} C, face + first row {face_and_row:.6e} C"
+        f"{face_final - face_initial:.6e} C, face + first row {face_and_row:.6e} C, "
+        f"upper face {upper_change:.2e} C, sum of corrections {trace['correction']:.4e} V"
     )
 else:
     plateau = []
