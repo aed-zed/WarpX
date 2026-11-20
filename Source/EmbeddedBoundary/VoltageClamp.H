@@ -50,7 +50,8 @@ namespace warpx::embedded_boundary::voltage_clamp
      *                     conductor k and 0 on all other fixed nodes
      * \param[in] rtol     relative tolerance of the MLMG solve
      * \param[in] max_iter maximum number of MLMG iterations
-     * \return final MLMG residual
+     * \return residual of the last MLMG solve (with current-mode pec_insulator faces,
+     *         of the last solve of the face iteration)
      */
     amrex::Real SolveUnitPotential (int k, std::string const& selector,
                                     amrex::Real rtol, int max_iter);
@@ -64,7 +65,8 @@ namespace warpx::embedded_boundary::voltage_clamp
      *
      * \param[in] rtol     relative tolerance of the MLMG solve
      * \param[in] max_iter maximum number of MLMG iterations
-     * \return final MLMG residual
+     * \return residual of the last MLMG solve (with current-mode pec_insulator faces,
+     *         of the last solve of the face iteration)
      */
     amrex::Real SolveGrounded (amrex::Real rtol, int max_iter);
 

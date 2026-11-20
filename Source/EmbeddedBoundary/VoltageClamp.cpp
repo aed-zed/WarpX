@@ -35,6 +35,8 @@
 #endif
 #include <AMReX_MLMG.H>
 
+#include <array>
+#include <limits>
 #include <memory>
 #include <queue>
 #include <string>
@@ -185,16 +187,19 @@ namespace
         return {ZFace::Current, junction};
     }
 
-    bool AnyCurrentFace (WarpX& warpx)
+    // Both z faces, {lower, upper}. Evaluated once per call of the functions below.
+    using Faces = std::array<FaceInfo, 2>;
+    Faces GetFaces (WarpX& warpx) { return {GetFaceInfo(warpx, 0), GetFaceInfo(warpx, 1)}; }
+
+    bool AnyCurrentFace (Faces const& faces)
     {
-        return GetFaceInfo(warpx, 0).type == ZFace::Current ||
-               GetFaceInfo(warpx, 1).type == ZFace::Current;
+        return faces[0].type == ZFace::Current || faces[1].type == ZFace::Current;
     }
 
     /* Whether free face nodes can hold charge that no particle carries (charge that
      * particles left there). The observer then pairs psi with the field charge on free
      * nodes instead of the deposited rho (see ChargeState). */
-    bool FieldPairing (WarpX& warpx) { return AnyCurrentFace(warpx); }
+    bool FieldPairing (Faces const& faces) { return AnyCurrentFace(faces); }
 
     // --- Geometry: everything specific to RZ is in the helpers below ---------
 
@@ -250,15 +255,13 @@ namespace
         }
     };
 
-    Staircase MakeStaircase (WarpX& warpx, amrex::MFIter const& mfi)
+    Staircase MakeStaircase (WarpX& warpx, amrex::MFIter const& mfi, Faces const& faces)
     {
         auto& update = warpx.GetEBUpdateEFlag_fp()[lev];
         amrex::Box const domain = amrex::surroundingNodes(warpx.Geom(lev).Domain());
-        auto const lo = GetFaceInfo(warpx, 0);
-        auto const hi = GetFaceInfo(warpx, 1);
         return {update[0]->const_array(mfi), update[2]->const_array(mfi),
                 domain.smallEnd(), domain.bigEnd(), warpx.Geom(lev).isPeriodic(1),
-                lo.type, hi.type, lo.junction, hi.junction};
+                faces[0].type, faces[1].type, faces[0].junction, faces[1].junction};
     }
 
     /* Node volumes: 2 pi r dr dz off axis. On the axis, pi dr^2 dz times an axis
@@ -342,6 +345,7 @@ namespace
     {
         auto& warpx = WarpX::GetInstance();
         CheckSupported(warpx);
+        auto const faces = GetFaces(warpx);
         auto const& geom = warpx.Geom(lev);
         auto const period = geom.periodicity();
         // The fixed-node test reads the Er and Ez update flags of neighbouring edges,
@@ -369,7 +373,7 @@ namespace
         auto const dlo = domain.smallEnd();
         auto const dhi = domain.bigEnd();
         for (amrex::MFIter mfi(phi); mfi.isValid(); ++mfi) {
-            auto const sc = MakeStaircase(warpx, mfi);
+            auto const sc = MakeStaircase(warpx, mfi, faces);
             auto const p = phi.array(mfi);
             auto const w = weight.array(mfi);
             auto const m = overset.array(mfi);
@@ -496,15 +500,15 @@ namespace
             return f == ZFace::Current ? amrex::LinOpBCType::Neumann
                                        : amrex::LinOpBCType::Dirichlet;
         };
-        ZFace const face_lo = GetFaceInfo(warpx, 0).type;
-        ZFace const face_hi = GetFaceInfo(warpx, 1).type;
+        ZFace const face_lo = faces[0].type;
+        ZFace const face_hi = faces[1].type;
         linop.setDomainBC(
             {amrex::LinOpBCType::Neumann, face_bc(WarpX::field_boundary_lo[1], face_lo)},
             {amrex::LinOpBCType::Dirichlet, face_bc(WarpX::field_boundary_hi[1], face_hi)});
         linop.setOversetMask(lev, overset);
         amrex::MLMG mlmg(linop);
         ablastr::fields::applyMLMGOptions(mlmg, mlmg_options);
-        amrex::Real const residual = mlmg.solve({&phi}, {&rhs}, rtol, 0._rt);
+        amrex::Real residual = mlmg.solve({&phi}, {&rhs}, rtol, 0._rt);
         phi.FillBoundary(period);
 
         // Current-mode faces: the multigrid Neumann condition mirrors phi about the face
@@ -516,17 +520,24 @@ namespace
         if (face_lo == ZFace::Current || face_hi == ZFace::Current) {
             amrex::MultiFab base(rhs.boxArray(), rhs.DistributionMap(), 1, 0);
             amrex::MultiFab::Copy(base, rhs, 0, 0, 1, 0);
+            amrex::MultiFab lphi(rhs.boxArray(), rhs.DistributionMap(), 1, 0);
             amrex::Real const dz2 = dx[1] * dx[1];
-            // phi is of order 1 in the unit solves; the grounded solve scales with its source
+            // phi is of order 1 in the unit solves; the grounded solve scales with its source.
+            // The tolerance stays above round-off, so a tiny rtol cannot stall the iteration.
             amrex::Real const scale = std::max(phi.norm0(), dz2 * base.norm0());
+            amrex::Real const eps = std::numeric_limits<amrex::Real>::epsilon();
+            amrex::Real const tol = std::max(rtol, 100._rt * eps) * scale;
             constexpr int max_face_iterations = 200;
             bool converged = false;
             for (int iter = 0; iter < max_face_iterations && !converged; ++iter) {
+                // L_N phi: the multigrid operator with its Neumann face equation
+                mlmg.apply({&lphi}, {&phi});
                 amrex::ReduceOps<amrex::ReduceOpMax> op;
                 amrex::ReduceData<amrex::Real> data(op);
                 for (amrex::MFIter mfi(rhs); mfi.isValid(); ++mfi) {
-                    auto const sc = MakeStaircase(warpx, mfi);
+                    auto const sc = MakeStaircase(warpx, mfi, faces);
                     auto const p = phi.const_array(mfi);
+                    auto const lp = lphi.const_array(mfi);
                     auto const m = overset.const_array(mfi);
                     auto const s = base.const_array(mfi);
                     auto const r = rhs.array(mfi);
@@ -534,25 +545,19 @@ namespace
                         -> amrex::GpuTuple<amrex::Real>
                     {
                         if (!m(i,j,kk) || !sc.current_face(i,j)) { return {0._rt}; }
-                        // Radial part of the Laplacian, as in MLEBNodeFDLaplacian (RZ)
-                        amrex::Real const rr = i * dx[0];
-                        amrex::Real const radial = (i == 0)
-                            ? 4._rt * (p(1,j,kk) - p(0,j,kk)) / (dx[0] * dx[0])
-                            : ((rr + 0.5_rt*dx[0]) * (p(i+1,j,kk) - p(i,j,kk)) +
-                               (rr - 0.5_rt*dx[0]) * (p(i-1,j,kk) - p(i,j,kk)))
-                              / (rr * dx[0] * dx[0]);
                         int const jin = (j == dlo[1]) ? j + 1 : j - 1;
-                        amrex::Real const axial = (p(i,jin,kk) - p(i,j,kk)) / dz2;
-                        r(i,j,kk) = s(i,j,kk) + axial;
-                        return {amrex::Math::abs(radial + axial - s(i,j,kk))};
+                        amrex::Real const half_axial = (p(i,jin,kk) - p(i,j,kk)) / dz2;
+                        r(i,j,kk) = s(i,j,kk) + half_axial;
+                        // Field update's face equation: L_N phi less half its axial term
+                        return {amrex::Math::abs(lp(i,j,kk) - half_axial - s(i,j,kk))};
                     });
                 }
                 amrex::Real face_residual = amrex::get<0>(data.value());
                 amrex::ParallelDescriptor::ReduceRealMax(face_residual);
-                converged = face_residual * dz2 <= rtol * scale;
+                converged = face_residual * dz2 <= tol;
                 if (!converged) {
                     // Absolute target: a tenth of the face tolerance, in units of the operator
-                    mlmg.solve({&phi}, {&rhs}, rtol, 0.1_rt * rtol * scale / dz2);
+                    residual = mlmg.solve({&phi}, {&rhs}, rtol, 0.1_rt * tol / dz2);
                     phi.FillBoundary(period);
                 }
             }
@@ -626,8 +631,9 @@ namespace
         };
         for (int row = 0; row < nrow; ++row) { visit(nr-1, row); }
         if (!z_periodic) {
-            int const junction_lo = GetFaceInfo(warpx, 0).junction;
-            int const junction_hi = GetFaceInfo(warpx, 1).junction;
+            auto const faces = GetFaces(warpx);
+            int const junction_lo = faces[0].junction;
+            int const junction_hi = faces[1].junction;
             for (int i = 0; i < nr; ++i) {
                 if (i >= junction_lo) { visit(i, 0); }
                 if (i >= junction_hi) { visit(i, nrow-1); }
@@ -660,6 +666,27 @@ namespace
         amrex::Gpu::streamSynchronize();
     }
 
+    // Indicator of the fixed and wall nodes (psi imposed), for the observer; filled once
+    amrex::MultiFab const& FixedNodes (WarpX& warpx)
+    {
+        if (!warpx.m_fields.has(fixed_nodes, lev)) {
+            AllocNodal(warpx, fixed_nodes);
+            amrex::MultiFab& mask = *warpx.m_fields.get(fixed_nodes, lev);
+            auto const faces = GetFaces(warpx);
+            warpx.GetEBUpdateEFlag_fp()[lev][0]->FillBoundary(warpx.Geom(lev).periodicity());
+            warpx.GetEBUpdateEFlag_fp()[lev][2]->FillBoundary(warpx.Geom(lev).periodicity());
+            for (amrex::MFIter mfi(mask); mfi.isValid(); ++mfi) {
+                auto const sc = MakeStaircase(warpx, mfi, faces);
+                auto const f = mask.array(mfi);
+                amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k)
+                {
+                    f(i,j,k) = (sc.fixed(i,j,k) || sc.wall(i,j)) ? 1._rt : 0._rt;
+                });
+            }
+        }
+        return *warpx.m_fields.get(fixed_nodes, lev);
+    }
+
     // The wall-connected ground, searched once and kept
     amrex::MultiFab const& WallReference (WarpX& warpx)
     {
@@ -681,14 +708,15 @@ namespace
         auto div_e = std::make_unique<amrex::MultiFab>(
             NodalBoxArray(warpx), warpx.DistributionMap(lev), 1, 0);
         warpx.get_pointer_fdtd_solver_fp(lev)->ComputeDivE(efield, *div_e);
+        auto const faces = GetFaces(warpx);
         // Current-mode faces: the guard E_z holds the even mirror (PEC_Insulator.cpp), but
         // the field update has no flux through z = -dz/2 there (see ZFace). Remove the
         // guard term from the face divergence, so that eps0 V div E is the charge the field
         // update conserves on the face.
-        if (AnyCurrentFace(warpx)) {
+        if (AnyCurrentFace(faces)) {
             amrex::Real const inv_dz = 1._rt / warpx.Geom(lev).CellSize(1);
             for (amrex::MFIter mfi(*div_e); mfi.isValid(); ++mfi) {
-                auto const sc = MakeStaircase(warpx, mfi);
+                auto const sc = MakeStaircase(warpx, mfi, faces);
                 auto const d = div_e->array(mfi);
                 auto const ez = efield[2]->const_array(mfi);
                 amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k)
@@ -748,6 +776,7 @@ std::vector<amrex::Real> GroundOverlap (std::string const& selector)
 {
     auto& warpx = WarpX::GetInstance();
     CheckSupported(warpx);
+    auto const faces = GetFaces(warpx);
     auto const& geom = warpx.Geom(lev);
     auto const period = geom.periodicity();
     // The fixed-node test reads update flags in the guard cells (see SolveStaircase)
@@ -762,7 +791,7 @@ std::vector<amrex::Real> GroundOverlap (std::string const& selector)
     // Indicators of the selected fixed nodes and of those among them on the ground
     amrex::MultiFab count(reference.boxArray(), reference.DistributionMap(), 2, 0);
     for (amrex::MFIter mfi(count); mfi.isValid(); ++mfi) {
-        auto const sc = MakeStaircase(warpx, mfi);
+        auto const sc = MakeStaircase(warpx, mfi, faces);
         auto const ref = reference.const_array(mfi);
         auto const c = count.array(mfi);
         amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k)
@@ -788,21 +817,16 @@ void CheckSelection (int n)
     }
     // ... or to the wall-connected ground, which has no unit solve
     auto const& reference = WallReference(warpx);
-    // Also record all fixed and wall nodes, for the observer
-    AllocNodal(warpx, fixed_nodes);
-    amrex::MultiFab& fixed_mask = *warpx.m_fields.get(fixed_nodes, lev);
+    auto const faces = GetFaces(warpx);
     amrex::iMultiFab invalid(sum.boxArray(), sum.DistributionMap(), 1, 0);
     for (amrex::MFIter mfi(sum); mfi.isValid(); ++mfi) {
-        auto const sc = MakeStaircase(warpx, mfi);
+        auto const sc = MakeStaircase(warpx, mfi, faces);
         auto const s = sum.const_array(mfi);
         auto const ref = reference.const_array(mfi);
-        auto const f = fixed_mask.array(mfi);
         auto const bad = invalid.array(mfi);
         amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k)
         {
-            bool const fixed = sc.fixed(i,j,k);
-            f(i,j,k) = (fixed || sc.wall(i,j)) ? 1._rt : 0._rt;
-            bad(i,j,k) = fixed && s(i,j,k) != 1._rt - ref(i,j,k);
+            bad(i,j,k) = sc.fixed(i,j,k) && s(i,j,k) != 1._rt - ref(i,j,k);
         });
     }
     WARPX_ALWAYS_ASSERT_WITH_MESSAGE(invalid.max(0) == 0,
@@ -823,79 +847,109 @@ namespace
         return charge;
     }
 
-    /* Charge that the potential of the voltage-mode z faces induces on the conductors at
-     * 0 V. By reciprocity it is sum_b phi_b q_kb over the face nodes b: q_kb = +-eps0 A_b
-     * E_z,k(first cell) is the charge that unit field k puts on face node b (psi_k = 0 on
-     * the face), and phi_b the potential of the face, the integral of the live E_r along
-     * the face from the grounded outer wall. Zero without voltage-mode faces. */
-    std::vector<amrex::Real> DriveCharge (WarpX& warpx, int n)
+    std::string DriveWeightName (int k)
+    {
+        return "voltage_clamp_drive_weight_" + std::to_string(k);
+    }
+
+    // w_k(i) = dr sum_{b <= i} q_kb on the face rows of the voltage-mode faces (see DriveCharge)
+    void FillDriveWeight (WarpX& warpx, Faces const& faces, int k, amrex::MultiFab& w)
     {
         using ablastr::fields::Direction;
-        std::vector<amrex::Real> charge(n, 0._rt);
         auto const& geom = warpx.Geom(lev);
         int const nr = geom.Domain().length(0);
         amrex::Real const dr = geom.CellSize(0);
         amrex::Real const dz = geom.CellSize(1);
         amrex::Box const domain = amrex::surroundingNodes(geom.Domain());
-        auto const& er = *warpx.m_fields.get(warpx::fields::FieldType::Efield_fp,
-                                             Direction{0}, lev);
         auto const& measure = *warpx.m_fields.get(gauss_measure, lev);
-        // The valid region restricted to the face node row jf, or an empty box
-        auto const face_row = [] (amrex::Box b, int jf) {
+        auto const& ez = *warpx.m_fields.get(EFieldName(k), Direction{2}, lev);
+        // The valid region restricted to the node row jf, or an empty box
+        auto const row_of = [] (amrex::Box b, int jf) {
             if (b.smallEnd(1) > jf || b.bigEnd(1) < jf) { return amrex::Box(); }
             b.setSmall(1, jf);
             b.setBig(1, jf);
             return b;
         };
         for (int side = 0; side < 2; ++side) {
-            if (GetFaceInfo(warpx, side).type != ZFace::Voltage) { continue; }
+            if (faces[side].type != ZFace::Voltage) { continue; }
             int const jf = (side == 0) ? domain.smallEnd(1) : domain.bigEnd(1);
             int const jc = (side == 0) ? jf : jf - 1; // first cell inside the domain
             amrex::Real const sign = (side == 0) ? 1._rt : -1._rt; // into the domain
-
-            // E_r on the face row (each edge is in one box), gathered on every rank
-            amrex::Gpu::DeviceVector<amrex::Real> device_er(nr, 0._rt);
-            amrex::Real* const row = device_er.data();
-            for (amrex::MFIter mfi(er); mfi.isValid(); ++mfi) {
-                amrex::Box const b = face_row(mfi.validbox(), jf);
+            // q_kb on the face nodes (measure: A_b dz, each node once), gathered on every rank
+            amrex::Gpu::DeviceVector<amrex::Real> device_q(nr + 1, 0._rt);
+            amrex::Real* const q = device_q.data();
+            for (amrex::MFIter mfi(measure); mfi.isValid(); ++mfi) {
+                amrex::Box const b = row_of(mfi.validbox(), jf);
                 if (!b.ok()) { continue; }
-                auto const e = er.const_array(mfi);
-                amrex::ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int k)
+                auto const m = measure.const_array(mfi);
+                auto const e = ez.const_array(mfi);
+                amrex::ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int kk)
                 {
-                    row[i] = e(i,j,k);
+                    q[i] += sign * PhysConst::epsilon_0 * m(i,j,kk) / dz * e(i,jc,kk);
                 });
             }
-            std::vector<amrex::Real> host_er(nr);
-            amrex::Gpu::copy(amrex::Gpu::deviceToHost, device_er.begin(), device_er.end(),
-                             host_er.begin());
-            amrex::ParallelDescriptor::ReduceRealSum(host_er.data(), nr);
-            // phi_i = sum_{i' >= i} E_r(i') dr, zero at the outer wall
-            std::vector<amrex::Real> host_phi(nr + 1, 0._rt);
-            for (int i = nr - 1; i >= 0; --i) { host_phi[i] = host_phi[i+1] + host_er[i] * dr; }
-            amrex::Gpu::DeviceVector<amrex::Real> device_phi(nr + 1);
-            amrex::Gpu::copy(amrex::Gpu::hostToDevice, host_phi.begin(), host_phi.end(),
-                             device_phi.begin());
-            amrex::Real const* const phi_face = device_phi.data();
-
-            for (int k = 0; k < n; ++k) {
-                auto const& ez = *warpx.m_fields.get(EFieldName(k), Direction{2}, lev);
-                amrex::ReduceOps<amrex::ReduceOpSum> op;
-                amrex::ReduceData<amrex::Real> data(op);
-                for (amrex::MFIter mfi(measure); mfi.isValid(); ++mfi) {
-                    amrex::Box const b = face_row(mfi.validbox(), jf);
-                    if (!b.ok()) { continue; }
-                    auto const m = measure.const_array(mfi); // A_b dz, each node once
-                    auto const e = ez.const_array(mfi);
-                    op.eval(b, data, [=] AMREX_GPU_DEVICE (int i, int, int kk)
-                        -> amrex::GpuTuple<amrex::Real>
-                    {
-                        return {phi_face[i] * m(i,jf,kk) / dz * e(i,jc,kk)};
-                    });
-                }
-                amrex::Real sum = amrex::get<0>(data.value());
-                amrex::ParallelDescriptor::ReduceRealSum(sum);
-                charge[k] += sign * PhysConst::epsilon_0 * sum;
+            std::vector<amrex::Real> host(nr + 1);
+            amrex::Gpu::copy(amrex::Gpu::deviceToHost, device_q.begin(), device_q.end(),
+                             host.begin());
+            amrex::ParallelDescriptor::ReduceRealSum(host.data(), nr + 1);
+            // Prefix sum: host[i] = dr sum_{b <= i} q_kb on edge i
+            amrex::Real sum = 0._rt;
+            for (int i = 0; i < nr; ++i) { sum += host[i]; host[i] = dr * sum; }
+            amrex::Gpu::DeviceVector<amrex::Real> device_w(nr);
+            amrex::Gpu::copy(amrex::Gpu::hostToDevice, host.begin(), host.begin() + nr,
+                             device_w.begin());
+            amrex::Real const* const wv = device_w.data();
+            for (amrex::MFIter mfi(w); mfi.isValid(); ++mfi) {
+                amrex::Box const b = row_of(mfi.validbox(), jf);
+                if (!b.ok()) { continue; }
+                auto const wa = w.array(mfi);
+                amrex::ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int kk)
+                {
+                    wa(i,j,kk) = wv[i];
+                });
             }
+            amrex::Gpu::streamSynchronize();
+        }
+    }
+
+    /* Charge that the potential of the voltage-mode z faces induces on the conductors at
+     * 0 V. By reciprocity it is sum_b phi_b q_kb over the face nodes b: q_kb = +-eps0 A_b
+     * E_z,k(first cell) is the charge that unit field k puts on face node b (psi_k = 0 on
+     * the face), and phi_b = sum_{i >= b} E_r(i) dr the potential of the face, from the
+     * live E_r and zero at the outer wall. Summed by parts, this is sum_i w_k(i) E_r(i) on
+     * the face edges, with w_k(i) = dr sum_{b <= i} q_kb, kept in a field with the layout
+     * of E_r (zero off the face rows) and filled once. Zero without voltage-mode faces. */
+    std::vector<amrex::Real> DriveCharge (WarpX& warpx, int n)
+    {
+        using ablastr::fields::Direction;
+        std::vector<amrex::Real> charge(n, 0._rt);
+        auto const faces = GetFaces(warpx);
+        if (faces[0].type != ZFace::Voltage && faces[1].type != ZFace::Voltage) {
+            return charge;
+        }
+        auto const& er = *warpx.m_fields.get(warpx::fields::FieldType::Efield_fp,
+                                             Direction{0}, lev);
+        for (int k = 0; k < n; ++k) {
+            if (!warpx.m_fields.has(DriveWeightName(k), lev)) {
+                warpx.m_fields.alloc_init(DriveWeightName(k), lev, er.boxArray(),
+                                          er.DistributionMap(), 1, amrex::IntVect(0), 0._rt);
+                FillDriveWeight(warpx, faces, k, *warpx.m_fields.get(DriveWeightName(k), lev));
+            }
+            auto const& w = *warpx.m_fields.get(DriveWeightName(k), lev);
+            // Only the face rows are nonzero, and each face edge is in one box
+            amrex::ReduceOps<amrex::ReduceOpSum> op;
+            amrex::ReduceData<amrex::Real> data(op);
+            for (amrex::MFIter mfi(w); mfi.isValid(); ++mfi) {
+                auto const wa = w.const_array(mfi);
+                auto const e = er.const_array(mfi);
+                op.eval(mfi.validbox(), data, [=] AMREX_GPU_DEVICE (int i, int j, int kk)
+                    -> amrex::GpuTuple<amrex::Real>
+                {
+                    return {wa(i,j,kk) * e(i,j,kk)};
+                });
+            }
+            charge[k] = amrex::get<0>(data.value());
+            amrex::ParallelDescriptor::ReduceRealSum(charge[k]);
         }
         return charge;
     }
@@ -916,8 +970,8 @@ std::vector<std::vector<amrex::Real>> CapacitanceMatrix (int n)
     // free nodes, which for a unit field is its (tiny) solve residual. Calibrating with
     // the same observer keeps the readback exact for any sum of unit fields.
     auto& warpx = WarpX::GetInstance();
-    bool const field_pairing = FieldPairing(warpx);
-    auto const& fixed = *warpx.m_fields.get(fixed_nodes, lev);
+    bool const field_pairing = FieldPairing(GetFaces(warpx));
+    auto const& fixed = FixedNodes(warpx);
     auto const& gauss = *warpx.m_fields.get(gauss_measure, lev);
     std::vector<std::vector<amrex::Real>> cap(n, std::vector<amrex::Real>(n));
     for (int k = 0; k < n; ++k) {
@@ -949,7 +1003,7 @@ ChargeState (int n)
     // between Q and C; for charge on free axis nodes it is not verified, so such
     // charge aborts the run (workaround: boundary.verboncoeur_axis_correction = 0).
     if (warpx.RZAxisVolumeFactor() != 0.25_rt) {
-        auto const& fixed = *warpx.m_fields.get(fixed_nodes, lev);
+        auto const& fixed = FixedNodes(warpx);
         amrex::ReduceOps<amrex::ReduceOpMax> op;
         amrex::ReduceData<amrex::Real> data(op);
         for (amrex::MFIter mfi(fixed); mfi.isValid(); ++mfi) {
@@ -975,8 +1029,8 @@ ChargeState (int n)
     // particle carries. The grounded charge then pairs psi with the field's charge
     // eps0 V div E on free nodes, and with the deposited rho on fixed nodes.
     // Voltage-mode faces add the charge their potential induces (DriveCharge).
-    bool const field_pairing = FieldPairing(warpx);
-    auto const& fixed = *warpx.m_fields.get(fixed_nodes, lev);
+    bool const field_pairing = FieldPairing(GetFaces(warpx));
+    auto const& fixed = FixedNodes(warpx);
     auto const& gauss = *warpx.m_fields.get(gauss_measure, lev);
     auto grounded = DriveCharge(warpx, n);
     for (int k = 0; k < n; ++k) {
