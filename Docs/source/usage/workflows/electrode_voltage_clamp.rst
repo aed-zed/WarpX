@@ -181,6 +181,7 @@ What it does not do
   Next to the metal the staircase leaves field-free strips in vacuum, so near-surface forces carry the usual staircase error.
   The reported voltage is the clamp's own charge coordinate; an independent check is the line integral of :math:`E_r` between the conductors.
   That check holds only where the line integral is path-independent: a changing magnetic flux through the area between two paths (:math:`\oint \boldsymbol{E} \cdot d\boldsymbol{l} = -d\Phi_B/dt`) makes them differ, so compare along a path where this flux is negligible.
+* With ``pec_insulator`` faces, ``voltage_clamp_solve_grounded`` does not see the charge on current-mode faces or the drive of voltage-mode faces, so it is no independent check there.
 * There is no circuit model (no floating electrodes, no series impedance) and no dielectric charging.
 * It is available from Python only; there is no inputs-file interface yet.
 * Cartesian geometries (XZ, 3D), PMC and open (absorbing) field boundaries are not supported yet.
@@ -195,7 +196,7 @@ Examples and tests
 * a coaxial space-charge diode with and without the clamp, including the grounded-charge cross-check;
 * the diode on two ranks with the anode joined to the outer wall, listed with potential 0 (and rejected at 100 V);
 * checkpoint/restart during emission;
-* ``pec_insulator`` faces (two ranks), current mode: electrons leaving a clamped ring and landing on the face, electrons landing on the ring, and a clamped rod standing on the face with electrons landing on the rod and on the face; voltage mode: a ramped voltage gap next to a clamped ring.
+* ``pec_insulator`` faces (two ranks), current mode: electrons leaving a clamped ring and landing on the face, electrons landing on the ring, and a clamped rod standing on the face with electrons landing on the rod and on the face; voltage mode: a ramped voltage gap next to a clamped ring; two clamped rings in both modes (symmetric capacitance matrix).
 
 .. bibliography::
     :keyprefix: vc-

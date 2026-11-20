@@ -19,7 +19,10 @@ the electrode to the wall must hold the target.
   --case rod:   a rod at +1 kV that stands on the lower face (it ends on the
                 insulator). Pairs are created beside it, whose electrons land on the
                 rod, and near the face, whose electrons land on the face.
---face voltage: an isolated ring at -1 kV. The lower face has a voltage gap
+  --case two:   the ring at -1 kV and a second ring at +300 V, in vacuum: the
+                capacitance matrix must be symmetric with a positive diagonal and
+                negative off-diagonal terms, and both rings must hold their targets.
+--face voltage: an isolated ring at -1 kV (with --case two, also the second ring). The lower face has a voltage gap
                 (E_r = K/r, ramped up) between an
                 inner PEC disc and the grounded PEC beyond; the upper face is PEC.
                 The electrode does not touch the gap. The gap's potential induces
@@ -38,7 +41,7 @@ from pywarpx.staircase_bias_corrector import StaircaseBiasCorrector
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--face", choices=["current", "voltage"], required=True)
-parser.add_argument("--case", choices=["exit", "land", "rod"], default="exit")
+parser.add_argument("--case", choices=["exit", "land", "rod", "two"], default="exit")
 parser.add_argument("--max-grid-size", type=int, default=1024)
 args = parser.parse_args()
 
@@ -60,6 +63,15 @@ else:
     Z_LINE = NZ // 2
 V_TARGET = 1000.0 if args.case in ("land", "rod") else -1000.0
 electrodes = [{"name": "electrode", "region": "1", "potential": V_TARGET}]
+two = args.case == "two"
+if two:
+    # A second ring, outside the first and clear of the faces and the voltage gap
+    ring_b = f"min(min({rr}-19.5e-3,22.5e-3-{rr}),min(z-6.5e-3,14.5e-3-z))"
+    conductor = f"max({conductor},{ring_b})"
+    electrodes = [
+        {"name": "ring", "region": "(x<0.018)", "potential": V_TARGET},
+        {"name": "ring_b", "region": "(x>0.018)", "potential": 300.0},
+    ]
 # Current mode: insulator from the axis to R_INSULATOR on both faces, PEC beyond
 R_INSULATOR = 24.5e-3
 # Voltage mode: gap G_IN < r < G_OUT on the lower face, E_r = K/r ramped over T_RAMP
@@ -74,12 +86,13 @@ WEIGHT = 2.0e3  # current: macroparticle weight
 V_ELECTRON = 1.0e7  # exit: drift speed toward the lower face [m/s]
 V_TO_FACE = 3.0e7  # rod: initial speed of the electrons sent to the face [m/s]
 N_RAMP = 300  # voltage: ramp length in steps
+N_TWO = 200  # current, two rings: steps in vacuum
 
 # --- Tolerances
 TARGET_ATOL = 1.0e-9  # observer reading after each correction, 1 kV scale
 FACE_RTOL = 1.0e-10  # face charge changes, relative to the landed charge
 UNIT_FACE_RTOL = 1.0e-10  # face charge of the unit field, relative to C
-CAP_RTOL = 1.0e-12
+CAP_RTOL = 1.0e-12  # C symmetry, relative to the largest entry (seen: 2e-14)
 # Line integral of E_r against the target. The clamp holds its charge coordinate
 # exactly; the line integral also sees the induction field (dPhi_B/dt), which does not
 # decay in this lossless box. Current mode: the electrons leave about 1e-4 V of it.
@@ -219,16 +232,26 @@ worst = {"observer - target": 0.0}
 
 
 def record():
-    voltage = clamp.measure_voltage_state()["voltage"][0]
+    voltage = clamp.measure_voltage_state()["voltage"]
     worst["observer - target"] = max(
-        worst["observer - target"], abs(voltage - V_TARGET)
+        worst["observer - target"], float(np.max(np.abs(voltage - clamp.v_target)))
     )
 
 
 checks = {"C positive": cap > 0.0}
+if two:
+    C = clamp.capacitance
+    checks["C symmetric"] = abs(C[0, 1] - C[1, 0]) < CAP_RTOL * np.max(np.abs(C))
+    checks["C diagonal positive"] = bool(np.all(np.diag(C) > 0.0))
+    checks["C off-diagonal negative"] = C[0, 1] < 0.0 and C[1, 0] < 0.0
 clamp.initialize_vacuum_bias()
 
-if args.face == "current":
+if args.face == "current" and two:
+    install("afterstep", clamp.correct_after_step)
+    install("afterstep", record)
+    sim.step(N_TWO)
+    summary = f"current two: C = {clamp.capacitance.tolist()} F"
+elif args.face == "current":
     # The unit potential satisfies the field update's face equation: it puts no charge
     # on the insulator (a multigrid Neumann potential would put a few percent of C there)
     unit_face = abs(lower_face_charge("voltage_clamp_E_0"))
@@ -337,10 +360,10 @@ else:
     )
     # Charge the gap induces on the grounded electrode, and the voltage error it would
     # cause if it were left out
-    drive_error = abs(warpx.voltage_clamp_charge_state(1)[1][0]) / cap
+    drive_error = abs(clamp.measure_voltage_state()["grounded_charge"][0]) / cap
     checks["drive term matters"] = drive_error > 100.0 * LINE_MEAN_ATOL
     summary = (
-        f"voltage: C = {cap:.6e} F, drive term {drive_error:.4e} V, plateau mean of the "
+        f"voltage{' two' if two else ''}: C = {clamp.capacitance.tolist()} F, drive term {drive_error:.4e} V, plateau mean of the "
         f"line integral {line_mean:.6f} V"
     )
 

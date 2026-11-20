@@ -76,10 +76,28 @@ if(WarpX_EB)
         OFF  # dependency
     )
     add_warpx_test(
+        test_rz_voltage_clamp_insulator_current_two_picmi  # name
+        RZ  # dims
+        2  # nprocs
+        "inputs_test_rz_voltage_clamp_insulator_picmi.py --face current --case two --max-grid-size 16"  # inputs
+        OFF  # analysis
+        OFF  # checksum
+        OFF  # dependency
+    )
+    add_warpx_test(
         test_rz_voltage_clamp_insulator_voltage_picmi  # name
         RZ  # dims
         2  # nprocs
         "inputs_test_rz_voltage_clamp_insulator_picmi.py --face voltage --max-grid-size 16"  # inputs
+        OFF  # analysis
+        OFF  # checksum
+        OFF  # dependency
+    )
+    add_warpx_test(
+        test_rz_voltage_clamp_insulator_voltage_two_picmi  # name
+        RZ  # dims
+        2  # nprocs
+        "inputs_test_rz_voltage_clamp_insulator_picmi.py --face voltage --case two --max-grid-size 16"  # inputs
         OFF  # analysis
         OFF  # checksum
         OFF  # dependency
