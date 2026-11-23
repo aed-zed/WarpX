@@ -4388,11 +4388,60 @@ Maxwell solver: kinetic-fluid hybrid
     :default: ``true``
     :optional:
 
-    If :pp:param:`algo.maxwell_solver` is set to ``hybrid`` and :pp:param:`hybrid_pic_model.add_external_fields` is ``true``, this controls how external electric fields from external potentials (e.g., external scalar potential :math:`\phi_{ext}` such that :math:`\mathbf{E}_{ext} = -\nabla \phi_{ext}`) are applied in the Hybrid-PIC solver.
+    If :pp:param:`algo.maxwell_solver` is set to ``hybrid`` and an external scalar potential is given (see :pp:param:`external_scalar_potential.fields`), this controls where its electric field :math:`\mathbf{E}_\phi = -\nabla \phi_{ext}` is applied.
+    When ``true``, :math:`\mathbf{E}_\phi` is removed from the Ohm's-law field on edges where :math:`\rho \geq \rho_{floor}` and added back after the field update, so the total field there is the Ohm's-law field only, while edges below the density floor see :math:`\mathbf{E}_{Ohm} + \mathbf{E}_\phi`.
+    This is a hard switch per edge: Faraday's law sees the field with :math:`\mathbf{E}_\phi` removed on dense edges, so a density-floor boundary that crosses equipotential surfaces acts as a source of magnetic field.
+    When ``false``, :math:`\mathbf{E}_\phi` is superposed on all edges, :math:`\mathbf{E} = \mathbf{E}_{Ohm} + \mathbf{E}_\phi`, and it then acts on the ions as an external force that the plasma does not shield.
+    This flag does not affect the inductive field :math:`-\partial_t \mathbf{A}_{ext}` of the external vector potential (see :pp:param:`hybrid_pic_model.add_external_fields`), which is always removed on edges at or above the density floor.
 
-    When ``true`` (default), external E-fields are subtracted in Ohm's law solver for dense plasma regions (where :math:`\rho \geq \rho_{floor}`) and added back during field evolution. This enforces perfect shielding of external E-fields in dense plasma, preventing :math:`\mathbf{E} \times \mathbf{B}` drift from external fields. This is appropriate for self-consistent field evolution.
+.. pp:param:: hybrid_pic_model.use_boundary_potentials_for_external_field
+    :type: ``bool``
+    :default: ``false``
+    :optional:
 
-    When ``false``, external E-fields are not subtracted in Ohm's law and are applied everywhere. This allows ions to see :math:`\mathbf{E}_{total} = \mathbf{E}_{Ohm} + \mathbf{E}_{ext}` regardless of plasma density, enabling :math:`\mathbf{E} \times \mathbf{B}` drift from external fields (e.g., from electrode potentials). Note: This violates energy conservation as external fields continuously supply energy, representing a physical system with an external power source.
+    If :pp:param:`algo.maxwell_solver` is set to ``hybrid`` and :pp:param:`external_scalar_potential.fields` is empty, setting this to ``true`` creates one external scalar potential entry that uses the boundary potentials, as :pp:param:`external_scalar_potential.<field_name>.use_boundary_potentials` does.
+
+.. pp:param:: external_scalar_potential.fields
+    :type: list of ``str``
+    :optional:
+
+    If :pp:param:`algo.maxwell_solver` is set to ``hybrid``, this adds a list of names of external scalar potentials :math:`\phi_{ext}` whose electric field :math:`-\nabla \phi_{ext}` is added to the hybrid solver.
+    Each field is the solution of a vacuum Laplace problem (zero charge density), computed with the electrostatic Poisson solver and the Poisson boundary conditions of the domain; it does not include the response of the plasma.
+    The field is set to zero on edges covered by embedded boundaries.
+    Its application in dense plasma is controlled by :pp:param:`hybrid_pic_model.shield_external_E_field_in_dense_plasma`.
+
+.. pp:param:: external_scalar_potential.<field_name>.use_boundary_potentials
+    :type: ``bool``
+    :default: ``false``
+    :optional:
+
+    If ``true``, this entry is the vacuum field of the domain boundary potentials ``boundary.potential_*`` and of the embedded-boundary potential ``warpx.eb_potential(x,y,z,t)``.
+    An entry named ``boundary_potentials`` also selects this option.
+    If any of these potentials depends on ``t``, the field is solved again whenever the hybrid solver requests it at a new time; otherwise it is solved once.
+
+.. pp:param:: external_scalar_potential.<field_name>.Phi_external_grid_function(x,y,z)
+    :type: ``str``
+    :default: ``"0.0"``
+    :optional:
+
+    If :pp:param:`external_scalar_potential.<field_name>.use_boundary_potentials` is ``false``, this sets the potential (in V) on the embedded boundary for the vacuum Laplace solve of this entry, in place of ``warpx.eb_potential``, which is restored afterwards.
+    The domain boundary potentials ``boundary.potential_*`` also enter this solve.
+    The expression must not depend on ``t``; use :pp:param:`external_scalar_potential.<field_name>.Phi_time_external_function(t)` for time dependence.
+
+.. pp:param:: external_scalar_potential.<field_name>.Phi_time_external_function(t)
+    :type: ``str``
+    :default: ``"1.0"``
+    :optional:
+
+    This sets a dimensionless factor, a function of time, that multiplies the field of this entry.
+    It applies to all types of entries.
+
+.. pp:param:: external_scalar_potential.<field_name>.read_from_file
+    :type: ``bool``
+    :default: ``false``
+    :optional:
+
+    Loading the potential from a file is not implemented yet; setting this to ``true`` aborts the run.
 
 .. pp:param:: external_vector_potential.do_diva_cleaning
     :type: ``bool``

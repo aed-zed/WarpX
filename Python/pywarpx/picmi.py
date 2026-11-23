@@ -2310,11 +2310,11 @@ class HybridPICSolver(
     )
     Phi_external: dict[str, dict[str, float | str | bool]] | None = Field(
         default=None,
-        description="Function of space and time specifying external (non-plasma) scalar potential fields, given as a nested dictionary with one entry per potential. Each entry can be a custom function ``{'Phi_external_function': 'expr(x,y,z)', 'Phi_time_external_function': 'expr(t)'}``, loaded from file ``{'read_from_file': True, 'path': '/path/to/file', 'Phi_time_external_function': 'expr(t)'}``, or use the boundary potentials ``{'use_boundary_potentials': True}``, which applies ``boundary.potential_*`` and ``warpx.eb_potential`` as external fields via a Poisson solve.",
+        description="Function of space and time specifying external (non-plasma) scalar potential fields, given as a nested dictionary with one entry per potential. Each entry can be a custom function ``{'Phi_external_function': 'expr(x,y,z)', 'Phi_time_external_function': 'expr(t)'}``, loaded from file ``{'read_from_file': True, 'path': '/path/to/file', 'Phi_time_external_function': 'expr(t)'}``, or use the boundary potentials ``{'use_boundary_potentials': True}``, which applies ``boundary.potential_*`` and ``warpx.eb_potential`` as external fields via a Poisson solve (any key name). ``Phi_external_function`` sets the potential of the embedded boundary for that entry's vacuum solve. ``read_from_file`` is not implemented yet. ``Phi_time_external_function`` applies to every entry.",
     )
     shield_external_E_field_in_dense_plasma: bool | None = Field(
         default=None,
-        description="When True, external E-field is perfectly shielded in dense plasma regions (rho >= rho_floor). When False, external E-field is applied via superposition everywhere, allowing ExB drift from external fields. Only has an effect when external fields are enabled (``A_external`` given). (default True)",
+        description="Only has an effect when ``Phi_external`` is given. When True, the electric field of ``Phi_external`` is removed from the Ohm's-law field on edges with rho >= rho_floor (the total field there is the Ohm's-law field) and superposed elsewhere. When False, it is superposed everywhere. The inductive field of ``A_external`` is not affected. (default True)",
     )
     user_defined_kw: dict = Field(
         default_factory=dict,
@@ -2384,7 +2384,9 @@ class HybridPICSolver(
         pywarpx.hybridpicmodel.max_substep_attempts = self.max_substep_attempts
         pywarpx.hybridpicmodel.holmstrom_vacuum_region = self.holmstrom_vacuum_region
         pywarpx.hybridpicmodel.vacuum_seam_switch_mode = self.vacuum_seam_switch_mode
-        pywarpx.hybridpicmodel.shield_external_E_field_in_dense_plasma = self.shield_external_E_field_in_dense_plasma
+        pywarpx.hybridpicmodel.shield_external_E_field_in_dense_plasma = (
+            self.shield_external_E_field_in_dense_plasma
+        )
         pywarpx.hybridpicmodel.__setattr__(
             "Jx_external_grid_function(x,y,z,t)",
             pywarpx.my_constants.mangle_expression(
