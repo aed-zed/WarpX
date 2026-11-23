@@ -464,11 +464,11 @@ public:
 
     /**
      * \brief Update all external fields (from both A_ext and Phi_ext) at time t.
-     * 
-     * This zeros hybrid_E_fp_external and hybrid_B_fp_external, then accumulates
-     * contributions from external vector potential (A_ext) and external scalar
-     * potential (Phi_ext).
-     * 
+     *
+     * The external vector potential (A_ext) fills hybrid_B_fp_external and
+     * hybrid_E_fp_external; the external scalar potential (Phi_ext) fills
+     * hybrid_E_fp_external_phi.
+     *
      * \param[in] t current simulation time
      * \param[in] dt timestep
      */
@@ -666,18 +666,16 @@ public:
     std::unique_ptr<ExternalVectorPotential> m_external_vector_potential;
     std::unique_ptr<ExternalScalarPotential> m_external_scalar_potential;
 
-    /** Control shielding of external E-field in dense plasma regions.
-     * 
-     * When true (default): External E-field is perfectly shielded in dense plasma
-     *                      (rho >= rho_floor). Implementation: E_ext is subtracted in
-     *                      Ohm solver, then added back in field evolution. Net result:
-     *                      particles see only E_Ohm (self-consistent plasma field).
-     *                      Vacuum regions (rho < rho_floor) see only E_external.
-     * 
-     * When false: External E-field applied via superposition everywhere.
-     *             Particles see E_Ohm + E_external in all regions. Allows E×B drift
-     *             from external fields. Violates energy conservation (continuous
-     *             external energy source). Represents electrode/power supply systems.
+    /** Shielding of the external scalar-potential field E_Phi = -grad(Phi_ext)
+     * in dense plasma (only acts when external_scalar_potential is active).
+     *
+     * When true (default): on edges with rho >= rho_floor, E_Phi is subtracted
+     *                      in Ohm's law and added back after the field update,
+     *                      so particles there see the Ohm's-law E only.
+     *                      Edges with rho < rho_floor see E_Ohm + E_Phi.
+     * When false:          E_Phi is superposed everywhere (E_Ohm + E_Phi).
+     *
+     * The inductive field of A_ext is not affected by this flag.
      */
     bool m_shield_external_E_field_in_dense_plasma = true;
 

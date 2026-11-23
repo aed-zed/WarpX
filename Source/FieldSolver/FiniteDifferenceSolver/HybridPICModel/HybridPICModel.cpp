@@ -399,32 +399,22 @@ void HybridPICModel::AllocateLevelMFs (
             dm, ncomps, IntVect(1), 0.0_rt);
     }
 
-    // Allocate external field storage if either A_external or Phi_external is used
-    const bool needs_external_fields = m_add_external_fields || 
-        (m_external_scalar_potential && m_external_scalar_potential->HasExternalFields());
-    
-    if (needs_external_fields) {
-        // Allocate shared external E and B field storage
-        fields.alloc_init(FieldType::hybrid_E_fp_external, Direction{0},
+    // The electric field of the external scalar potential, E_Phi = -grad(Phi_ext),
+    // has its own storage, separate from hybrid_E_fp_external (which holds the
+    // inductive field -dA_ext/dt of the external vector potential only), so that
+    // the Ohm's-law shielding of E_Phi can be controlled independently of A_ext.
+    if (m_external_scalar_potential && m_external_scalar_potential->HasExternalFields()) {
+        fields.alloc_init(FieldType::hybrid_E_fp_external_phi, Direction{0},
             lev, amrex::convert(ba, Ex_nodal_flag),
             dm, ncomps, ngEB, 0.0_rt);
-        fields.alloc_init(FieldType::hybrid_E_fp_external, Direction{1},
+        fields.alloc_init(FieldType::hybrid_E_fp_external_phi, Direction{1},
             lev, amrex::convert(ba, Ey_nodal_flag),
             dm, ncomps, ngEB, 0.0_rt);
-        fields.alloc_init(FieldType::hybrid_E_fp_external, Direction{2},
+        fields.alloc_init(FieldType::hybrid_E_fp_external_phi, Direction{2},
             lev, amrex::convert(ba, Ez_nodal_flag),
             dm, ncomps, ngEB, 0.0_rt);
-        fields.alloc_init(FieldType::hybrid_B_fp_external, Direction{0},
-            lev, amrex::convert(ba, Bx_nodal_flag),
-            dm, ncomps, ngEB, 0.0_rt);
-        fields.alloc_init(FieldType::hybrid_B_fp_external, Direction{1},
-            lev, amrex::convert(ba, By_nodal_flag),
-            dm, ncomps, ngEB, 0.0_rt);
-        fields.alloc_init(FieldType::hybrid_B_fp_external, Direction{2},
-            lev, amrex::convert(ba, Bz_nodal_flag),
-            dm, ncomps, ngEB, 0.0_rt);
     }
-    
+
     if (m_add_external_fields) {
         m_external_vector_potential->AllocateLevelMFs(
             fields,
@@ -2311,29 +2301,12 @@ void HybridPICModel::UpdateHybridExternalFields (
 {
     ABLASTR_PROFILE("HybridPICModel::UpdateHybridExternalFields");
 
-    // Check if any external fields are configured
-    const bool has_external_fields = m_add_external_fields || 
-        (m_external_scalar_potential && m_external_scalar_potential->HasExternalFields());
-    
-    if (!has_external_fields) { return; }
-
-    auto& warpx = WarpX::GetInstance();
-    using ablastr::fields::Direction;
-
-    // Zero external E and B fields before accumulating contributions
-    for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
-        for (int idim = 0; idim < 3; ++idim) {
-            warpx.m_fields.get(FieldType::hybrid_E_fp_external, Direction{idim}, lev)->setVal(0.0_rt);
-            warpx.m_fields.get(FieldType::hybrid_B_fp_external, Direction{idim}, lev)->setVal(0.0_rt);
-        }
-    }
-
-    // Add contributions from external vector potential (A_ext)
+    // External vector potential: hybrid_B_fp_external and hybrid_E_fp_external
     if (m_add_external_fields) {
         m_external_vector_potential->UpdateHybridExternalFields(t, dt);
     }
 
-    // Add contributions from external scalar potential (Phi_ext)
+    // External scalar potential: hybrid_E_fp_external_phi
     if (m_external_scalar_potential && m_external_scalar_potential->HasExternalFields()) {
         m_external_scalar_potential->UpdateExternalElectricField(t, dt);
     }

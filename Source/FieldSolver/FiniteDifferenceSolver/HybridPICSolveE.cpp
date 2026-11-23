@@ -554,7 +554,12 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
         !solve_for_Faraday || hybrid_model->m_solve_electron_energy_equation;
 
     const bool include_external_fields = hybrid_model->m_add_external_fields;
-    const bool shield_external_E_in_dense_plasma = hybrid_model->m_shield_external_E_field_in_dense_plasma;
+    // The external scalar-potential field E_Phi is removed from the Ohm's-law E
+    // on dense edges only if requested (see m_shield_external_E_field_in_dense_plasma)
+    const bool shield_external_phi_field =
+        hybrid_model->m_shield_external_E_field_in_dense_plasma &&
+        hybrid_model->m_external_scalar_potential &&
+        hybrid_model->m_external_scalar_potential->HasExternalFields();
 
     const bool holmstrom_vacuum_region = hybrid_model->m_holmstrom_vacuum_region;
 
@@ -564,6 +569,10 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
     if (include_external_fields) {
         Bfield_external = warpx.m_fields.get_alldirs(FieldType::hybrid_B_fp_external, 0); // lev=0
         Efield_external = warpx.m_fields.get_alldirs(FieldType::hybrid_E_fp_external, 0); // lev=0
+    }
+    ablastr::fields::VectorField Efield_external_phi;
+    if (shield_external_phi_field) {
+        Efield_external_phi = warpx.m_fields.get_alldirs(FieldType::hybrid_E_fp_external_phi, 0); // lev=0
     }
 
     // Index type required for interpolating fields from their respective
@@ -742,6 +751,12 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
             Etheta_ext = Efield_external[1]->array(mfi);
             Ez_ext = Efield_external[2]->array(mfi);
         }
+        Array4<Real const> Er_phi, Etheta_phi, Ez_phi;
+        if (shield_external_phi_field) {
+            Er_phi = Efield_external_phi[0]->const_array(mfi);
+            Etheta_phi = Efield_external_phi[1]->const_array(mfi);
+            Ez_phi = Efield_external_phi[2]->const_array(mfi);
+        }
 
         // Extract stencil coefficients
         Real const * const AMREX_RESTRICT coefs_r = m_stencil_coefs_r.dataPtr();
@@ -826,8 +841,14 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
                     }
                 }
 
-                if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
+                // On dense edges, the inductive field of A_ext (always) and the field
+                // of Phi_ext (if shielded) are removed here and added back after the
+                // field update, so that the total E there is the Ohm's-law E.
+                if (include_external_fields && (rho_val >= rho_floor)) {
                     Er(i, j, 0) -= Er_ext(i, j, 0);
+                }
+                if (shield_external_phi_field && (rho_val >= rho_floor)) {
+                    Er(i, j, 0) -= Er_phi(i, j, 0);
                 }
             },
 
@@ -904,8 +925,14 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
                     }
                 }
 
-                if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
+                // On dense edges, the inductive field of A_ext (always) and the field
+                // of Phi_ext (if shielded) are removed here and added back after the
+                // field update, so that the total E there is the Ohm's-law E.
+                if (include_external_fields && (rho_val >= rho_floor)) {
                     Etheta(i, j, 0) -= Etheta_ext(i, j, 0);
+                }
+                if (shield_external_phi_field && (rho_val >= rho_floor)) {
+                    Etheta(i, j, 0) -= Etheta_phi(i, j, 0);
                 }
             },
 
@@ -980,8 +1007,14 @@ void FiniteDifferenceSolver::HybridPICSolveECylindrical (
                     }
                 }
 
-                if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
+                // On dense edges, the inductive field of A_ext (always) and the field
+                // of Phi_ext (if shielded) are removed here and added back after the
+                // field update, so that the total E there is the Ohm's-law E.
+                if (include_external_fields && (rho_val >= rho_floor)) {
                     Ez(i, j, 0) -= Ez_ext(i, j, 0);
+                }
+                if (shield_external_phi_field && (rho_val >= rho_floor)) {
+                    Ez(i, j, 0) -= Ez_phi(i, j, 0);
                 }
             }
         );
@@ -1047,7 +1080,12 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
         !solve_for_Faraday || hybrid_model->m_solve_electron_energy_equation;
 
     const bool include_external_fields = hybrid_model->m_add_external_fields;
-    const bool shield_external_E_in_dense_plasma = hybrid_model->m_shield_external_E_field_in_dense_plasma;
+    // The external scalar-potential field E_Phi is removed from the Ohm's-law E
+    // on dense edges only if requested (see m_shield_external_E_field_in_dense_plasma)
+    const bool shield_external_phi_field =
+        hybrid_model->m_shield_external_E_field_in_dense_plasma &&
+        hybrid_model->m_external_scalar_potential &&
+        hybrid_model->m_external_scalar_potential->HasExternalFields();
 
     const bool holmstrom_vacuum_region = hybrid_model->m_holmstrom_vacuum_region;
     // Decision-density sampling for the vacuum seam (VacuumSeamSwitchMode):
@@ -1090,6 +1128,10 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
     if (include_external_fields) {
         Bfield_external = warpx.m_fields.get_alldirs(FieldType::hybrid_B_fp_external, 0); // lev=0
         Efield_external = warpx.m_fields.get_alldirs(FieldType::hybrid_E_fp_external, 0); // lev=0
+    }
+    ablastr::fields::VectorField Efield_external_phi;
+    if (shield_external_phi_field) {
+        Efield_external_phi = warpx.m_fields.get_alldirs(FieldType::hybrid_E_fp_external_phi, 0); // lev=0
     }
 
     // Index type required for interpolating fields from their respective
@@ -1284,6 +1326,12 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
             Ey_ext = Efield_external[1]->array(mfi);
             Ez_ext = Efield_external[2]->array(mfi);
         }
+        Array4<Real const> Ex_phi, Ey_phi, Ez_phi;
+        if (shield_external_phi_field) {
+            Ex_phi = Efield_external_phi[0]->const_array(mfi);
+            Ey_phi = Efield_external_phi[1]->const_array(mfi);
+            Ez_phi = Efield_external_phi[2]->const_array(mfi);
+        }
 
         // Extract stencil coefficients
         Real const * const AMREX_RESTRICT coefs_x = m_stencil_coefs_x.dataPtr();
@@ -1378,8 +1426,14 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
                 }
             }
 
-            if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
+            // On dense edges, the inductive field of A_ext (always) and the field
+            // of Phi_ext (if shielded) are removed here and added back after the
+            // field update, so that the total E there is the Ohm's-law E.
+            if (include_external_fields && (rho_val >= rho_floor)) {
                 Ex(i, j, k) -= Ex_ext(i, j, k);
+            }
+            if (shield_external_phi_field && (rho_val >= rho_floor)) {
+                Ex(i, j, k) -= Ex_phi(i, j, k);
             }
         });
 
@@ -1462,8 +1516,14 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
                 }
             }
 
-            if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
+            // On dense edges, the inductive field of A_ext (always) and the field
+            // of Phi_ext (if shielded) are removed here and added back after the
+            // field update, so that the total E there is the Ohm's-law E.
+            if (include_external_fields && (rho_val >= rho_floor)) {
                 Ey(i, j, k) -= Ey_ext(i, j, k);
+            }
+            if (shield_external_phi_field && (rho_val >= rho_floor)) {
+                Ey(i, j, k) -= Ey_phi(i, j, k);
             }
         });
 
@@ -1546,8 +1606,14 @@ void FiniteDifferenceSolver::HybridPICSolveECartesian (
                 }
             }
 
-            if (include_external_fields && shield_external_E_in_dense_plasma && (rho_val >= rho_floor)) {
+            // On dense edges, the inductive field of A_ext (always) and the field
+            // of Phi_ext (if shielded) are removed here and added back after the
+            // field update, so that the total E there is the Ohm's-law E.
+            if (include_external_fields && (rho_val >= rho_floor)) {
                 Ez(i, j, k) -= Ez_ext(i, j, k);
+            }
+            if (shield_external_phi_field && (rho_val >= rho_floor)) {
+                Ez(i, j, k) -= Ez_phi(i, j, k);
             }
         });
 

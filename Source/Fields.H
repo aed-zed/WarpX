@@ -56,6 +56,7 @@ namespace warpx::fields
         hybrid_current_fp_external,  /**< Used with Ohm's law solver. Stores external current */
         hybrid_B_fp_external,       /**< Used with Ohm's law solver. Stores external B field */
         hybrid_E_fp_external,       /**< Used with Ohm's law solver. Stores external E field */
+        hybrid_E_fp_external_phi,   /**< Used with Ohm's law solver. Stores the external E field -grad(Phi_ext) from external_scalar_potential */
         Efield_cp,  /**< Only used with MR. The field that is updated by the field solver at each timestep, on the coarse patch of each level */
         Bfield_cp,  /**< Only used with MR. The field that is updated by the field solver at each timestep, on the coarse patch of each level */
         current_cp, /**< Only used with MR. The current that is used as a source for the field solver, on the coarse patch of each level */
@@ -123,6 +124,7 @@ namespace warpx::fields
         FieldType::hybrid_current_fp_external,
         FieldType::hybrid_B_fp_external,
         FieldType::hybrid_E_fp_external,
+        FieldType::hybrid_E_fp_external_phi,
         FieldType::Efield_cp,
         FieldType::Bfield_cp,
         FieldType::current_cp,

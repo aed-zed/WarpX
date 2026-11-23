@@ -60,16 +60,17 @@ protected:
     std::vector<bool> m_read_Phi_from_file;
     std::vector<std::string> m_external_file_path;
 
-    // Track if time dependence exists
-    bool m_has_time_dependence = false;
+    /** Per-field electric field -grad(Phi_i) of the spatial part of each
+     *  potential, before the time factor Phi_time_external_function(t) is
+     *  applied. Indexed as m_E_unit[field][lev][dim]. The total external field
+     *  is hybrid_E_fp_external_phi = sum_i Phi_time_i(t) * m_E_unit[i]. */
+    amrex::Vector<amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>>> m_E_unit;
+    /** Whether m_E_unit[i] holds a valid solution */
+    std::vector<bool> m_E_unit_valid;
 
-    // Store previous time scale values to detect changes
-    std::vector<amrex::Real> m_prev_time_scale;
-
-    // Cache for static E field (computed once, reused every timestep)
-    // Indexed as m_E_cached[lev][dim]
-    amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>> m_E_cached;
-    bool m_cache_valid = false;
+    /** Solve the vacuum Laplace problem of field i and store -grad(Phi_i)
+     *  (zero on edges covered by embedded boundaries) in m_E_unit[i]. */
+    void SolveUnitField (int field_index);
 
 public:
 
@@ -78,44 +79,29 @@ public:
 
     void ReadParameters ();
 
-    /** Check if this class has external fields that need hybrid_E_fp_external */
+    /** Check if this class has external fields that need hybrid_E_fp_external_phi */
     [[nodiscard]] bool HasExternalFields () const { return m_nFields > 0; }
 
     /**
      * \brief Initialize external scalar potential data.
-     * 
-     * This performs the initial Poisson solve to compute E = -grad(Phi)
-     * and adds the result to hybrid_E_fp_external.
+     *
+     * This builds the time parsers and fills hybrid_E_fp_external_phi at the
+     * initial time.
      */
     void InitData ();
 
     /**
-     * \brief Update the external electric field from scalar potential at time t.
-     * 
-     * For time-varying potentials, this re-evaluates Phi(t) and if it has changed,
-     * re-solves Poisson equation to update E_ext.
-     * 
+     * \brief Set hybrid_E_fp_external_phi to the field of the external scalar potential at time t.
+     *
+     * The spatial solution of each potential is computed once and cached;
+     * the time factor Phi_time_external_function(t) is applied on every call.
+     *
      * \param[in] t current simulation time
      * \param[in] dt timestep (unused for scalar potential, kept for interface consistency)
      */
     void UpdateExternalElectricField (
         amrex::Real t,
         amrex::Real dt
-    );
-
-    /**
-     * \brief Add external E field from scalar potential to hybrid_E_fp_external.
-     * 
-     * This solves the Poisson equation with the specified Phi boundary conditions
-     * and zero charge density, computing E = -grad(Phi), then adds the result
-     * to the existing hybrid_E_fp_external field.
-     * 
-     * \param[in] field_index Index of the field in m_field_names to process
-     * \param[in] time_scale_factor Multiplicative factor for time dependence
-     */
-    void AddToExternalElectricField (
-        int field_index,
-        amrex::Real time_scale_factor
     );
 
 };

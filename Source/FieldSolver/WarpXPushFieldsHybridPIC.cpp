@@ -39,7 +39,6 @@ void WarpX::HybridPICEvolveFields ()
     const bool add_external_A_fields = m_hybrid_pic_model->m_add_external_fields;
     const bool add_external_Phi_fields = m_hybrid_pic_model->m_external_scalar_potential &&
         m_hybrid_pic_model->m_external_scalar_potential->HasExternalFields();
-    const bool add_external_fields = add_external_A_fields || add_external_Phi_fields;
 
     // Handle field splitting for Hybrid field push
     // Update all external fields (A_ext and Phi_ext) at t^n
@@ -248,7 +247,7 @@ void WarpX::HybridPICEvolveFields ()
 
     // Handle field splitting for Hybrid field push
     if (add_external_A_fields) {
-        // If using external A fields, add the external B field at the new time
+        // If using split fields, add the external field at the new time
         for (int lev = 0; lev <= finest_level; ++lev) {
             for (int idim = 0; idim < 3; ++idim) {
                 MultiFab::Add(
@@ -256,16 +255,22 @@ void WarpX::HybridPICEvolveFields ()
                     *m_fields.get(FieldType::hybrid_B_fp_external, Direction{idim}, lev),
                     0, 0, 1,
                     m_fields.get(FieldType::Bfield_fp, Direction{idim}, lev)->nGrowVect());
+                MultiFab::Add(
+                    *m_fields.get(FieldType::Efield_fp, Direction{idim}, lev),
+                    *m_fields.get(FieldType::hybrid_E_fp_external, Direction{idim}, lev),
+                    0, 0, 1,
+                    m_fields.get(FieldType::Efield_fp, Direction{idim}, lev)->nGrowVect());
             }
         }
     }
-    if (add_external_fields) {
-        // Add external E field (from both A_external and Phi_external)
+    if (add_external_Phi_fields) {
+        // Superpose the electric field of the external scalar potential
+        // (on dense edges it was removed in Ohm's law if it is shielded)
         for (int lev = 0; lev <= finest_level; ++lev) {
             for (int idim = 0; idim < 3; ++idim) {
                 MultiFab::Add(
                     *m_fields.get(FieldType::Efield_fp, Direction{idim}, lev),
-                    *m_fields.get(FieldType::hybrid_E_fp_external, Direction{idim}, lev),
+                    *m_fields.get(FieldType::hybrid_E_fp_external_phi, Direction{idim}, lev),
                     0, 0, 1,
                     m_fields.get(FieldType::Efield_fp, Direction{idim}, lev)->nGrowVect());
             }
