@@ -153,7 +153,7 @@ ExternalScalarPotential::InitData ()
 void
 ExternalScalarPotential::UpdateExternalElectricField (const amrex::Real t, [[maybe_unused]] const amrex::Real dt)
 {
-    WARPX_PROFILE("ExternalScalarPotential::UpdateExternalElectricField");
+    ABLASTR_PROFILE("ExternalScalarPotential::UpdateExternalElectricField");
 
     // Early return if no external scalar potential fields are configured
     if (m_nFields == 0) { return; }
@@ -225,7 +225,7 @@ ExternalScalarPotential::AddToExternalElectricField (
     int field_index,
     amrex::Real time_scale_factor)
 {
-    WARPX_PROFILE("ExternalScalarPotential::AddToExternalElectricField");
+    ABLASTR_PROFILE("ExternalScalarPotential::AddToExternalElectricField");
 
     auto& warpx = WarpX::GetInstance();
 
@@ -234,7 +234,7 @@ ExternalScalarPotential::AddToExternalElectricField (
 
     // Get EB update flags for masking (if EB is enabled)
     const bool eb_on = EB::enabled();
-    auto& ebE = warpx.GetEBUpdateEFlag();
+    auto& ebE = warpx.GetEBUpdateEFlag_fp();
 
     // Get reference to the external E field that we'll add to
     ablastr::fields::MultiLevelVectorField Efield_external =

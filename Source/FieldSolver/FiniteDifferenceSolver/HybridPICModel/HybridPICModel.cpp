@@ -2309,7 +2309,7 @@ void HybridPICModel::UpdateHybridExternalFields (
     amrex::Real t,
     amrex::Real dt)
 {
-    WARPX_PROFILE("HybridPICModel::UpdateHybridExternalFields");
+    ABLASTR_PROFILE("HybridPICModel::UpdateHybridExternalFields");
 
     // Check if any external fields are configured
     const bool has_external_fields = m_add_external_fields || 
