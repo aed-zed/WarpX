@@ -67,10 +67,16 @@ protected:
     amrex::Vector<amrex::Vector<std::array<std::unique_ptr<amrex::MultiFab>, 3>>> m_E_unit;
     /** Whether m_E_unit[i] holds a valid solution */
     std::vector<bool> m_E_unit_valid;
+    /** Whether the spatial solution of field i itself depends on time, i.e.
+     *  boundary.potential_* or warpx.eb_potential depend on t; it is then
+     *  solved again whenever the requested time changes */
+    std::vector<bool> m_E_unit_time_dependent;
+    /** Time at which m_E_unit[i] was last solved */
+    std::vector<amrex::Real> m_E_unit_time;
 
-    /** Solve the vacuum Laplace problem of field i and store -grad(Phi_i)
-     *  (zero on edges covered by embedded boundaries) in m_E_unit[i]. */
-    void SolveUnitField (int field_index);
+    /** Solve the vacuum Laplace problem of field i at time t and store
+     *  -grad(Phi_i) (zero on edges covered by embedded boundaries) in m_E_unit[i]. */
+    void SolveUnitField (int field_index, amrex::Real t);
 
 public:
 
@@ -93,8 +99,10 @@ public:
     /**
      * \brief Set hybrid_E_fp_external_phi to the field of the external scalar potential at time t.
      *
-     * The spatial solution of each potential is computed once and cached;
-     * the time factor Phi_time_external_function(t) is applied on every call.
+     * The spatial solution of each potential is computed once and cached,
+     * unless the boundary potentials it uses depend on time, in which case it
+     * is solved again at t; the time factor Phi_time_external_function(t) is
+     * applied on every call.
      *
      * \param[in] t current simulation time
      * \param[in] dt timestep (unused for scalar potential, kept for interface consistency)

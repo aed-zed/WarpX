@@ -84,6 +84,7 @@ public:
      * \param[in] mlmg_options Settings for the MLMG solve, @see ablastr::fields::MLMGOptions
      * \param[in] is_igf_2d_slices boolean to select between fully 3D Poisson solver and quasi-3D, i.e. one 2D Poisson solve on every z slice (default: false)
      * \param[out] efield The electric field corresponding to the calculated phi (only used with embedded boundaries)
+     * \param[in] time Time at which the embedded-boundary potential is evaluated (default: the current time)
      */
     void computePhi (
         ablastr::fields::MultiLevelScalarField const& rho,
@@ -91,7 +92,8 @@ public:
         std::array<amrex::Real, 3> beta,
         ablastr::fields::MLMGOptions const & mlmg_options,
         bool is_igf_2d_slices,
-        std::optional<ablastr::fields::MultiLevelVectorField> efield = std::nullopt // only used for EB
+        std::optional<ablastr::fields::MultiLevelVectorField> efield = std::nullopt, // only used for EB
+        std::optional<amrex::Real> time = std::nullopt
     ) const;
 
     /**
@@ -139,9 +141,11 @@ public:
        simulation-specific boundary conditions and boundary values, then add the
        E field due to that `phi` to `Efield_fp`.
     * \param[in] Efield Efield updated to include potential gradient from boundary condition
+    * \param[in] time Time at which the boundary potentials are evaluated (default: the current time)
     */
     void AddBoundaryField (
-        ablastr::fields::MultiLevelVectorField& Efield
+        ablastr::fields::MultiLevelVectorField& Efield,
+        std::optional<amrex::Real> time = std::nullopt
     ) const;
 
     /** Maximum levels for the electrostatic solver grid */

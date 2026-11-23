@@ -68,6 +68,8 @@ ExternalScalarPotential::ReadParameters ()
 
     m_E_unit.resize(m_nFields);
     m_E_unit_valid.resize(m_nFields, false);
+    m_E_unit_time_dependent.resize(m_nFields, false);
+    m_E_unit_time.resize(m_nFields, 0.0_rt);
 
     m_read_Phi_from_file.resize(m_nFields);
     m_external_file_path.resize(m_nFields);
@@ -107,7 +109,27 @@ ExternalScalarPotential::InitData ()
 
     auto& warpx = WarpX::GetInstance();
 
+    // Do the boundary potentials (boundary.potential_* and warpx.eb_potential) depend on time?
+    bool boundary_potentials_depend_on_t = false;
+    {
+        auto const& bh = warpx.GetElectrostaticSolver().m_poisson_boundary_handler;
+        for (std::string const& str : {bh->potential_xlo_str, bh->potential_xhi_str,
+                                       bh->potential_ylo_str, bh->potential_yhi_str,
+                                       bh->potential_zlo_str, bh->potential_zhi_str}) {
+            if (utils::parser::makeParser(str, {"t"}).symbols().count("t") > 0) {
+                boundary_potentials_depend_on_t = true;
+            }
+        }
+        if (utils::parser::makeParser(bh->potential_eb_str, {"x", "y", "z", "t"}).symbols().count("t") > 0) {
+            boundary_potentials_depend_on_t = true;
+        }
+    }
+
     for (int i = 0; i < m_nFields; ++i) {
+
+        if (m_field_names[i] == "boundary_potentials") {
+            m_E_unit_time_dependent[i] = boundary_potentials_depend_on_t;
+        }
 
         if (m_field_names[i] != "boundary_potentials" && !m_read_Phi_from_file[i]) {
             // Initialize the Phi parser
@@ -153,7 +175,9 @@ ExternalScalarPotential::UpdateExternalElectricField (const amrex::Real t, [[may
 
     // E_phi = sum_i Phi_time_i(t) * (-grad Phi_i)
     for (int i = 0; i < m_nFields; ++i) {
-        if (!m_E_unit_valid[i]) { SolveUnitField(i); }
+        if (!m_E_unit_valid[i] || (m_E_unit_time_dependent[i] && t != m_E_unit_time[i])) {
+            SolveUnitField(i, t);
+        }
 
         const amrex::Real time_scale_factor = m_Phi_time_scale[i](t);
         for (int lev = 0; lev <= warpx.finestLevel(); ++lev) {
@@ -174,7 +198,7 @@ ExternalScalarPotential::UpdateExternalElectricField (const amrex::Real t, [[may
 }
 
 void
-ExternalScalarPotential::SolveUnitField (int field_index)
+ExternalScalarPotential::SolveUnitField (int field_index, amrex::Real t)
 {
     ABLASTR_PROFILE("ExternalScalarPotential::SolveUnitField");
 
@@ -213,12 +237,12 @@ ExternalScalarPotential::SolveUnitField (int field_index)
     }
 
     if (m_field_names[field_index] == "boundary_potentials") {
-        // Vacuum Laplace solve with boundary.potential_* and warpx.eb_potential
-        es_solver.AddBoundaryField(E_temp);
+        // Vacuum Laplace solve with boundary.potential_* and warpx.eb_potential at time t
+        es_solver.AddBoundaryField(E_temp, t);
     } else {
         // Custom Phi_external_grid_function: set it as EB potential and use Poisson solve
         es_solver.m_poisson_boundary_handler->setPotentialEB(m_Phi_ext_grid_function[field_index]);
-        es_solver.AddBoundaryField(E_temp);
+        es_solver.AddBoundaryField(E_temp, t);
     }
 
     // Copy into the per-field cache, leaving edges covered by the EB at zero
@@ -248,4 +272,5 @@ ExternalScalarPotential::SolveUnitField (int field_index)
         }
     }
     m_E_unit_valid[field_index] = true;
+    m_E_unit_time[field_index] = t;
 }

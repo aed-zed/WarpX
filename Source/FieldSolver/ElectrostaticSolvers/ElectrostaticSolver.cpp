@@ -170,7 +170,8 @@ ElectrostaticSolver::computePhi (
     std::array<Real, 3> const beta,
     ablastr::fields::MLMGOptions const & mlmg_options,
     bool const is_igf_2d,
-    std::optional<ablastr::fields::MultiLevelVectorField> efield
+    std::optional<ablastr::fields::MultiLevelVectorField> efield,
+    std::optional<amrex::Real> time
 ) const
 {
     // create a vector to our fields, sorted by level
@@ -253,7 +254,7 @@ ElectrostaticSolver::computePhi (
         warpx.refRatio(),
         post_phi_calculation,
         *m_poisson_boundary_handler,
-        warpx.gett_new(0),
+        time.value_or(warpx.gett_new(0)),
         eb_farray_box_factory
     );
 
@@ -586,7 +587,9 @@ void ElectrostaticSolver::computeB (
     }
 }
 
-void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorField& Efield_fp) const
+void ElectrostaticSolver::AddBoundaryField (
+    ablastr::fields::MultiLevelVectorField& Efield_fp,
+    std::optional<amrex::Real> time) const
 {
     ABLASTR_PROFILE("ElectrostaticSolver::AddBoundaryField");
 
@@ -607,14 +610,15 @@ void ElectrostaticSolver::AddBoundaryField (ablastr::fields::MultiLevelVectorFie
     }
 
     // Set the boundary potentials appropriately
-    setPhiBC( amrex::GetVecOfPtrs(phi), warpx.gett_new(0));
+    const amrex::Real t = time.value_or(warpx.gett_new(0));
+    setPhiBC( amrex::GetVecOfPtrs(phi), t);
 
     // beta is zero for boundaries
     const std::array<Real, 3> beta = {0._rt};
 
     // Compute the potential phi, by solving the Poisson equation
     computePhi( amrex::GetVecOfPtrs(rho), amrex::GetVecOfPtrs(phi),
-                beta, m_mlmg_options, is_igf_2d_slices);
+                beta, m_mlmg_options, is_igf_2d_slices, std::nullopt, t);
 
     // Compute the corresponding electric field, from the potential phi.
     computeE( Efield_fp, amrex::GetVecOfPtrs(phi), beta );
