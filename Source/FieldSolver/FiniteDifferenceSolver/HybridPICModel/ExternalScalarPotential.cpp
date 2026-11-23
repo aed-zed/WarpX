@@ -9,6 +9,7 @@
 
 #include "ExternalScalarPotential.H"
 #include "Fields.H"
+#include "Utils/TextMsg.H"
 #include "WarpX.H"
 
 #include <ablastr/fields/MultiFabRegister.H>
@@ -101,9 +102,10 @@ ExternalScalarPotential::ReadParameters ()
         m_read_Phi_from_file[i] = read_from_file;
 
         if (m_read_Phi_from_file[i]) {
-            pp_ext_Phi.query((m_field_names[i]+".path").c_str(), m_external_file_path[i]);
-            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!m_external_file_path[i].empty(),
-                "external_scalar_potential: read_from_file=true but no path specified for field " + m_field_names[i]);
+            WARPX_ABORT_WITH_MESSAGE(
+                "external_scalar_potential." + m_field_names[i] + ".read_from_file "
+                "is not implemented yet: use Phi_external_grid_function(x,y,z) "
+                "or use_boundary_potentials instead.");
         } else {
             pp_ext_Phi.query((m_field_names[i]+".Phi_external_grid_function(x,y,z)").c_str(),
                 m_Phi_ext_grid_function[i]);
@@ -118,6 +120,11 @@ ExternalScalarPotential::InitData ()
     if (m_nFields == 0) { return; }
 
     auto& warpx = WarpX::GetInstance();
+
+    // The electrostatic solver sets up its Poisson boundary conditions in hybrid
+    // runs only if a boundary potential is specified; a custom Phi_external
+    // needs them as well.
+    warpx.GetElectrostaticSolver().m_poisson_boundary_handler->DefinePhiBCs(warpx.Geom(0));
 
     // Do the boundary potentials (boundary.potential_* and warpx.eb_potential) depend on time?
     bool boundary_potentials_depend_on_t = false;
@@ -250,9 +257,15 @@ ExternalScalarPotential::SolveUnitField (int field_index, amrex::Real t)
         // Vacuum Laplace solve with boundary.potential_* and warpx.eb_potential at time t
         es_solver.AddBoundaryField(E_temp, t);
     } else {
-        // Custom Phi_external_grid_function: set it as EB potential and use Poisson solve
-        es_solver.m_poisson_boundary_handler->setPotentialEB(m_Phi_ext_grid_function[field_index]);
+        // Custom Phi_external_grid_function: it is used as the potential of the
+        // embedded boundary in a vacuum Laplace solve (the domain-boundary
+        // potentials boundary.potential_* still apply). The user's
+        // warpx.eb_potential is restored afterwards.
+        auto& boundary_handler = es_solver.m_poisson_boundary_handler;
+        const std::string eb_potential_str = boundary_handler->potential_eb_str;
+        boundary_handler->setPotentialEB(m_Phi_ext_grid_function[field_index]);
         es_solver.AddBoundaryField(E_temp, t);
+        boundary_handler->setPotentialEB(eb_potential_str);
     }
 
     // Copy into the per-field cache, leaving edges covered by the EB at zero
