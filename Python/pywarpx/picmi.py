@@ -2459,8 +2459,10 @@ class HybridPICSolver(
             for field_name, field_dict in self.Phi_external.items():
                 # Check if this entry wants to use boundary potentials
                 if field_dict.get("use_boundary_potentials", False):
-                    # Signal to C++ code that this field uses boundary potentials
-                    pywarpx.hybridpicmodel.use_boundary_potentials_for_external_field = True
+                    # This entry is the vacuum field of the boundary and EB potentials
+                    pywarpx.external_scalar_potential.__setattr__(
+                        f"{field_name}.use_boundary_potentials", True
+                    )
                 elif field_dict.get("read_from_file", False):
                     pywarpx.external_scalar_potential.__setattr__(
                         f"{field_name}.read_from_file", field_dict["read_from_file"]

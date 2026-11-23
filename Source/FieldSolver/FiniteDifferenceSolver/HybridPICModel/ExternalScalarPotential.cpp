@@ -75,9 +75,22 @@ ExternalScalarPotential::ReadParameters ()
     m_external_file_path.resize(m_nFields);
     for (std::string & file_name : m_external_file_path) { file_name = ""; }
 
+    m_use_boundary_potentials.resize(m_nFields, false);
+
     for (int i = 0; i < m_nFields; ++i) {
-        // Skip parameter reading for the special "boundary_potentials" field
-        if (m_field_names[i] == "boundary_potentials") {
+        // An entry uses the boundary potentials if <name>.use_boundary_potentials
+        // is set, whatever its name; the name "boundary_potentials" also selects
+        // them (this is the entry created by the fallback above).
+        bool use_boundary_potentials = (m_field_names[i] == "boundary_potentials");
+        utils::parser::queryWithParser(pp_ext_Phi,
+            (m_field_names[i]+".use_boundary_potentials").c_str(), use_boundary_potentials);
+        m_use_boundary_potentials[i] = use_boundary_potentials;
+
+        // The time factor applies to every type of entry
+        pp_ext_Phi.query((m_field_names[i]+".Phi_time_external_function(t)").c_str(),
+            m_Phi_ext_time_function[i]);
+
+        if (m_use_boundary_potentials[i]) {
             m_read_Phi_from_file[i] = false;
             continue;
         }
@@ -95,9 +108,6 @@ ExternalScalarPotential::ReadParameters ()
             pp_ext_Phi.query((m_field_names[i]+".Phi_external_grid_function(x,y,z)").c_str(),
                 m_Phi_ext_grid_function[i]);
         }
-
-        pp_ext_Phi.query((m_field_names[i]+".Phi_time_external_function(t)").c_str(),
-            m_Phi_ext_time_function[i]);
     }
 }
 
@@ -127,11 +137,11 @@ ExternalScalarPotential::InitData ()
 
     for (int i = 0; i < m_nFields; ++i) {
 
-        if (m_field_names[i] == "boundary_potentials") {
+        if (m_use_boundary_potentials[i]) {
             m_E_unit_time_dependent[i] = boundary_potentials_depend_on_t;
         }
 
-        if (m_field_names[i] != "boundary_potentials" && !m_read_Phi_from_file[i]) {
+        if (!m_use_boundary_potentials[i] && !m_read_Phi_from_file[i]) {
             // Initialize the Phi parser
             m_Phi_external_parser[i] = std::make_unique<amrex::Parser>(
                 utils::parser::makeParser(m_Phi_ext_grid_function[i],{"x","y","z","t"}));
@@ -236,7 +246,7 @@ ExternalScalarPotential::SolveUnitField (int field_index, amrex::Real t)
         };
     }
 
-    if (m_field_names[field_index] == "boundary_potentials") {
+    if (m_use_boundary_potentials[field_index]) {
         // Vacuum Laplace solve with boundary.potential_* and warpx.eb_potential at time t
         es_solver.AddBoundaryField(E_temp, t);
     } else {

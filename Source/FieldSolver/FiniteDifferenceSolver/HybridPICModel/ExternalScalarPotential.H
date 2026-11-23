@@ -57,6 +57,9 @@ protected:
     std::vector<std::unique_ptr<amrex::Parser>> m_Phi_external_time_parser;
     std::vector<amrex::ParserExecutor<1>> m_Phi_time_scale;
 
+    /** Whether entry i is the vacuum field of boundary.potential_* and warpx.eb_potential */
+    std::vector<bool> m_use_boundary_potentials;
+
     std::vector<bool> m_read_Phi_from_file;
     std::vector<std::string> m_external_file_path;
 
