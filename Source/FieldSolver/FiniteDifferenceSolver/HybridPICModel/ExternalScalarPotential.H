@@ -77,11 +77,12 @@ protected:
     /** Time at which m_E_unit[i] was last solved */
     std::vector<amrex::Real> m_E_unit_time;
 
-    /** Solve the vacuum Laplace problem of field i at time t and store
-     *  -grad(Phi_i) (zero on edges covered by embedded boundaries) in m_E_unit[i]. */
-    void SolveUnitField (int field_index, amrex::Real t);
-
 public:
+
+    /** Solve the vacuum Laplace problem of field i at time t and store
+     *  -grad(Phi_i) (zero on edges covered by embedded boundaries) in m_E_unit[i].
+     *  Public because it launches GPU lambdas (nvcc forbids them in non-public members). */
+    void SolveUnitField (int field_index, amrex::Real t);
 
     // Default Constructor
     ExternalScalarPotential ();
