@@ -20,6 +20,7 @@
 #include <ablastr/fields/MLMGOptions.H>
 #include <ablastr/fields/MultiFabRegister.H>
 
+#include <AMReX_GpuAtomic.H>
 #include <AMReX_GpuLaunch.H>
 #include <AMReX_MFIter.H>
 #include <AMReX_Math.H>
@@ -885,7 +886,9 @@ namespace
                 auto const e = ez.const_array(mfi);
                 amrex::ParallelFor(b, [=] AMREX_GPU_DEVICE (int i, int j, int kk)
                 {
-                    q[i] += sign * PhysConst::epsilon_0 * m(i,j,kk) / dz * e(i,jc,kk);
+                    // boxes sharing a face node may run concurrently on GPU streams
+                    amrex::Gpu::Atomic::AddNoRet(&q[i],
+                        sign * PhysConst::epsilon_0 * m(i,j,kk) / dz * e(i,jc,kk));
                 });
             }
             std::vector<amrex::Real> host(nr + 1);
