@@ -475,7 +475,7 @@ public:
     void UpdateHybridExternalFields (
         amrex::Real t,
         amrex::Real dt
-    );
+    ) const;
 
     // Declare variables to hold hybrid-PIC model parameters
     /** Number of substeps to take when evolving B (also used as initial substep

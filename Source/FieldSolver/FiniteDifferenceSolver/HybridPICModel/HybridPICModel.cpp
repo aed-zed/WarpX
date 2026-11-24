@@ -2297,7 +2297,7 @@ void HybridPICModel::AdvanceElectronEnergyQDSMC (amrex::Real const dt) const
 
 void HybridPICModel::UpdateHybridExternalFields (
     amrex::Real t,
-    amrex::Real dt)
+    amrex::Real dt) const
 {
     ABLASTR_PROFILE("HybridPICModel::UpdateHybridExternalFields");
 

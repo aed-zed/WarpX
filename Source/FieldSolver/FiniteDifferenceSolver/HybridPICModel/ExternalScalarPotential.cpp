@@ -41,7 +41,7 @@ ExternalScalarPotential::ReadParameters ()
 
         if (use_boundary_potentials) {
             // Create a single field entry to represent boundary potentials
-            m_field_names.push_back("boundary_potentials");
+            m_field_names.emplace_back("boundary_potentials");
             amrex::Print() << Utils::TextMsg::Info(
                 "Hybrid solver will use boundary.potential_* and warpx.eb_potential "
                 "as external fields via Poisson solve.\n"
@@ -88,7 +88,7 @@ ExternalScalarPotential::ReadParameters ()
         m_use_boundary_potentials[i] = use_boundary_potentials;
 
         // The time factor applies to every type of entry
-        pp_ext_Phi.query((m_field_names[i]+".Phi_time_external_function(t)").c_str(),
+        pp_ext_Phi.query(m_field_names[i]+".Phi_time_external_function(t)",
             m_Phi_ext_time_function[i]);
 
         if (m_use_boundary_potentials[i]) {
@@ -107,7 +107,7 @@ ExternalScalarPotential::ReadParameters ()
                 "is not implemented yet: use Phi_external_grid_function(x,y,z) "
                 "or use_boundary_potentials instead.");
         } else {
-            pp_ext_Phi.query((m_field_names[i]+".Phi_external_grid_function(x,y,z)").c_str(),
+            pp_ext_Phi.query(m_field_names[i]+".Phi_external_grid_function(x,y,z)",
                 m_Phi_ext_grid_function[i]);
         }
     }
@@ -133,11 +133,11 @@ ExternalScalarPotential::InitData ()
         for (std::string const& str : {bh->potential_xlo_str, bh->potential_xhi_str,
                                        bh->potential_ylo_str, bh->potential_yhi_str,
                                        bh->potential_zlo_str, bh->potential_zhi_str}) {
-            if (utils::parser::makeParser(str, {"t"}).symbols().count("t") > 0) {
+            if (utils::parser::makeParser(str, {"t"}).symbols().contains("t")) {
                 boundary_potentials_depend_on_t = true;
             }
         }
-        if (utils::parser::makeParser(bh->potential_eb_str, {"x", "y", "z", "t"}).symbols().count("t") > 0) {
+        if (utils::parser::makeParser(bh->potential_eb_str, {"x", "y", "z", "t"}).symbols().contains("t")) {
             boundary_potentials_depend_on_t = true;
         }
     }
@@ -156,7 +156,7 @@ ExternalScalarPotential::InitData ()
 
             // Check if the external potential parser depends on time
             const std::set<std::string> Phi_ext_symbols = m_Phi_external_parser[i]->symbols();
-            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(Phi_ext_symbols.count("t") == 0,
+            WARPX_ALWAYS_ASSERT_WITH_MESSAGE(!Phi_ext_symbols.contains("t"),
                 "Externally Applied Scalar potential time variation must be set with Phi_time_external_function(t)");
         }
 
