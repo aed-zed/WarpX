@@ -207,3 +207,25 @@ In the example below, a new ``MultiFab`` is created with the same properties as 
     .. literalinclude:: ../../../../Examples/Physics_applications/spacecraft_charging/inputs_test_rz_spacecraft_charging_picmi.py
         :language: python
         :caption: You can copy this file from ``Examples/Physics_applications/spacecraft_charging/inputs_test_rz_secondary_ion_emission_picmi.py``.
+
+
+Writing custom fields to diagnostics and checkpoints
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Custom fields can be written to field diagnostics and saved in checkpoints.
+For this, allocate them in a function installed for the ``allocdata`` :ref:`callback <usage-python-extend-callbacks>`.
+It runs during initialization, both when starting from scratch and when restarting, so the fields exist before they are written or read back.
+
+* To write a field to a diagnostic, add its name to the ``data_list`` of a ``FieldDiagnostic`` (or to :pp:param:`<diag_name>.fields_to_plot`).
+  The components of a vector field allocated with ``dir`` are requested like those of ``E``: ``<name>x``, ``<name>y`` and ``<name>z`` (``<name>r``, ``<name>t`` and ``<name>z`` in cylindrical geometry).
+* To save a field in checkpoints and restore it when restarting, allocate it with ``checkpoint_restart=True``.
+  When restarting, it is read back right after the ``allocdata`` callback; if the checkpoint does not contain it, it keeps its initial value.
+
+In the example below, a scalar and a vector field count the steps taken.
+After a restart, they hold the right values only because they are restored from the checkpoint.
+
+.. dropdown:: See these features used in a full example
+
+    .. literalinclude:: ../../../../Examples/Tests/python_registered_fields/inputs_test_3d_python_registered_fields_picmi.py
+        :language: python
+        :caption: You can copy this file from ``Examples/Tests/python_registered_fields/inputs_test_3d_python_registered_fields_picmi.py``.

@@ -4908,6 +4908,7 @@ In-situ capabilities can be used by turning on Sensei or Ascent (provided they a
     Possible vector field components in RZ and RCYLINDER geometry: ``Er`` ``Et`` ``Ez`` ``Br`` ``Bt`` ``Bz`` ``jr`` ``jt`` ``jz``.
     Possible vector field components in RSPHERE geometry: ``Er`` ``Et`` ``Ep`` ``Br`` ``Bt`` ``Bp`` ``jr`` ``jt`` ``jp``.
     Any MultiFab added to the internal registry can also be included in the list.
+    The components of a vector field in the registry are requested like those of ``E``, by appending the component to the name (e.g. ``<name>x``).
     The default :pp:param:`<diag_name>.fields_to_plot` is to write all possible field components for the geometry.
     When the special value ``none`` is specified, no fields are written out.
     Note that the fields are averaged on the cell centers before they are written to file.
