@@ -58,6 +58,24 @@ if(WarpX_EB)
         OFF  # dependency
     )
     add_warpx_test(
+        test_rz_voltage_clamp_insulator_half_diode_picmi  # name
+        RZ  # dims
+        2  # nprocs
+        "inputs_test_rz_voltage_clamp_picmi.py --case diode --z-faces half --max-grid-size 16"  # inputs
+        OFF  # analysis
+        OFF  # checksum
+        OFF  # dependency
+    )
+    add_warpx_test(
+        test_rz_voltage_clamp_insulator_half_vacuum_picmi  # name
+        RZ  # dims
+        1  # nprocs
+        "inputs_test_rz_voltage_clamp_picmi.py --case vacuum --z-faces half"  # inputs
+        OFF  # analysis
+        OFF  # checksum
+        OFF  # dependency
+    )
+    add_warpx_test(
         test_rz_voltage_clamp_insulator_exit_picmi  # name
         RZ  # dims
         2  # nprocs

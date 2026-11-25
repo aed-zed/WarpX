@@ -16,6 +16,9 @@ of the ground: it is listed with potential 0 and gets no unit solve.
                 node volume (no flux beyond the face), so the field stays radial and the
                 coax has the effective length LENGTH + dz. Corrections must not change
                 the face charge.
+--z-faces half: the upper half of the --z-faces current coax. The lower face is a PMC
+                symmetry plane (reflecting particles), whose nodes hold half a node
+                volume, so the coax has the effective length LENGTH + dz/2.
 --z-faces voltage: a lower PEC face and an upper pec_insulator face with a voltage gap
                 (E_r = K/r, ramped up), with rod and sleeve shortened away from both
                 faces. --case vacuum then checks the drive: the plateau mean of the line
@@ -55,12 +58,14 @@ parser.add_argument("--arm", choices=["on", "off"], default="on")
 parser.add_argument("--mode", choices=["base", "restart"], default="base")
 parser.add_argument("--sleeve", choices=["separate", "joined"], default="separate")
 parser.add_argument(
-    "--z-faces", choices=["periodic", "current", "voltage"], default="periodic"
+    "--z-faces", choices=["periodic", "current", "half", "voltage"], default="periodic"
 )
 parser.add_argument("--max-grid-size", type=int, default=1024)
 args = parser.parse_args()
 if args.case == "exit" and args.z_faces == "periodic":
     args.z_faces = "current"  # the exit case needs z faces
+if args.z_faces == "half" and args.case not in ("vacuum", "diode"):
+    parser.error("--z-faces half is tested with --case vacuum and diode")
 
 EPS0, Q_E, M_E = picmi.constants.ep0, picmi.constants.q_e, picmi.constants.m_e
 
@@ -90,6 +95,8 @@ else:
     ]
 dr, dz = R_WALL / NR, LENGTH / NZ
 periodic = args.z_faces == "periodic"
+half = args.z_faces == "half"  # PMC symmetry plane at the lower face
+current = args.z_faces in ("current", "half")  # current-mode pec_insulator faces
 if args.z_faces == "voltage":
     # Shortened away from both faces: a conductor touching the gapped face inward of
     # the gap would be at the gap's potential, and one touching the PEC face grounded
@@ -97,8 +104,8 @@ if args.z_faces == "voltage":
 # Node rows: the periodic copy of row 0 is dropped; with z faces both face rows count
 NZ_NODES = NZ if periodic else NZ + 1
 # Current-mode faces conserve charge with the full node volume, so the field lines end
-# half a cell beyond each face
-LENGTH_EFF = LENGTH + dz if args.z_faces == "current" else LENGTH
+# half a cell beyond each such face; a PMC face node holds half a node volume
+LENGTH_EFF = LENGTH + (dz / 2 if half else dz) if current else LENGTH
 R_INSULATOR = 0.95 * R_WALL  # current mode: insulator from the axis, PEC beyond
 # Voltage mode: gap G_IN < r < G_OUT on the upper face, E_r = K/r ramped over N_RAMP
 G_IN, G_OUT, K_GAP = 1.0e-2, 4.0e-2, 300.0
@@ -167,7 +174,7 @@ grid = picmi.CylindricalGrid(
     upper_boundary_conditions=["dirichlet", "periodic" if periodic else "dirichlet"],
     lower_boundary_conditions_particles=[
         "none",
-        "periodic" if periodic else "absorbing",
+        "periodic" if periodic else ("reflecting" if half else "absorbing"),
     ],
     upper_boundary_conditions_particles=[
         "absorbing",
@@ -209,11 +216,13 @@ if not periodic:
     from pywarpx import warpx as warpx_inputs
 
     insulator = warpx_inputs.get_bucket("insulator")
-    current = args.z_faces == "current"
-    boundary.field_lo = ["none", "pec_insulator" if current else "pec"]
+    boundary.field_lo = [
+        "none",
+        "pmc" if half else ("pec_insulator" if current else "pec"),
+    ]
     boundary.field_hi = ["pec", "pec_insulator"]
     if current:
-        for side in ("lo", "hi"):
+        for side in ("hi",) if half else ("lo", "hi"):
             setattr(insulator, f"area_z_{side}(x,y)", f"x<{R_INSULATOR}")
             setattr(insulator, f"Bx_z_{side}(x,y,t)", "0")
             setattr(insulator, f"By_z_{side}(x,y,t)", "0")
@@ -305,8 +314,7 @@ def gauss_residual():
     for i in range(1, NR):
         div[i] = (r_half[i] * er[i] - r_half[i - 1] * er[i - 1]) / (r_node[i] * dr)
     div += axial_divergence(ez)
-    volume = 2.0 * np.pi * r_node * dr * dz
-    residual = ((EPS0 * div - rho) * volume[:, None]).sum(axis=1)
+    residual = ((EPS0 * div - rho) * volume).sum(axis=1)
     return float(np.max(np.abs(residual[k_cathode + 1 : k_anode])))
 
 
@@ -329,23 +337,31 @@ def charge_density():
 
 
 def axial_divergence(ez):
-    """dE_z/dz on the node rows. On current-mode faces there is no flux beyond the face."""
+    """dE_z/dz on the node rows. On current-mode faces there is no flux beyond the face;
+    on a PMC face E_z is odd, so the mirror image doubles the flux."""
     if periodic:
         return (ez - np.roll(ez, 1, axis=1)) / dz
     dez = np.zeros((NR + 1, NZ + 1))
     dez[:, :NZ] += ez
     dez[:, 1:] -= ez
+    if half:
+        dez[:, 0] += ez[:, 0]
     return dez / dz
 
 
-# Free (neither fixed nor wall) nodes, and the full node volumes of the divergence
+# Free (neither fixed nor wall) nodes, and the node volumes of the divergence (half a
+# volume on a PMC face)
 free = field("voltage_clamp_fixed") == 0.0
 volume = 2.0 * np.pi * r_node[:, None] * dr * dz * np.ones(NZ_NODES)
 volume[0] = np.pi * dr * dr / 4.0 * dz
+if half:
+    volume[:, 0] *= 0.5
+# Node rows of the current-mode faces
+face_rows = [NZ] if half else [0, NZ]
 
 
 def face_charges(name):
-    """Current-mode faces: eps0 V div E on the free nodes of both face rows, node by node,
+    """Current-mode faces: eps0 V div E on the free nodes of the face rows, node by node,
     the charge that the field update conserves there."""
     er, ez = field(name, "r"), field(name, "z")
     div = np.zeros((NR + 1, NZ + 1))
@@ -355,7 +371,7 @@ def face_charges(name):
     div[0] = 4.0 * er[0] / dr
     div += axial_divergence(ez)
     q = EPS0 * volume * div
-    return np.concatenate([q[free[:, 0], 0], q[free[:, NZ], NZ]])
+    return np.concatenate([q[free[:, j], j] for j in face_rows])
 
 
 def capacitance_checks(cap):
@@ -376,7 +392,7 @@ face_trace = {"jump": 0.0, "correction": 0.0}
 def correct():
     """Correct; on current-mode faces also record how much face charge the correction
     changes (largest node), and the sum of the voltage corrections of the cathode."""
-    if args.z_faces != "current":
+    if not current:
         clamp.correct_after_step()
         return
     before = face_charges("Efield_fp")
@@ -539,7 +555,7 @@ if args.case == "vacuum":
         "E static": e_change < FIELD_RTOL * e_scale,
         "B zero": picmi.constants.c * b_max < B_RTOL * e_scale,
     }
-    if args.z_faces == "current":
+    if current:
         # The unit fields put no charge on the insulator (largest node)
         unit_face = max(
             np.max(np.abs(face_charges(f"voltage_clamp_E_{k}"))) for k in range(n)
@@ -561,6 +577,10 @@ else:
     # have full volumes) gets the same charge; the face particles sit just inside
     z_birth = np.clip(np.arange(NZ + 1) * dz, 1.0e-12 * dz, LENGTH - 1.0e-12 * dz)
 N_BIRTH = len(z_birth)
+# Relative weights: a PMC face row has half a node volume, so its particle carries half
+W_BIRTH = np.ones(N_BIRTH)
+if half:
+    W_BIRTH[0] = 0.5
 
 if args.case == "restart":
 
@@ -620,7 +640,7 @@ lb = solve_ivp(
     atol=1.0e-14,
 )
 beta_end = lb.y[0, -1]
-current = (
+lb_current = (
     8.0 * np.pi * EPS0 / 9.0 * np.sqrt(2.0 * Q_E / M_E) * abs(V_CATHODE) ** 1.5
     * LENGTH_EFF / (b_eff * beta_end ** 2)
 )  # fmt: skip
@@ -628,19 +648,21 @@ dt = warpx.getdt(0)
 # Space-charge-limited transit time: 3 d / v_final (planar Child-Langmuir)
 transit = 3.0 * (b_eff - a_eff) / np.sqrt(2.0 * Q_E * abs(V_CATHODE) / M_E)
 n_steps = int(N_TRANSITS * transit / dt)
-weight = current * dt / (Q_E * N_BIRTH)  # N_BIRTH macroparticles per step carry I dt
+weight = lb_current * dt / (Q_E * W_BIRTH.sum())  # the births of a step carry I dt
 injected = 0.0
+n_injected = 0
 worst = {"line - observer": 0.0, "observer - target": 0.0, "gauss": 0.0, "B": 0.0}
 
 
 def inject():
-    global injected
+    global injected, n_injected
     particles.add_particles(
         x=np.full(N_BIRTH, r_birth), y=np.zeros(N_BIRTH), z=z_birth,
         ux=np.full(N_BIRTH, BIRTH_U), uy=np.zeros(N_BIRTH), uz=np.zeros(N_BIRTH),
-        w=np.full(N_BIRTH, weight), unique_particles=False,
+        w=weight * W_BIRTH, unique_particles=False,
     )  # fmt: skip
-    injected += Q_E * weight * N_BIRTH
+    injected += Q_E * weight * W_BIRTH.sum()
+    n_injected += N_BIRTH
 
 
 def record():
@@ -662,7 +684,7 @@ install("afterstep", record)
 sim.step(n_steps)
 
 final_gap = gap_voltage()
-collected = particles.number_of_particles(False) < round(injected / (Q_E * weight))
+collected = particles.number_of_particles(False) < n_injected
 checks = {
     "electrons collected": collected,
     "observer = line integral": worst["line - observer"] < LINE_OBSERVER_ATOL,
@@ -680,7 +702,7 @@ if args.arm == "on":
     checks["gap held"] = abs(final_gap - V_CATHODE) < GAP_ATOL
     checks["grounded solve = reciprocity"] = grounded_error < GROUNDED_RTOL
     summary += f"; grounded check {grounded_error:.2e}"
-    if args.z_faces == "current":
+    if current:
         checks["corrections leave the face charge"] = (
             face_trace["jump"] < FACE_RTOL * injected
         )

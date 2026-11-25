@@ -7,6 +7,7 @@
 #include "VoltageClamp.H"
 
 #include "BoundaryConditions/PEC_Insulator.H"
+#include "BoundaryConditions/WarpX_PEC.H"
 #include "EmbeddedBoundary/Enabled.H"
 #include "FieldSolver/ElectrostaticSolvers/ElectrostaticSolver.H"
 #include "FieldSolver/FiniteDifferenceSolver/FiniteDifferenceSolver.H"
@@ -120,7 +121,8 @@ namespace
             "The voltage clamp requires energy-conserving field gathering and no "
             "particle E field read from file");
         auto const z_face = [] (FieldBoundaryType b) {
-            return b == FieldBoundaryType::PEC || b == FieldBoundaryType::PEC_Insulator;
+            return b == FieldBoundaryType::PEC || b == FieldBoundaryType::PEC_Insulator ||
+                   b == FieldBoundaryType::PMC;
         };
         WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
             WarpX::field_boundary_lo[0] == FieldBoundaryType::None &&
@@ -128,7 +130,16 @@ namespace
             (warpx.Geom(lev).isPeriodic(1) ||
              (z_face(WarpX::field_boundary_lo[1]) && z_face(WarpX::field_boundary_hi[1]))),
             "The voltage clamp supports a PEC outer radius and two periodic z boundaries, "
-            "or PEC or pec_insulator z boundaries");
+            "or PEC, pec_insulator or PMC z boundaries");
+        // A PMC face is a symmetry plane: particles reflect there, so no charge is left on it
+        auto const symmetric = [] (FieldBoundaryType f, ParticleBoundaryType p) {
+            return f != FieldBoundaryType::PMC || p == ParticleBoundaryType::Reflecting;
+        };
+        WARPX_ALWAYS_ASSERT_WITH_MESSAGE(
+            symmetric(WarpX::field_boundary_lo[1], WarpX::particle_boundary_lo[1]) &&
+            symmetric(WarpX::field_boundary_hi[1], WarpX::particle_boundary_hi[1]),
+            "The voltage clamp supports a PMC z face only as a symmetry plane, with "
+            "reflecting particles");
     }
 
     // --- z faces ---------------------------------------------------------------
@@ -144,8 +155,12 @@ namespace
      *     then conserves the face-node charge eps0 [V D_r(E_r) + A E_z(dz/2)], with the full
      *     node volume V and face area A, and no flux through z = -dz/2 (B_theta is
      *     prescribed in the guard cell): the unit potentials satisfy this face equation, so
-     *     a correction adds no charge to the insulator. */
-    enum class ZFace { Periodic, PEC, Voltage, Current };
+     *     a correction adds no charge to the insulator.
+     *   PMC: a symmetry plane (reflecting particles). E_z is odd and E_r even about the face,
+     *     so psi is free there with the mirror (Neumann) face equation, and a face node holds
+     *     half its node volume (the mirror image holds the other half; WarpX folds rho there,
+     *     doubling it). A conductor may end on the face. */
+    enum class ZFace { Periodic, PEC, Voltage, Current, PMC };
 
     struct FaceInfo
     {
@@ -162,6 +177,7 @@ namespace
         int const nr = warpx.Geom(lev).Domain().length(0);
         if (boundary == FieldBoundaryType::Periodic) { return {ZFace::Periodic, nr}; }
         if (boundary == FieldBoundaryType::PEC) { return {ZFace::PEC, 0}; }
+        if (boundary == FieldBoundaryType::PMC) { return {ZFace::PMC, nr}; }
         // pec_insulator: insulator where the area expression in (r, 0) is > 0, evaluated at
         // the E_r edge centres as in PEC_Insulator.cpp
         auto const& insulator = warpx.GetPECInsulatorBoundary();
@@ -201,6 +217,11 @@ namespace
      * particles left there). The observer then pairs psi with the field charge on free
      * nodes instead of the deposited rho (see ChargeState). */
     bool FieldPairing (Faces const& faces) { return AnyCurrentFace(faces); }
+
+    bool AnyPMCFace (Faces const& faces)
+    {
+        return faces[0].type == ZFace::PMC || faces[1].type == ZFace::PMC;
+    }
 
     // --- Geometry: everything specific to RZ is in the helpers below ---------
 
@@ -245,13 +266,23 @@ namespace
                    (face_hi == ZFace::Voltage && j == dhi[1] && i < junction_hi);
         }
 
-        // psi = 0: the outer radius, and the z faces (unless periodic) except the insulator
-        // area of current-mode faces. The axis is not a wall.
+        // Face node of a PMC z face (a symmetry plane)
+        AMREX_GPU_DEVICE AMREX_FORCE_INLINE
+        bool pmc_face (int j) const noexcept
+        {
+            return (face_lo == ZFace::PMC && j == dlo[1]) ||
+                   (face_hi == ZFace::PMC && j == dhi[1]);
+        }
+
+        // psi = 0: the outer radius, and the z faces (unless periodic or PMC) except the
+        // insulator area of current-mode faces. The axis is not a wall.
         AMREX_GPU_DEVICE AMREX_FORCE_INLINE
         bool wall (int i, int j) const noexcept
         {
-            bool const face = (face_lo != ZFace::Periodic && j == dlo[1]) ||
-                              (face_hi != ZFace::Periodic && j == dhi[1]);
+            bool const face = (face_lo != ZFace::Periodic && face_lo != ZFace::PMC &&
+                               j == dlo[1]) ||
+                              (face_hi != ZFace::Periodic && face_hi != ZFace::PMC &&
+                               j == dhi[1]);
             return i == dhi[0] || (face && !current_face(i, j));
         }
     };
@@ -268,12 +299,15 @@ namespace
     /* Node volumes: 2 pi r dr dz off axis. On the axis, pi dr^2 dz times an axis
      * factor: RZAxisVolumeFactor() for the deposited rho (as in
      * ApplyInverseVolumeScalingToChargeDensity; 1/3 with the Verboncoeur correction)
-     * and 1/4 for the divergence control volume r <= dr/2. */
-    void FillMeasure (WarpX const& warpx, amrex::MultiFab& measure, amrex::Real axis_factor)
+     * and 1/4 for the divergence control volume r <= dr/2. PMC face nodes hold half a
+     * node volume; WarpX folds (doubles) rho there, so V rho is the node's charge. */
+    void FillMeasure (WarpX& warpx, amrex::MultiFab& measure, amrex::Real axis_factor)
     {
         auto const dx = warpx.Geom(lev).CellSizeArray();
         auto const owner = measure.OwnerMask(warpx.Geom(lev).periodicity());
+        auto const faces = GetFaces(warpx);
         for (amrex::MFIter mfi(measure); mfi.isValid(); ++mfi) {
+            auto const sc = MakeStaircase(warpx, mfi, faces);
             auto const m = measure.array(mfi);
             auto const own = owner->const_array(mfi);
             amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE (int i, int j, int k)
@@ -281,7 +315,8 @@ namespace
                 amrex::Real const r = i * dx[0];
                 amrex::Real const radial = (i == 0) ? MathConst::pi * dx[0] * axis_factor
                                                     : 2._rt * MathConst::pi * r;
-                m(i,j,k) = own(i,j,k) ? radial * dx[0] * dx[1] : 0._rt;
+                amrex::Real const half = sc.pmc_face(j) ? 0.5_rt : 1._rt;
+                m(i,j,k) = own(i,j,k) ? half * radial * dx[0] * dx[1] : 0._rt;
             });
         }
     }
@@ -493,13 +528,13 @@ namespace
         linop.setSigma({1._rt, 1._rt});
         linop.setAlpha(0._rt);
         // Domain boundary conditions: the axis, the PEC outer wall, and per z face periodic,
-        // Dirichlet (PEC and voltage mode) or Neumann (current mode, whose PEC part is
-        // imposed through the overset mask). The Poisson boundary handler does not accept
+        // Dirichlet (PEC and voltage mode) or Neumann (PMC, and current mode, whose PEC part
+        // is imposed through the overset mask). The Poisson boundary handler does not accept
         // pec_insulator faces.
         auto const face_bc = [] (FieldBoundaryType b, ZFace f) {
             if (b == FieldBoundaryType::Periodic) { return amrex::LinOpBCType::Periodic; }
-            return f == ZFace::Current ? amrex::LinOpBCType::Neumann
-                                       : amrex::LinOpBCType::Dirichlet;
+            return (f == ZFace::Current || f == ZFace::PMC) ? amrex::LinOpBCType::Neumann
+                                                            : amrex::LinOpBCType::Dirichlet;
         };
         ZFace const face_lo = faces[0].type;
         ZFace const face_hi = faces[1].type;
@@ -703,13 +738,22 @@ namespace
         // The divergence stencil reads guard cells; syncing them from valid data
         // keeps the result independent of the domain decomposition.
         ablastr::fields::VectorField const efield = warpx.m_fields.get_alldirs(name, lev);
+        auto const faces = GetFaces(warpx);
+        if (AnyPMCFace(faces)) {
+            // Mirror images of E in the guard cells of PMC faces (the unit fields never pass
+            // through WarpX's boundary routine). At a PMC face E has the symmetry that B has
+            // at a PEC wall, so WarpX fills them with its PEC routine for B, as
+            // WarpX::ApplyEfieldBoundary does.
+            PEC::ApplyPECtoBfield(efield, WarpX::field_boundary_lo, WarpX::field_boundary_hi,
+                FieldBoundaryType::PMC, warpx.get_ng_fieldgather(), warpx.Geom(lev), lev,
+                PatchType::fine, warpx.refRatio());
+        }
         for (auto* e : efield) { e->FillBoundary(warpx.Geom(lev).periodicity()); }
         // The FDTD solver's own nodal divergence, so the observer sees exactly the
         // discrete Gauss law of the field update
         auto div_e = std::make_unique<amrex::MultiFab>(
             NodalBoxArray(warpx), warpx.DistributionMap(lev), 1, 0);
         warpx.get_pointer_fdtd_solver_fp(lev)->ComputeDivE(efield, *div_e);
-        auto const faces = GetFaces(warpx);
         // Current-mode faces: the guard E_z holds the even mirror (PEC_Insulator.cpp), but
         // the field update has no flux through z = -dz/2 there (see ZFace). Remove the
         // guard term from the face divergence, so that eps0 V div E is the charge the field

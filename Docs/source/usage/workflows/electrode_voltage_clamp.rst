@@ -68,7 +68,7 @@ Supported configurations
   No current/charge filter.
   Energy-conserving field gathering, and no particle E field read from file.
 * Radial boundary: the axis and a PEC outer wall, which is the grounded potential reference.
-  Axial boundaries: both periodic, or PEC or ``pec_insulator`` faces in any combination (see :ref:`below <usage-electrode-voltage-clamp-insulator>`).
+  Axial boundaries: both periodic, or PEC, ``pec_insulator`` or PMC faces in any combination (see :ref:`below <usage-electrode-voltage-clamp-insulator>`); a PMC face needs reflecting particles.
 * Listed conductors must be separate bodies.
 * A conductor that touches a PEC domain boundary is part of the ground: the staircase ties it to the wall, so it cannot hold another voltage.
   Such conductors (for example a curved outer wall) are found at setup; they may be listed with potential 0 or left out, and they get no unit solve.
@@ -174,6 +174,11 @@ A conductor that touches the face inward of the outermost gap is at the potentia
 A changing drive also excites electromagnetic modes, which in a closed, lossless domain do not decay; the clamp holds the conductors' charge coordinate through them, while a line integral of :math:`E_r` oscillates about the target.
 ``voltage_clamp_solve_grounded`` does not include the face charge or the drive.
 
+**Symmetry plane.**
+A PMC z face with reflecting particles is a mirror plane: the domain is half of a z-symmetric system.
+There :math:`E_z` is odd and :math:`E_r` even, so the unit potentials satisfy the mirror (Neumann) condition, and a face node holds half its node volume, the mirror image holding the other half (WarpX folds :math:`\rho` there, doubling it).
+A conductor may end on the plane; the capacitance and the charges are those of the simulated half.
+
 What it does not do
 -------------------
 
@@ -184,7 +189,7 @@ What it does not do
 * With ``pec_insulator`` faces, ``voltage_clamp_solve_grounded`` does not see the charge on current-mode faces or the drive of voltage-mode faces, so it is no independent check there.
 * There is no circuit model (no floating electrodes, no series impedance) and no dielectric charging.
 * It is available from Python only; there is no inputs-file interface yet.
-* Cartesian geometries (XZ, 3D), PMC and open (absorbing) field boundaries are not supported yet.
+* Cartesian geometries (XZ, 3D), open (absorbing) field boundaries and PMC faces that absorb particles are not supported yet.
 * Each correction costs one charge deposition, one nodal divergence and a few reductions; the unit potentials are solved once, at setup.
 
 Examples and tests
@@ -198,7 +203,8 @@ Examples and tests
 * checkpoint/restart during emission;
 * current-mode ``pec_insulator`` faces, with rod and sleeve standing on both insulators: the vacuum case (the coaxial formula holds with the length extended by one cell, since the insulator conserves its charge with the full node volume) and the diode;
 * electrons landing on a current-mode face next to a clamped rod standing on it (two ranks): their charge stays on the face;
-* a voltage gap on a ``pec_insulator`` face next to a shortened rod and sleeve (two ranks).
+* a voltage gap on a ``pec_insulator`` face next to a shortened rod and sleeve (two ranks);
+* the upper half of the current-mode coax, with a PMC symmetry plane at the lower face: the vacuum case (length extended by half a cell, from the upper insulator only) and the diode (two ranks).
 
 .. bibliography::
     :keyprefix: vc-
